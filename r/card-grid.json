@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "card-grid",
+  "type": "registry:ui",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [
+    "https://ssicevs-ui.vercel.app/r/project-card.json"
+  ],
+  "files": [
+    {
+      "path": "components/ui/card-grid.tsx",
+      "content": "import { motion } from \"motion/react\";\nimport { cn } from \"@/lib/utils\";\nimport { ProjectCard } from \"@/components/ui/project-card\";\nimport { useProjectDetails, type CardData } from \"@/components/ui/project-card-utils\";\n\n/** Responsive grid of project cards. Click to open the shared details modal. */\nexport function CardGrid({ cards, className }: { cards: CardData[]; className?: string }) {\n  const { open, modal } = useProjectDetails(cards);\n\n  if (!cards.length) return null;\n\n  return (\n    <div className={cn(\"mx-auto w-full max-w-5xl\", className)}>\n      <div className=\"grid w-full grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3\">\n        {cards.map((card, i) => (\n          <motion.div\n            key={card.id}\n            initial={{ opacity: 0, scale: 0.9 }}\n            animate={{ opacity: 1, scale: 1 }}\n            transition={{ type: \"spring\", stiffness: 300, damping: 28, delay: i * 0.04 }}\n            onClick={() => open(card.id)}\n            className=\"group relative aspect-[3/2] w-full cursor-pointer overflow-hidden rounded-[28px] shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]\"\n          >\n            <ProjectCard card={card} variant=\"overlay\" emphasis=\"sm\" />\n          </motion.div>\n        ))}\n      </div>\n\n      {modal}\n    </div>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/card-grid.tsx"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "ssicevs-ui",
+  "homepage": "https://ssicevs-ui.vercel.app",
+  "items": [
+    "sidebar",
+    "macos-dock",
+    "browser-window",
+    "macbook-frame",
+    "card-stack",
+    "card-grid",
+    "card-list",
+    "bento-gallery",
+    "cutout-card",
+    "gradient-button-group",
+    "accordion",
+    "project-card"
+  ]
+}

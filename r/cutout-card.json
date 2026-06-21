@@ -1,0 +1,9 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "cutout-card",
+  "type": "registry:ui",
+  "locked": true,
+  "description": "Sign in at the SSICEVS UI library to install this component.",
+  "authUrl": "https://ssicevs-ui.vercel.app/library",
+  "apiUrl": "https://ssicevs-ui.vercel.app/api/registry/cutout-card"
+}
