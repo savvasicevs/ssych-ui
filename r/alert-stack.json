@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "alert-stack",
+  "type": "registry:ui",
+  "title": "Alert Stack",
+  "description": "Collapsed notification deck that fans open on hover; each dismiss re-settles the pile.",
+  "dependencies": [
+    "@phosphor-icons/react",
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "files": [
+    {
+      "path": "components/ui/alert-stack.tsx",
+      "content": "import { useState } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\nimport { Sparkle, X } from \"@phosphor-icons/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst SURFACE_RAISED = \"linear-gradient(180deg, #10141E 0%, #0A0E16 100%)\"\n\nconst DEFAULT_ALERTS = [\n  \"Realtime quotes are coming soon\",\n  \"Options chains are coming soon\",\n  \"Screener alerts are coming soon\",\n]\n\n/**\n * Collapsed notification deck in the Fey register: rows sit stacked with a\n * peeking edge, fan open on hover, and each dismiss re-settles the pile.\n * Dismiss everything and a quiet restore control appears.\n */\nexport function AlertStack({\n  alerts = DEFAULT_ALERTS,\n  onDismiss,\n  className,\n}: {\n  alerts?: string[]\n  onDismiss?: (alert: string) => void\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [open, setOpen] = useState(false)\n  const [rows, setRows] = useState(alerts)\n\n  return (\n    <div\n      className={cn(\"w-[300px]\", className)}\n      onMouseEnter={() => setOpen(true)}\n      onMouseLeave={() => setOpen(false)}\n    >\n      {rows.length === 0 ? (\n        <button\n          type=\"button\"\n          onClick={() => setRows(alerts)}\n          className=\"mx-auto block rounded-full border border-white/[0.04] bg-white/[0.03] px-3 py-1.5 text-[11px] text-white/40 transition-all duration-150 hover:bg-white/[0.06] hover:text-white/75 active:scale-[0.98]\"\n        >\n          Restore alerts\n        </button>\n      ) : (\n        <div className=\"relative\" style={{ height: open ? rows.length * 52 - 8 : 44 + (rows.length - 1) * 7 }}>\n          <AnimatePresence initial={false}>\n            {rows.map((label, i) => (\n              <motion.div\n                key={label}\n                className=\"absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-xl border border-white/[0.05] px-3.5\"\n                style={{\n                  background: SURFACE_RAISED,\n                  zIndex: rows.length - i,\n                  boxShadow: \"0 10px 24px -12px rgba(0,0,0,0.8)\",\n                }}\n                initial={false}\n                animate={{\n                  y: open ? i * 52 : i * 7,\n                  scale: open ? 1 : 1 - i * 0.035,\n                  opacity: open ? 1 : i > 2 ? 0 : 1 - i * 0.18,\n                }}\n                exit={{ opacity: 0, x: 24, transition: { duration: reduced ? 0 : 0.2 } }}\n                transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 300, damping: 30 }}\n              >\n                <Sparkle className=\"h-3.5 w-3.5 shrink-0 text-white/45\" />\n                <span className=\"flex-1 truncate text-[12.5px] text-white/80\">{label}</span>\n                <button\n                  type=\"button\"\n                  aria-label={`Dismiss \"${label}\"`}\n                  onClick={() => {\n                    setRows((r) => r.filter((x) => x !== label))\n                    onDismiss?.(label)\n                  }}\n                  className=\"rounded p-1 text-white/30 transition-colors duration-150 hover:text-white/70\"\n                >\n                  <X className=\"h-3 w-3\" weight=\"bold\" />\n                </button>\n              </motion.div>\n            ))}\n          </AnimatePresence>\n        </div>\n      )}\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/alert-stack.tsx"
+    }
+  ]
+}

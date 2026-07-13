@@ -1,38 +1,34 @@
 # SSICEVS UI
 
-A small, dark, Fey-inspired component library for AI-heavy product surfaces — copy-paste or install via the shadcn CLI.
+**Control surfaces for AI agents & dense dashboards** — a dark, terminal-grade
+component library for the surfaces operators actually have to read, trust, and
+act on. Copy-paste, or install with the shadcn CLI.
 
-**Live library & previews →** https://ssicevs-ui.vercel.app
+**Live previews →** https://www.ssicevs.com/library
 
 ## Install
 
-Each component is a shadcn registry item. With a shadcn-ready project:
+Every component is a shadcn registry item:
 
 ```bash
-npx shadcn@latest add https://ssicevs-ui.vercel.app/r/sidebar.json
+npx shadcn@latest add https://www.ssicevs.com/r/sidebar.json
 ```
 
-Swap `sidebar` for any component slug — the CLI pulls its npm deps and any registry dependencies. Run `npx shadcn@latest init` first if your project isn't set up for shadcn yet. Components rely on the standard `cn()` helper in `lib/utils.ts` (clsx + tailwind-merge), included here.
+Swap `sidebar` for any free slug below. The whole free family is **MIT** — use it
+in anything, commercial included.
 
-## Components
+## Free family — MIT (20 components)
 
-| Slug | What it is |
-| --- | --- |
-| `sidebar` | Collapsible accordion sidebar with an active rail |
-| `macos-dock` | Magnifying macOS dock (rounded tiles + Phosphor icons) |
-| `browser-window` | Chrome / Safari mock window frame |
-| `macbook-frame` | Front-facing MacBook mockup |
-| `card-stack` · `card-grid` · `card-list` | Project-card layouts |
-| `project-card` | Shared cutout project card |
-| `gradient-button-group` | Segmented gradient button group |
-| `accordion` | Accordion with a synced visual stage |
+`accordion` · `alert-stack` · `avatar-stack` · `browser-window` · `empty-state` · `gradient-button-group` · `heat-calendar` · `inbox` · `macbook-frame` · `macos-dock` · `news-card` · `onboarding-checklist` · `payment-sheet` · `preferences-card` · `pricing-card` · `ratings-radar` · `request-log` · `sectors-donut` · `segmented-control` · `sidebar`
 
-> **Gated components** — `cutout-card` and `bento-gallery` require signing in at the [live library](https://ssicevs-ui.vercel.app) before install. Their source isn't in this repo.
+## Pro family — sign in to install
 
-## Tech
+The dense-data flagships — the agent/terminal register this library is known for
+(`holdings-table`, `metrics-area-chart`, `historical-eps`, `project-index`,
+`screen-shuffle`, and the composed card scenes) — stay gated. **Previews are fully
+live** at https://www.ssicevs.com/library; only the source copy needs a free account. Their code is **not**
+in this repo and is served only through the authenticated registry.
 
-React 19 · TypeScript · Tailwind CSS v4 · [Motion](https://motion.dev) · [Phosphor Icons](https://phosphoricons.com)
+## License
 
----
-
-This repo mirrors the component source + shadcn registry (`/r/*.json`). The interactive library lives at [ssicevs-ui.vercel.app](https://ssicevs-ui.vercel.app).
+Free family: [MIT](./LICENSE). Pro family: proprietary, © 2026 Savva Sicevs.

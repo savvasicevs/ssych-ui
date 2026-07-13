@@ -16,11 +16,11 @@ export type AccordionItem = {
  * Pulled from the /pro-services "Variant 02 · accordion".
  */
 export function Accordion({
-  items,
+  items = [],
   stage,
   defaultOpen = 0,
 }: {
-  items: AccordionItem[];
+  items?: AccordionItem[];
   stage?: (i: number) => ReactNode;
   defaultOpen?: number;
 }) {
@@ -88,7 +88,7 @@ export function Accordion({
                   <div className="grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10">
                     {/* left — body + deliverables */}
                     <div>
-                      <p className="max-w-xl text-[14px] font-light leading-[1.55] text-white/45">{it.body}</p>
+                      <p className="max-w-xl text-[14px] font-light leading-[1.55] text-white/50">{it.body}</p>
                       {it.deliverables && it.deliverables.length > 0 && (
                         <ul className="mt-5 flex flex-col gap-2.5">
                           {it.deliverables.map((d) => (

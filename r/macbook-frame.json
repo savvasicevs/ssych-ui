@@ -2,6 +2,8 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "macbook-frame",
   "type": "registry:ui",
+  "title": "MacBook Frame",
+  "description": "Front-facing MacBook mockup — drop a screenshot, gradient, or live UI on the screen.",
   "dependencies": [
     "clsx",
     "tailwind-merge"

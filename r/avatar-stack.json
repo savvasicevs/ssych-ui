@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "avatar-stack",
+  "type": "registry:ui",
+  "title": "Avatar Stack",
+  "description": "Overlapping initial coins with a surface ring; the overflow count is just ink.",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "files": [
+    {
+      "path": "components/ui/avatar-stack.tsx",
+      "content": "import { cn } from \"@/lib/utils\"\n\nexport interface AvatarStackProps {\n  names: string[]\n  /** Coins shown before folding the rest into a \"+N\" count. */\n  max?: number\n  className?: string\n}\n\nconst COIN_BG = [\"#1d2634\", \"#24202f\", \"#1e2b26\", \"#2b2420\"]\n\nconst initials = (n: string) =>\n  n\n    .split(\" \")\n    .map((p) => p[0])\n    .slice(0, 2)\n    .join(\"\")\n    .toUpperCase()\n\n/**\n * Overlapping initial coins with a surface ring so each stays legible; the\n * overflow count is just ink.\n */\nexport function AvatarStack({ names, max = 4, className }: AvatarStackProps) {\n  const shown = names.slice(0, max)\n  const rest = names.length - shown.length\n\n  return (\n    <span className={cn(\"inline-flex items-center\", className)}>\n      <span className=\"flex -space-x-1.5\">\n        {shown.map((n, i) => (\n          <span\n            key={n}\n            title={n}\n            className=\"grid h-6 w-6 place-items-center rounded-full text-[9px] text-white/70\"\n            style={{\n              background: COIN_BG[i % COIN_BG.length],\n              boxShadow: \"0 0 0 2px #070a12\",\n              zIndex: shown.length - i,\n            }}\n          >\n            {initials(n)}\n          </span>\n        ))}\n      </span>\n      {rest > 0 && <span className=\"ml-2 text-[11px] text-white/40\">+{rest}</span>}\n    </span>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/avatar-stack.tsx"
+    }
+  ]
+}

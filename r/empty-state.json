@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "empty-state",
+  "type": "registry:ui",
+  "title": "Empty State",
+  "description": "A dotted field, a hairline icon chip, one line of ink and one quiet action.",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "files": [
+    {
+      "path": "components/ui/empty-state.tsx",
+      "content": "import { type ReactNode } from \"react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst SURFACE = \"#0A0E16\"\nconst SURFACE_DEEP = \"#080B12\"\n\nconst EnvelopeGlyph = (\n  <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden>\n    <path\n      d=\"M3 8l9 5 9-5M4.8 5h14.4c1 0 1.8.8 1.8 1.8v10.4c0 1-.8 1.8-1.8 1.8H4.8c-1 0-1.8-.8-1.8-1.8V6.8C3 5.8 3.8 5 4.8 5z\"\n      stroke=\"rgba(255,255,255,0.45)\"\n      strokeWidth=\"1.4\"\n      strokeLinecap=\"round\"\n      strokeLinejoin=\"round\"\n    />\n  </svg>\n)\n\n/**\n * \"Nothing yet\" register in the Resend style: a dotted field, a hairline icon\n * chip, one line of ink and one quiet action. The emptiness is the design;\n * nothing decorates it.\n */\nexport function EmptyState({\n  icon = EnvelopeGlyph,\n  title = \"No emails sent yet\",\n  hint = \"your first send appears here in real time\",\n  action = \"Send a test email\",\n  onAction,\n  className,\n}: {\n  icon?: ReactNode\n  title?: string\n  hint?: string\n  /** Button label; pass null to render no action. */\n  action?: string | null\n  onAction?: () => void\n  className?: string\n}) {\n  return (\n    <div\n      className={cn(\"flex w-full max-w-[420px] flex-col items-center rounded-xl border border-white/[0.03] px-8 py-12\", className)}\n      style={{\n        background: \"radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 14px 14px, \" + SURFACE_DEEP,\n      }}\n    >\n      <span\n        className=\"grid h-9 w-9 place-items-center rounded-[10px] border border-white/[0.04]\"\n        style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.06)\" }}\n      >\n        {icon}\n      </span>\n      <p className=\"mt-4 text-[13px] text-white/75\">{title}</p>\n      <p className=\"mt-1 text-[11px] text-white/35\">{hint}</p>\n      {action && (\n        <button\n          type=\"button\"\n          onClick={onAction}\n          className=\"mt-5 rounded-full border border-white/[0.04] bg-white/[0.03] px-4 py-1.5 text-[11px] text-white/75 transition-all duration-150 hover:bg-white/[0.06] hover:text-white active:scale-[0.98]\"\n        >\n          {action}\n        </button>\n      )}\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/empty-state.tsx"
+    }
+  ]
+}

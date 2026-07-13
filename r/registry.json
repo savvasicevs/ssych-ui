@@ -1,19 +1,87 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "ssicevs-ui",
-  "homepage": "https://ssicevs-ui.vercel.app",
+  "homepage": "https://www.ssicevs.com/library",
   "items": [
-    "sidebar",
-    "macos-dock",
-    "browser-window",
-    "macbook-frame",
-    "card-stack",
-    "card-grid",
-    "card-list",
-    "bento-gallery",
-    "cutout-card",
-    "gradient-button-group",
-    "accordion",
-    "project-card"
+    {
+      "name": "sidebar",
+      "type": "registry:ui"
+    },
+    {
+      "name": "macos-dock",
+      "type": "registry:ui"
+    },
+    {
+      "name": "browser-window",
+      "type": "registry:ui"
+    },
+    {
+      "name": "gradient-button-group",
+      "type": "registry:ui"
+    },
+    {
+      "name": "accordion",
+      "type": "registry:ui"
+    },
+    {
+      "name": "macbook-frame",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sectors-donut",
+      "type": "registry:ui"
+    },
+    {
+      "name": "ratings-radar",
+      "type": "registry:ui"
+    },
+    {
+      "name": "heat-calendar",
+      "type": "registry:ui"
+    },
+    {
+      "name": "request-log",
+      "type": "registry:ui"
+    },
+    {
+      "name": "inbox",
+      "type": "registry:ui"
+    },
+    {
+      "name": "news-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "alert-stack",
+      "type": "registry:ui"
+    },
+    {
+      "name": "onboarding-checklist",
+      "type": "registry:ui"
+    },
+    {
+      "name": "payment-sheet",
+      "type": "registry:ui"
+    },
+    {
+      "name": "preferences-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "empty-state",
+      "type": "registry:ui"
+    },
+    {
+      "name": "segmented-control",
+      "type": "registry:ui"
+    },
+    {
+      "name": "avatar-stack",
+      "type": "registry:ui"
+    },
+    {
+      "name": "pricing-card",
+      "type": "registry:ui"
+    }
   ]
 }

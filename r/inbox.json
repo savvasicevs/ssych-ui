@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "inbox",
+  "type": "registry:ui",
+  "title": "Inbox",
+  "description": "Notification inbox — unread dots dissolve on read, mark-all clears the column.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "registryDependencies": [
+    "https://www.ssicevs.com/r/avatar-stack.json"
+  ],
+  "files": [
+    {
+      "path": "components/ui/inbox.tsx",
+      "content": "import { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { AvatarStack } from \"@/components/ui/avatar-stack\"\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst ACCENT = \"rgba(90,170,255,1)\"\nconst SURFACE = \"#0A0E16\"\n\nexport interface InboxItem {\n  id: string\n  actor: string\n  text: string\n  time: string\n}\n\nconst DEFAULT_ITEMS: InboxItem[] = [\n  { id: \"n1\", actor: \"Jane Doe\", text: \"assigned you SSI-14 · Audit chart contrast\", time: \"2m\" },\n  { id: \"n2\", actor: \"Alex Kim\", text: \"commented on the metrics group\", time: \"18m\" },\n  { id: \"n3\", actor: \"Mia Chen\", text: \"marked SSI-11 as done\", time: \"1h\" },\n  { id: \"n4\", actor: \"Omar Ali\", text: \"requested a review on the footer block\", time: \"3h\" },\n]\n\n/**\n * Notification inbox in the Linear register: unread dot, actor coin, one line\n * of ink, tabular time. Clicking a row reads it (the dot dissolves, the row\n * settles back); \"mark all read\" clears the column.\n */\nexport function Inbox({\n  items = DEFAULT_ITEMS,\n  initiallyRead = [\"n3\"],\n  className,\n}: {\n  items?: InboxItem[]\n  /** Ids that start in the read state. */\n  initiallyRead?: string[]\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [read, setRead] = useState<Set<string>>(new Set(initiallyRead))\n  const unread = items.filter((i) => !read.has(i.id)).length\n\n  return (\n    <div\n      className={cn(\"w-full max-w-[420px] overflow-hidden rounded-xl border border-white/[0.04]\", className)}\n      style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.04)\" }}\n    >\n      <div className=\"flex items-center justify-between border-b border-white/[0.04] bg-white/[0.02] px-4 py-2.5\">\n        <span className=\"flex items-center gap-2\">\n          <span className=\"text-[10px] uppercase tracking-[0.1em] text-white/40\">Inbox</span>\n          {unread > 0 && (\n            <span className=\"tabular-nums text-[10px]\" style={{ color: ACCENT }}>\n              {unread}\n            </span>\n          )}\n        </span>\n        <button\n          type=\"button\"\n          onClick={() => setRead(new Set(items.map((i) => i.id)))}\n          disabled={unread === 0}\n          className=\"rounded-md px-2 py-1 text-[10px] text-white/45 transition-all duration-150 hover:bg-white/[0.04] hover:text-white/75 active:scale-95 disabled:pointer-events-none disabled:opacity-35\"\n        >\n          mark all read\n        </button>\n      </div>\n\n      {items.map((it) => {\n        const isRead = read.has(it.id)\n        return (\n          <button\n            key={it.id}\n            type=\"button\"\n            onClick={() => setRead((prev) => new Set(prev).add(it.id))}\n            className=\"flex w-full items-center gap-3 border-b border-white/[0.03] px-4 py-3 text-left transition-colors duration-150 last:border-b-0 hover:bg-white/[0.02]\"\n          >\n            <motion.span\n              className=\"h-1.5 w-1.5 shrink-0 rounded-full\"\n              animate={{ opacity: isRead ? 0 : 1, scale: isRead ? 0.4 : 1, backgroundColor: ACCENT }}\n              transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}\n              aria-hidden\n            />\n            <AvatarStack names={[it.actor]} max={1} />\n            <span className=\"min-w-0 flex-1\">\n              <span\n                className={cn(\n                  \"block truncate text-[12px] transition-colors duration-300\",\n                  isRead ? \"text-white/40\" : \"text-white/80\",\n                )}\n              >\n                <span className={isRead ? \"\" : \"text-white\"}>{it.actor.split(\" \")[0]}</span> {it.text}\n              </span>\n            </span>\n            <span className=\"shrink-0 tabular-nums text-[10px] text-white/30\">{it.time}</span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/inbox.tsx"
+    }
+  ]
+}

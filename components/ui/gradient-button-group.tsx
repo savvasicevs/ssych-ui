@@ -15,14 +15,14 @@ export interface GradientButtonGroupItem {
  * circle that slides between the round icon buttons.
  */
 export function GradientButtonGroup({
-  items,
+  items = [],
   value,
-  onValueChange,
+  onValueChange = () => {},
   className,
 }: {
-  items: GradientButtonGroupItem[]
-  value: string
-  onValueChange: (id: string) => void
+  items?: GradientButtonGroupItem[]
+  value?: string
+  onValueChange?: (id: string) => void
   className?: string
 }) {
   return (

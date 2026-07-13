@@ -1,0 +1,21 @@
+{
+  "name": "@ssicevs/ui",
+  "version": "0.4.0",
+  "description": "Control surfaces for AI agents & dense dashboards — dark, terminal-grade shadcn components.",
+  "license": "MIT",
+  "homepage": "https://www.ssicevs.com/library",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/savvasicevs/ssicevs-ui.git"
+  },
+  "keywords": [
+    "shadcn",
+    "registry",
+    "react",
+    "tailwind",
+    "dashboard",
+    "ai-agents",
+    "components",
+    "dark-ui"
+  ]
+}

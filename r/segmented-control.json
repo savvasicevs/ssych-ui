@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "segmented-control",
+  "type": "registry:ui",
+  "title": "Segmented Control",
+  "description": "Hairline pill whose thumb glides between options with a shared-layout spring.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "files": [
+    {
+      "path": "components/ui/segmented-control.tsx",
+      "content": "import { useId, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nexport interface SegmentedControlProps {\n  options: string[]\n  /** Controlled value; omit to let the control manage its own state. */\n  value?: string\n  onChange?: (v: string) => void\n  className?: string\n}\n\n/**\n * The range switcher as a primitive: a hairline pill whose thumb glides\n * between options with a shared-layout spring. Tabular labels, no chrome.\n */\nexport function SegmentedControl({ options, value, onChange, className }: SegmentedControlProps) {\n  const reduced = useReducedMotion()\n  const uid = useId()\n  const [inner, setInner] = useState(value ?? options[0])\n  const current = value ?? inner\n\n  return (\n    <div className={cn(\"inline-flex items-center gap-0.5 rounded-full border border-white/[0.04] p-0.5\", className)}>\n      {options.map((o) => {\n        const on = o === current\n        return (\n          <button\n            key={o}\n            type=\"button\"\n            aria-pressed={on}\n            onClick={() => {\n              setInner(o)\n              onChange?.(o)\n            }}\n            className={cn(\n              \"relative rounded-full px-3 py-1.5 text-[11px] tracking-[0.05em] transition-colors duration-200\",\n              on ? \"text-white\" : \"text-white/40 hover:text-white/70\",\n            )}\n          >\n            {on && (\n              <motion.span\n                layoutId={`${uid}-thumb`}\n                className=\"absolute inset-0 rounded-full bg-white/[0.08]\"\n                style={{ boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.06)\" }}\n                transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 500, damping: 38 }}\n              />\n            )}\n            <span className=\"relative\">{o}</span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/segmented-control.tsx"
+    }
+  ]
+}

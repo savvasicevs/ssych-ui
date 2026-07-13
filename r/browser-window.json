@@ -2,6 +2,8 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "browser-window",
   "type": "registry:ui",
+  "title": "Browser Window",
+  "description": "Chrome / Safari mock window frame for screenshots and embeds.",
   "dependencies": [
     "@phosphor-icons/react",
     "clsx",

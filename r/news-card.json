@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "news-card",
+  "type": "registry:ui",
+  "title": "News Card",
+  "description": "Auto-cycling news module with an ink headline and dot pagination.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "files": [
+    {
+      "path": "components/ui/news-card.tsx",
+      "content": "import { useEffect, useRef, useState } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst SURFACE = \"#0A0E16\"\n\nexport interface NewsItem {\n  time: string\n  headline: string\n  source: string\n}\n\nconst DEFAULT_ITEMS: NewsItem[] = [\n  { time: \"12 hours ago\", headline: \"Subnet emissions rebalance lands — validator yields shift across the top 20.\", source: \"Sample Wire\" },\n  { time: \"18 hours ago\", headline: \"Developer API requests double after the public pricing launch.\", source: \"Sample Ledger\" },\n  { time: \"1 day ago\", headline: \"Liquidity pools cross τ230k recycled for registration this cycle.\", source: \"Sample Times\" },\n]\n\n/**\n * Auto-cycling news module: timestamp whisper, a bold ink headline, the source\n * below, dot pagination. A dot click jumps and resets the clock; reduced\n * motion stops the auto-cycle.\n */\nexport function NewsCard({\n  items = DEFAULT_ITEMS,\n  title = \"Network news\",\n  cycleMs = 5200,\n  className,\n}: {\n  items?: NewsItem[]\n  title?: string\n  /** Auto-advance interval; ignored when the user prefers reduced motion. */\n  cycleMs?: number\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [i, setI] = useState(0)\n  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined)\n\n  useEffect(() => {\n    if (reduced) return\n    timer.current = setInterval(() => setI((n) => (n + 1) % items.length), cycleMs)\n    return () => clearInterval(timer.current)\n  }, [reduced, items.length, cycleMs])\n\n  const jump = (n: number) => {\n    setI(n)\n    if (timer.current) {\n      clearInterval(timer.current)\n      if (!reduced) timer.current = setInterval(() => setI((m) => (m + 1) % items.length), cycleMs)\n    }\n  }\n\n  const item = items[i]\n\n  return (\n    <div className={cn(\"w-full max-w-[380px]\", className)}>\n      <div className=\"text-[10px] uppercase tracking-[0.1em] text-white/40\">{title}</div>\n      <div\n        className=\"mt-3 rounded-xl border border-white/[0.04] px-5 py-5\"\n        style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.04)\" }}\n      >\n        <div className=\"relative min-h-[108px]\">\n          <AnimatePresence mode=\"wait\" initial={false}>\n            <motion.div\n              key={i}\n              initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }}\n              animate={{ opacity: 1, y: 0 }}\n              exit={{ opacity: 0, y: -4 }}\n              transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }}\n            >\n              <div className=\"text-[10px] text-white/35\">{item.time}</div>\n              <p className=\"mt-2 text-[14.5px] font-semibold leading-snug text-white/90\">{item.headline}</p>\n              <div className=\"mt-3 text-[10px] text-white/35\">{item.source}</div>\n            </motion.div>\n          </AnimatePresence>\n        </div>\n      </div>\n\n      <div className=\"mt-3 flex items-center justify-center gap-1.5\">\n        {items.map((_, n) => (\n          <button\n            key={n}\n            type=\"button\"\n            aria-label={`Story ${n + 1}`}\n            aria-current={n === i}\n            onClick={() => jump(n)}\n            className={cn(\n              \"h-1.5 rounded-full transition-all duration-300\",\n              n === i ? \"w-5 bg-white\" : \"w-1.5 bg-white/25 hover:bg-white/45\",\n            )}\n          />\n        ))}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/news-card.tsx"
+    }
+  ]
+}

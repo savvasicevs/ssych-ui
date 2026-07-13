@@ -1,93 +1,82 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
 // Types for the component
 interface DockApp {
   id: string;
   name: string;
-  /** A Phosphor (or any) icon node rendered inside the tile, or an image URL string. */
+  /** An icon node, an emoji/text string, or an image URL string (/, http, data:, blob:). */
   icon: React.ReactNode;
   /** Tile background (CSS color/gradient). Defaults to a neutral slate. */
   color?: string;
 }
 
 interface MacOSDockProps {
-  apps: DockApp[];
-  onAppClick: (appId: string) => void;
+  /** Defaults to a small emoji demo set, so a bare <MacOSDock /> renders a working dock. */
+  apps?: DockApp[];
+  onAppClick?: (appId: string) => void;
   openApps?: string[];
   className?: string;
 }
 
+// Self-contained demo apps (emoji tiles) — what renders when no `apps` are passed,
+// e.g. v0 / preview sandboxes mounting the component bare.
+const DEMO_APPS: DockApp[] = [
+  { id: "finder", name: "Finder", icon: "\u{1F5C2}\u{FE0F}", color: "linear-gradient(180deg,#57a8ff,#1f7ae0)" },
+  { id: "mail", name: "Mail", icon: "\u2709\u{FE0F}", color: "linear-gradient(180deg,#5a67f2,#3f4ad4)" },
+  { id: "notes", name: "Notes", icon: "\u{1F4DD}", color: "linear-gradient(180deg,#ffd45e,#f0a92e)" },
+  { id: "music", name: "Music", icon: "\u{1F3B5}", color: "linear-gradient(180deg,#ff6482,#e6335a)" },
+  { id: "photos", name: "Photos", icon: "\u{1F5BC}\u{FE0F}", color: "linear-gradient(180deg,#35c5a8,#149a80)" },
+];
+
+// Underglow colour: the site accent at rest, else the first hex found in the hovered app's tile.
+const ACCENT_GLOW = "#5aaaff";
+const firstHex = (c?: string) => c?.match(/#[0-9a-fA-F]{6}/)?.[0] ?? ACCENT_GLOW;
+
 const MacOSDock: React.FC<MacOSDockProps> = ({ 
-  apps, 
-  onAppClick, 
+  apps = DEMO_APPS, 
+  onAppClick = () => {}, 
   openApps = [],
   className = ''
 }) => {
   const [mouseX, setMouseX] = useState<number | null>(null);
   const [currentScales, setCurrentScales] = useState<number[]>(apps.map(() => 1));
   const [currentPositions, setCurrentPositions] = useState<number[]>([]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const iconRefs = useRef<(HTMLDivElement | null)[]>([]);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const lastMouseMoveTime = useRef<number>(0);
+  const [containerWidth, setContainerWidth] = useState(0);
 
-  // Responsive size calculations based on viewport
-  const getResponsiveConfig = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return { baseIconSize: 64, maxScale: 1.6, effectWidth: 240 };
-    }
+  // Size the dock to fit its container, so it scales cleanly from phones to
+  // desktops without clipping or overflowing.
+  const config = useMemo(() => {
+    const n = Math.max(1, apps.length);
+    // Total dock width ≈ base * (n icons + gaps@8% + 2×padding@12%); invert to fit.
+    const factor = n + 0.08 * (n - 1) + 0.24;
+    const avail = containerWidth > 0 ? containerWidth * 0.92 : n * 72;
+    const baseIconSize = Math.max(34, Math.min(72, avail / factor));
+    const maxScale = baseIconSize >= 60 ? 1.8 : baseIconSize >= 46 ? 1.6 : 1.45;
+    const effectWidth = Math.min((containerWidth || 300) * 0.85, baseIconSize * 4);
+    return { baseIconSize, maxScale, effectWidth };
+  }, [apps.length, containerWidth]);
 
-    // Base calculations on smaller dimension for better mobile experience
-    const smallerDimension = Math.min(window.innerWidth, window.innerHeight);
-    
-    // Scale icon size based on screen size
-    if (smallerDimension < 480) {
-      // Mobile phones
-      return {
-        baseIconSize: Math.max(40, smallerDimension * 0.08),
-        maxScale: 1.4,
-        effectWidth: smallerDimension * 0.4
-      };
-    } else if (smallerDimension < 768) {
-      // Tablets
-      return {
-        baseIconSize: Math.max(48, smallerDimension * 0.07),
-        maxScale: 1.5,
-        effectWidth: smallerDimension * 0.35
-      };
-    } else if (smallerDimension < 1024) {
-      // Small laptops
-      return {
-        baseIconSize: Math.max(56, smallerDimension * 0.06),
-        maxScale: 1.6,
-        effectWidth: smallerDimension * 0.3
-      };
-    } else {
-      // Desktop and large screens
-      return {
-        baseIconSize: Math.max(64, Math.min(80, smallerDimension * 0.05)),
-        maxScale: 1.8,
-        effectWidth: 300
-      };
-    }
-  }, []);
-
-  const [config, setConfig] = useState(getResponsiveConfig);
   const { baseIconSize, maxScale, effectWidth } = config;
   const minScale = 1.0;
   const baseSpacing = Math.max(4, baseIconSize * 0.08);
 
-  // Update config on window resize
+  // Track the container width so the dock re-fits on resize / orientation change.
   useEffect(() => {
-    const handleResize = () => {
-      setConfig(getResponsiveConfig());
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [getResponsiveConfig]);
+    const el = wrapperRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Authentic macOS cosine-based magnification algorithm
   const calculateTargetMagnification = useCallback((mousePosition: number | null) => {
@@ -240,27 +229,42 @@ const MacOSDock: React.FC<MacOSDockProps> = ({
 
   const padding = Math.max(8, baseIconSize * 0.12);
 
+  // Command-Dock underglow + tooltip — the currently magnified icon (peak scale) drives both.
+  const hoveredIndex =
+    mouseX !== null && currentScales.length
+      ? currentScales.reduce((best, s, i, arr) => (s > arr[best] ? i : best), 0)
+      : null;
+  const glowHex = hoveredIndex !== null ? firstHex(apps[hoveredIndex]?.color) : ACCENT_GLOW;
+  const dockActive = mouseX !== null;
+
     return (
-    <div 
+    <div ref={wrapperRef} className="flex w-full justify-center">
+    <div
       ref={dockRef}
-      className={`backdrop-blur-md ${className}`}
+      className={`relative backdrop-blur-md ${className}`}
       style={{
         width: `${contentWidth + padding * 2}px`,
-        background: 'rgba(45, 45, 45, 0.75)',
+        background: 'linear-gradient(to bottom, rgba(28,34,48,0.92), rgba(8,11,18,0.94))',
         borderRadius: `${Math.max(12, baseIconSize * 0.4)}px`,
-        border: '1px solid rgba(255, 255, 255, 0.15)',
+        border: '1px solid rgba(255,255,255,0.06)',
         boxShadow: `
-          0 ${Math.max(4, baseIconSize * 0.1)}px ${Math.max(16, baseIconSize * 0.4)}px rgba(0, 0, 0, 0.4),
-          0 ${Math.max(2, baseIconSize * 0.05)}px ${Math.max(8, baseIconSize * 0.2)}px rgba(0, 0, 0, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.15),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.2)
+          0 ${Math.max(8, baseIconSize * 0.18)}px ${Math.max(24, baseIconSize * 0.5)}px rgba(0,0,0,0.5),
+          inset 0 1px 0 rgba(255,255,255,0.10),
+          inset 0 -1px 0 rgba(0,0,0,0.5)
         `,
         padding: `${padding}px`
       }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      <div 
+      {/* specular top highlight along the tray lip */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-4 top-px h-px rounded-full"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)' }}
+      />
+
+      <div
         className="relative"
         style={{
           height: `${baseIconSize}px`,
@@ -276,8 +280,8 @@ const MacOSDock: React.FC<MacOSDockProps> = ({
             <div
               key={app.id}
               ref={(el) => { iconRefs.current[index] = el; }}
-              className="absolute cursor-pointer flex flex-col items-center justify-end"
-              title={app.name}
+              className="absolute flex cursor-pointer flex-col items-center justify-end"
+              aria-label={app.name}
               onClick={() => handleAppClick(app.id, index)}
               style={{
                 left: `${position - scaledSize / 2}px`,
@@ -288,6 +292,17 @@ const MacOSDock: React.FC<MacOSDockProps> = ({
                 zIndex: Math.round(scale * 10)
               }}
             >
+              {/* hairline tooltip chip — shown above the magnified icon */}
+              {hoveredIndex === index && (
+                <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/[0.06] bg-[#0A0E16] px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-white/70 shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
+                  {app.name}
+                  <span
+                    aria-hidden
+                    className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-white/[0.06] bg-[#0A0E16]"
+                  />
+                </div>
+              )}
+
               {/* Rounded-square tile (iOS/macOS Big Sur style) holding a Phosphor icon or image */}
               <div
                 className="flex items-center justify-center overflow-hidden text-white"
@@ -300,7 +315,7 @@ const MacOSDock: React.FC<MacOSDockProps> = ({
                   boxShadow: `0 ${scale > 1.2 ? Math.max(2, baseIconSize * 0.05) : Math.max(1, baseIconSize * 0.03)}px ${scale > 1.2 ? Math.max(4, baseIconSize * 0.1) : Math.max(2, baseIconSize * 0.06)}px rgba(0,0,0,${0.25 + (scale - 1) * 0.15}), inset 0 1px 0 rgba(255,255,255,0.18)`
                 }}
               >
-                {typeof app.icon === 'string' ? (
+                {typeof app.icon === 'string' && /^(\/|https?:|data:|blob:)/.test(app.icon) ? (
                   <img src={app.icon} alt={app.name} className="h-full w-full object-cover" />
                 ) : (
                   <span className="flex items-center justify-center" style={{ fontSize: `${scaledSize * 0.52}px`, lineHeight: 1 }}>
@@ -329,6 +344,19 @@ const MacOSDock: React.FC<MacOSDockProps> = ({
           );
         })}
       </div>
+
+      {/* accent underglow — colour follows the magnified icon (Command Dock language) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-4 -bottom-[6px] h-[2px] rounded-full transition-opacity duration-300"
+        style={{ background: `linear-gradient(90deg, transparent, ${glowHex}a6, transparent)`, opacity: dockActive ? 1 : 0.4 }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -inset-x-6 -bottom-4 top-1/3 transition-opacity duration-300"
+        style={{ background: `radial-gradient(55% 90% at 50% 100%, ${glowHex}29, transparent 70%)`, opacity: dockActive ? 1 : 0 }}
+      />
+    </div>
     </div>
   );
 };
