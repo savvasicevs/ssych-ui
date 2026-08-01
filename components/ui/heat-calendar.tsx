@@ -56,15 +56,15 @@ export function HeatCalendar({
   return (
     <div className={cn("relative w-fit", className)}>
       <div className="flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-[0.1em] text-white/40">{title}</span>
-        <span className="text-[10px] text-white/30">{weeks} weeks</span>
+        <span className="text-[12px] font-medium text-foreground/50">{title}</span>
+        <span className="text-[11px] text-foreground/30">{weeks} weeks</span>
       </div>
 
-      <div className="mt-3 flex gap-[3px]" onPointerLeave={() => setHover(null)}>
+      <div className="mt-3 flex gap-[4px]" onPointerLeave={() => setHover(null)}>
         {Array.from({ length: weeks }, (_, w) => (
           <motion.div
             key={w}
-            className="flex flex-col gap-[3px]"
+            className="flex flex-col gap-[4px]"
             initial={{ opacity: reduced ? 1 : 0 }}
             animate={{ opacity: 1 }}
             transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: w * 0.035 }}
@@ -79,10 +79,12 @@ export function HeatCalendar({
                   aria-label={`${count(v)} ${unit}`}
                   onPointerEnter={() => setHover({ w, d })}
                   onFocus={() => setHover({ w, d })}
-                  className="h-[11px] w-[11px] rounded-[3px] transition-transform duration-150"
+                  className="h-[14px] w-[14px] rounded-[3.5px] transition-transform duration-150"
                   style={{
                     background: `rgba(${rgb},${step(v)})`,
-                    boxShadow: on ? "inset 0 0 0 1px rgba(255,255,255,0.4)" : "inset 0 0 0 1px rgba(255,255,255,0.03)",
+                    boxShadow: on
+                      ? "inset 0 0 0 1px color-mix(in srgb, var(--foreground) 40%, transparent)"
+                      : "inset 0 0 0 1px color-mix(in srgb, var(--foreground) 3%, transparent)",
                     transform: on ? "scale(1.25)" : undefined,
                   }}
                 />
@@ -94,13 +96,13 @@ export function HeatCalendar({
 
       <div className="mt-3 flex items-center justify-between">
         <span className="flex items-center gap-1">
-          <span className="text-[9px] text-white/30">less</span>
+          <span className="text-[10px] text-foreground/30">less</span>
           {ALPHA.map((a) => (
-            <span key={a} className="h-[9px] w-[9px] rounded-[2.5px]" style={{ background: `rgba(${rgb},${a})` }} />
+            <span key={a} className="h-[11px] w-[11px] rounded-[3px]" style={{ background: `rgba(${rgb},${a})` }} />
           ))}
-          <span className="text-[9px] text-white/30">more</span>
+          <span className="text-[10px] text-foreground/30">more</span>
         </span>
-        <span className="tabular-nums text-[10px] text-white/45">
+        <span className="tabular-nums text-[11px] text-foreground/45">
           {hover ? `${count(level(hover.w, hover.d))} ${unit}` : " "}
         </span>
       </div>

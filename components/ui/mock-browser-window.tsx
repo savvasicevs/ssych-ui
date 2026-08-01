@@ -1,12 +1,12 @@
 import type React from "react"
 import {
-  CaretLeft,
-  CaretRight,
-  ArrowClockwise,
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
   Star,
   Plus,
-  DotsThreeVertical,
-} from "@phosphor-icons/react"
+  EllipsisVertical,
+} from "lucide-react"
 
 import { cn } from "../../lib/utils"
 
@@ -75,16 +75,16 @@ function WindowControls({
     const dotColors =
       headerStyle === "minimal"
         ? {
-            red: "bg-white/10 border  border-white/20",
-            yellow: "bg-white/10 border border-white/20",
-            green: "bg-white/10 border border-white/20",
+            red: "bg-foreground/10 border  border-foreground/20",
+            yellow: "bg-foreground/10 border border-foreground/20",
+            green: "bg-foreground/10 border border-foreground/20",
           }
         : {
-            red: "bg-red-500 hover:bg-red-600 border border-white/20",
+            red: "bg-red-500 hover:bg-red-600 border border-foreground/20",
             yellow:
-              "bg-yellow-500 hover:bg-yellow-600 border border-white/20",
+              "bg-yellow-500 hover:bg-yellow-600 border border-foreground/20",
             green:
-              "bg-green-500 hover:bg-green-600 border border-white/20 ",
+              "bg-green-500 hover:bg-green-600 border border-foreground/20 ",
           }
 
     return (
@@ -132,15 +132,15 @@ function WindowControls({
   if (variant === "windows") {
     return (
       <div className="flex gap-1">
-        <div className="w-6 h-4 bg-white/[0.06] hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center">
-          <div className="w-2 h-0.5 bg-white/60"></div>
+        <div className="w-6 h-4 bg-foreground/[0.06] hover:bg-foreground/10 transition-colors cursor-pointer flex items-center justify-center">
+          <div className="w-2 h-0.5 bg-foreground/60"></div>
         </div>
-        <div className="w-6 h-4 bg-white/[0.06] hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center">
+        <div className="w-6 h-4 bg-foreground/[0.06] hover:bg-foreground/10 transition-colors cursor-pointer flex items-center justify-center">
           <div className="w-2 h-2 border border-foreground/60"></div>
         </div>
         <div className="w-6 h-4 bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer flex items-center justify-center">
-          <div className="w-2 h-0.5 bg-white rotate-45"></div>
-          <div className="w-2 h-0.5 bg-white -rotate-45 absolute"></div>
+          <div className="w-2 h-0.5 bg-foreground rotate-45"></div>
+          <div className="w-2 h-0.5 bg-foreground -rotate-45 absolute"></div>
         </div>
       </div>
     )
@@ -174,13 +174,13 @@ function WindowControls({
   return (
     <div className="flex gap-1.5">
       <div
-        className={`${sizeClasses} rounded-full border border-white/20 bg-white/10`}
+        className={`${sizeClasses} rounded-full border border-foreground/20 bg-foreground/10`}
       ></div>
       <div
-        className={`${sizeClasses} rounded-full border border-white/20 bg-white/10`}
+        className={`${sizeClasses} rounded-full border border-foreground/20 bg-foreground/10`}
       ></div>
       <div
-        className={`${sizeClasses} rounded-full border border-white/20 bg-white/10`}
+        className={`${sizeClasses} rounded-full border border-foreground/20 bg-foreground/10`}
       ></div>
     </div>
   )
@@ -193,9 +193,9 @@ function AddressBar({
 }: AddressBarProps) {
   const variantStyles = {
     chrome:
-      "bg-white/[0.04] rounded-full border border-white/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset] backdrop-blur-sm",
+      "bg-foreground/[0.04] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset] backdrop-blur-sm",
     safari:
-      "bg-white/[0.03] rounded-full border border-white/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset] backdrop-blur-sm",
+      "bg-foreground/[0.03] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset] backdrop-blur-sm",
   }
   // mobile: anchor to the right edge so the bar can't clip off-screen (sidebar sits on the
   // left, so this also sits it over the content area); desktop (sm+): centered.
@@ -207,7 +207,7 @@ function AddressBar({
   return (
     <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 justify-center ${posClass}`}>
       <div
-        className={`${variantStyles[variant]} px-4 py-1.5 text-xs text-white/50 min-w-[140px] sm:min-w-[220px] max-w-[78vw] sm:max-w-md flex items-center justify-center text-center transition-colors`}
+        className={`${variantStyles[variant]} px-4 py-1.5 text-xs text-foreground/50 min-w-[140px] sm:min-w-[220px] max-w-[78vw] sm:max-w-md flex items-center justify-center text-center transition-colors`}
       >
         <span className="truncate">{url}</span>
       </div>
@@ -233,8 +233,8 @@ function SidebarContent({
             flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors cursor-pointer
             ${
               item.active
-                ? "bg-white/[0.08] text-white border border-white/10"
-                : "text-white/55 hover:text-white hover:bg-white/[0.03]"
+                ? "bg-foreground/[0.08] text-foreground border border-foreground/10"
+                : "text-foreground/55 hover:text-foreground hover:bg-foreground/[0.03]"
             }
           `}
         >
@@ -243,7 +243,7 @@ function SidebarContent({
           )}
           <span className="flex-1 truncate">{item.label}</span>
           {item.badge && (
-            <div className="bg-white/10 text-white/70 text-xs px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
+            <div className="bg-foreground/10 text-foreground/70 text-xs px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
               {item.badge}
             </div>
           )}
@@ -254,19 +254,19 @@ function SidebarContent({
 }
 
 const toolbarBtn =
-  "flex h-6 w-6 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80 cursor-pointer"
+  "flex h-6 w-6 items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/80 cursor-pointer"
 
 function NavButtons() {
   return (
     <div className="flex items-center gap-0.5">
       <button type="button" aria-label="Back" className={toolbarBtn}>
-        <CaretLeft className="h-4 w-4" weight="bold" />
+        <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
       </button>
-      <button type="button" aria-label="Forward" className={cn(toolbarBtn, "text-white/20")}>
-        <CaretRight className="h-4 w-4" weight="bold" />
+      <button type="button" aria-label="Forward" className={cn(toolbarBtn, "text-foreground/20")}>
+        <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
       </button>
       <button type="button" aria-label="Reload" className={toolbarBtn}>
-        <ArrowClockwise className="h-4 w-4" />
+        <RotateCw className="h-4 w-4" />
       </button>
     </div>
   )
@@ -282,7 +282,7 @@ function ActionButtons() {
         <Plus className="h-4 w-4" />
       </button>
       <button type="button" aria-label="More options" className={toolbarBtn}>
-        <DotsThreeVertical className="h-4 w-4" weight="bold" />
+        <EllipsisVertical className="h-4 w-4" strokeWidth={2.5} />
       </button>
     </div>
   )
@@ -316,30 +316,30 @@ export function BrowserWindow({
 
   const themeClasses =
     theme === "dark"
-      ? "bg-[#0a0e16] border-white/10"
+      ? "bg-[var(--surface)] border-foreground/10"
       : theme === "light"
-        ? "bg-[#0a0e16] border-white/10"
-        : "bg-[#0a0e16] border-white/10"
+        ? "bg-[var(--surface)] border-foreground/10"
+        : "bg-[var(--surface)] border-foreground/10"
 
   const getHeaderStyles = () => {
     const baseStyles =
-      "relative h-11 border-b border-white/10 flex items-center px-4"
+      "relative h-11 border-b border-foreground/10 flex items-center px-4"
 
     if (variant === "chrome") {
-      return `${baseStyles} bg-white/[0.02] overflow-hidden`
+      return `${baseStyles} bg-foreground/[0.02] overflow-hidden`
     }
 
     if (variant === "safari") {
-      return `${baseStyles} bg-white/[0.02] overflow-hidden`
+      return `${baseStyles} bg-foreground/[0.02] overflow-hidden`
     }
 
-    return `${baseStyles} bg-white/[0.03]`
+    return `${baseStyles} bg-foreground/[0.03]`
   }
 
   return (
     <div
       className={`
-        relative overflow-hidden rounded-2xl border shadow-[0_24px_70px_-24px_rgba(0,0,0,0.75)]
+        relative overflow-hidden rounded-2xl border shadow-[0_24px_70px_-24px_rgba(0,0,0,0.75)] light:shadow-[0_16px_44px_-26px_rgba(15,23,42,0.25)]
         h-full w-full ${themeClasses} ${className} flex flex-col
       `}
     >
@@ -368,7 +368,7 @@ export function BrowserWindow({
       </div>
 
       {showSidebar && sidebarPosition === "top" && (
-        <div className="border-b border-white/[0.06] bg-white/[0.03] h-16">
+        <div className="border-b border-foreground/[0.06] bg-foreground/[0.03] h-16">
           <SidebarContent
             items={sidebarItems}
             variant="navigation"
@@ -381,7 +381,7 @@ export function BrowserWindow({
         {/* Left Sidebar */}
         {showSidebar && sidebarPosition === "left" && (
           <div
-            className={`border-r border-white/[0.06] bg-white/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
+            className={`border-r border-foreground/[0.06] bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
           >
             {sidebar ?? <SidebarContent items={sidebarItems} />}
           </div>
@@ -395,7 +395,7 @@ export function BrowserWindow({
         {/* Right Sidebar */}
         {showSidebar && sidebarPosition === "right" && (
           <div
-            className={`border-l border-white/[0.06] bg-white/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
+            className={`border-l border-foreground/[0.06] bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
           >
             {sidebar ?? <SidebarContent items={sidebarItems} />}
           </div>
@@ -404,7 +404,7 @@ export function BrowserWindow({
 
       {/* Bottom Sidebar */}
       {showSidebar && sidebarPosition === "bottom" && (
-        <div className="border-t border-white/[0.06] bg-white/[0.03] h-16">
+        <div className="border-t border-foreground/[0.06] bg-foreground/[0.03] h-16">
           <SidebarContent
             items={sidebarItems}
             variant="navigation"

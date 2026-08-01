@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "analyst-radar",
+  "type": "registry:ui",
+  "title": "Analyst Radar",
+  "description": "Two-series factor radar — subject filled against a dashed peer outline, a hovered spoke reading both values, and a legend that mutes a series.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/analyst-radar.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/analyst-radar.tsx",
+      "content": "import { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst BLUE = \"var(--chart-1)\"\nconst AMBER = \"var(--chart-amber)\"\nconst TEXT = \"var(--foreground)\"\nconst TEXT_MUTED = \"var(--muted-foreground)\"\n\n/** Hairline / label tints — one foreground hue at different alphas, so the grid\n * stays a whisper in either theme without a fixed hex. */\nconst tint = (pct: number) => `color-mix(in srgb, ${TEXT} ${pct}%, transparent)`\n\nconst CX = 145\nconst CY = 148\nconst R = 96\n\nconst DEFAULT_AXES = [\"Value\", \"Growth\", \"Profit\", \"Momentum\", \"Health\", \"Quality\"]\nconst DEFAULT_PRIMARY = [78, 64, 82, 55, 71, 68]\nconst DEFAULT_SECONDARY = [60, 58, 65, 62, 55, 60]\n\nexport interface AnalystRadarProps {\n  title?: string\n  /** Sits in the header until a spoke is hovered, then the read-out takes over. */\n  caption?: string\n  /** Up to 8 axis names — the polygon carries one vertex per axis. */\n  axes?: string[]\n  /** Subject series, 0–100 per axis. */\n  primary?: number[]\n  /** Comparison series (peer group / sector), 0–100 per axis. */\n  secondary?: number[]\n  primaryLabel?: string\n  secondaryLabel?: string\n  primaryColor?: string\n  secondaryColor?: string\n  className?: string\n}\n\n/**\n * Multivariate score with two series overlaid — the subject against its peer\n * group — across up to 8 axes indexed 0–100. Hovering a spoke makes the header\n * read both values at once; the legend mutes a series so the other can be read\n * alone. Subject is a filled brand polygon, peers a dashed outline behind it.\n */\nexport function AnalystRadar({\n  title = \"Factor scores\",\n  caption = \"company vs sector\",\n  axes = DEFAULT_AXES,\n  primary = DEFAULT_PRIMARY,\n  secondary = DEFAULT_SECONDARY,\n  primaryLabel = \"Company\",\n  secondaryLabel = \"Sector\",\n  primaryColor = BLUE,\n  secondaryColor = AMBER,\n  className,\n}: AnalystRadarProps) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<number | null>(null)\n  const [show, setShow] = useState({ primary: true, secondary: true })\n\n  const n = axes.length\n  const angle = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / n\n  const pt = (v: number, i: number) => {\n    const a = angle(i)\n    const r = (v / 100) * R\n    return [CX + r * Math.cos(a), CY + r * Math.sin(a)] as const\n  }\n  const poly = (vals: number[]) => vals.map((v, i) => pt(v, i).join(\",\")).join(\" \")\n\n  return (\n    <div className={cn(\"w-[300px]\", className)}>\n      <div className=\"mb-1 flex items-baseline justify-between px-1\">\n        <span className=\"text-[13px] font-medium\" style={{ color: TEXT }}>\n          {title}\n        </span>\n        <span className=\"text-[10px] tabular-nums\" style={{ color: TEXT_MUTED }}>\n          {hot !== null ? (\n            <>\n              <span style={{ color: TEXT }}>{axes[hot]}</span>\n              <span className=\"mx-1.5\" style={{ color: primaryColor }}>\n                {primary[hot]}\n              </span>\n              <span style={{ color: secondaryColor }}>{secondary[hot]}</span>\n            </>\n          ) : (\n            caption\n          )}\n        </span>\n      </div>\n\n      <svg width={296} height={296} viewBox=\"0 0 296 296\" className=\"block\">\n        {/* grid rings */}\n        {[25, 50, 75, 100].map((ring) => (\n          <polygon key={ring} points={poly(axes.map(() => ring))} fill=\"none\" stroke={tint(5)} strokeWidth={1} />\n        ))}\n\n        {/* spokes + wide invisible hit areas + labels */}\n        {axes.map((ax, i) => {\n          const [ex, ey] = pt(100, i)\n          const [lx, ly] = pt(118, i)\n          const on = hot === i\n          return (\n            <g key={ax} onMouseEnter={() => setHot(i)} onMouseLeave={() => setHot(null)} style={{ cursor: \"default\" }}>\n              <line x1={CX} y1={CY} x2={ex} y2={ey} stroke={tint(6)} strokeWidth={1} />\n              <line x1={CX} y1={CY} x2={ex} y2={ey} stroke=\"transparent\" strokeWidth={22} />\n              <text\n                x={lx}\n                y={ly + 3}\n                textAnchor={Math.abs(lx - CX) < 8 ? \"middle\" : lx > CX ? \"start\" : \"end\"}\n                fontSize={9}\n                fontWeight={on ? 700 : 500}\n                fill={on ? TEXT : tint(45)}\n              >\n                {ax}\n              </text>\n            </g>\n          )\n        })}\n\n        {/* comparison series — dashed outline, sits behind */}\n        {show.secondary && (\n          <motion.polygon\n            points={poly(secondary)}\n            fill={`color-mix(in srgb, ${secondaryColor} 8%, transparent)`}\n            stroke={secondaryColor}\n            strokeOpacity={0.7}\n            strokeWidth={1.4}\n            strokeDasharray=\"3 2\"\n            initial={{ opacity: reduced ? 1 : 0, scale: reduced ? 1 : 0.6 }}\n            animate={{ opacity: 1, scale: 1 }}\n            transition={reduced ? { duration: 0 } : { duration: 0.5, ease: EASE }}\n            style={{ transformOrigin: `${CX}px ${CY}px` }}\n          />\n        )}\n\n        {/* subject series — filled */}\n        {show.primary && (\n          <motion.polygon\n            points={poly(primary)}\n            fill={`color-mix(in srgb, ${primaryColor} 16%, transparent)`}\n            stroke={primaryColor}\n            strokeWidth={1.8}\n            initial={{ opacity: reduced ? 1 : 0, scale: reduced ? 1 : 0.6 }}\n            animate={{ opacity: 1, scale: 1 }}\n            transition={reduced ? { duration: 0 } : { duration: 0.55, ease: EASE, delay: 0.08 }}\n            style={{ transformOrigin: `${CX}px ${CY}px` }}\n          />\n        )}\n\n        {/* vertex dots on the hovered axis */}\n        {hot !== null && (\n          <g pointerEvents=\"none\">\n            {show.primary && (\n              <circle cx={pt(primary[hot], hot)[0]} cy={pt(primary[hot], hot)[1]} r={3.5} fill={primaryColor} />\n            )}\n            {show.secondary && (\n              <circle cx={pt(secondary[hot], hot)[0]} cy={pt(secondary[hot], hot)[1]} r={3} fill={secondaryColor} />\n            )}\n          </g>\n        )}\n      </svg>\n\n      {/* legend — click to mute a series */}\n      <div className=\"mt-1 flex justify-center gap-2 px-1\">\n        {(\n          [\n            [\"primary\", primaryColor, primaryLabel],\n            [\"secondary\", secondaryColor, secondaryLabel],\n          ] as const\n        ).map(([key, color, label]) => {\n          const active = show[key]\n          return (\n            <button\n              key={key}\n              type=\"button\"\n              aria-pressed={active}\n              onClick={() => setShow((s) => ({ ...s, [key]: !s[key] }))}\n              className=\"flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] transition-opacity\"\n              style={{ color: TEXT_MUTED, opacity: active ? 1 : 0.4 }}\n            >\n              <span className=\"h-2 w-2 rounded-[2px]\" style={{ background: color }} />\n              {label}\n            </button>\n          )\n        })}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/analyst-radar.tsx"
+    }
+  ]
+}

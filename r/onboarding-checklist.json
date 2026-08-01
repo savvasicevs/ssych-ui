@@ -9,10 +9,57 @@
     "motion",
     "tailwind-merge"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/onboarding-checklist.mp4"
+  },
   "files": [
     {
       "path": "components/ui/onboarding-checklist.tsx",
-      "content": "import { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"#34C28A\"\n\nexport interface ChecklistStep {\n  id: string\n  label: string\n}\n\nconst DEFAULT_STEPS: ChecklistStep[] = [\n  { id: \"domain\", label: \"Verify your domain\" },\n  { id: \"key\", label: \"Create an API key\" },\n  { id: \"send\", label: \"Send your first email\" },\n  { id: \"webhook\", label: \"Add a delivery webhook\" },\n]\n\n/**\n * Setup checklist: click a step to complete it — the check draws in, the\n * label settles to ink, and the thin progress bar plus counter keep the\n * derivable score (done / total).\n */\nexport function OnboardingChecklist({\n  steps = DEFAULT_STEPS,\n  initiallyDone = [\"domain\"],\n  title = \"Get set up\",\n  onToggle,\n  className,\n}: {\n  steps?: ChecklistStep[]\n  /** Ids that start in the completed state. */\n  initiallyDone?: string[]\n  title?: string\n  onToggle?: (id: string, done: boolean) => void\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [done, setDone] = useState<Set<string>>(new Set(initiallyDone))\n\n  const toggle = (id: string) =>\n    setDone((prev) => {\n      const next = new Set(prev)\n      if (next.has(id)) next.delete(id)\n      else next.add(id)\n      onToggle?.(id, next.has(id))\n      return next\n    })\n\n  const share = done.size / Math.max(1, steps.length)\n\n  return (\n    <div className={cn(\"w-[320px]\", className)}>\n      <div className=\"flex items-baseline justify-between\">\n        <span className=\"text-[10px] uppercase tracking-[0.1em] text-white/40\">{title}</span>\n        <span className=\"tabular-nums text-[11px] text-white/45\">\n          {done.size} / {steps.length}\n        </span>\n      </div>\n\n      <div className=\"mt-2 h-[2px] w-full overflow-hidden rounded-full bg-white/[0.06]\">\n        <motion.div\n          className=\"h-full origin-left rounded-full\"\n          style={{ background: GREEN, opacity: 0.85 }}\n          animate={{ scaleX: share }}\n          initial={false}\n          transition={reduced ? { duration: 0 } : { duration: 0.6, ease: EASE }}\n        />\n      </div>\n\n      <div className=\"mt-4 flex flex-col\">\n        {steps.map((s) => {\n          const on = done.has(s.id)\n          return (\n            <button\n              key={s.id}\n              type=\"button\"\n              onClick={() => toggle(s.id)}\n              aria-pressed={on}\n              className=\"group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.02]\"\n            >\n              <span\n                className=\"grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border transition-colors duration-300\"\n                style={{\n                  borderColor: on ? \"rgba(42,161,115,0.6)\" : \"rgba(255,255,255,0.14)\",\n                  background: on ? \"rgba(42,161,115,0.12)\" : \"transparent\",\n                }}\n              >\n                <svg width=\"9\" height=\"9\" viewBox=\"0 0 10 10\" fill=\"none\" aria-hidden>\n                  <motion.path\n                    d=\"M1.5 5.2 4 7.6 8.5 2.4\"\n                    stroke={GREEN}\n                    strokeWidth=\"1.6\"\n                    strokeLinecap=\"round\"\n                    strokeLinejoin=\"round\"\n                    initial={false}\n                    animate={{ pathLength: on ? 1 : 0, opacity: on ? 1 : 0 }}\n                    transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }}\n                  />\n                </svg>\n              </span>\n              <span\n                className={cn(\n                  \"text-[13px] transition-colors duration-300\",\n                  on ? \"text-white/35 line-through decoration-white/20\" : \"text-white/75 group-hover:text-white/90\",\n                )}\n              >\n                {s.label}\n              </span>\n            </button>\n          )\n        })}\n      </div>\n    </div>\n  )\n}\n",
+      "content": "import { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n// transitions.dev signature smooth-out easing.\nconst EASE = [0.22, 1, 0.36, 1] as const\nconst GREEN = \"var(--chart-up)\"\n\nexport interface ChecklistStep {\n  id: string\n  label: string\n}\n\nconst DEFAULT_STEPS: ChecklistStep[] = [\n  { id: \"domain\", label: \"Verify your domain\" },\n  { id: \"key\", label: \"Create an API key\" },\n  { id: \"send\", label: \"Send your first email\" },\n  { id: \"webhook\", label: \"Add a delivery webhook\" },\n]\n\n/**\n * Setup checklist: click a step to complete it — the check draws in, the\n * label settles to ink, and the thin progress bar plus counter keep the\n * derivable score (done / total).\n */\nexport function OnboardingChecklist({\n  steps = DEFAULT_STEPS,\n  initiallyDone = [\"domain\"],\n  title = \"Get set up\",\n  onToggle,\n  className,\n}: {\n  steps?: ChecklistStep[]\n  /** Ids that start in the completed state. */\n  initiallyDone?: string[]\n  title?: string\n  onToggle?: (id: string, done: boolean) => void\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [done, setDone] = useState<Set<string>>(new Set(initiallyDone))\n\n  const toggle = (id: string) =>\n    setDone((prev) => {\n      const next = new Set(prev)\n      if (next.has(id)) next.delete(id)\n      else next.add(id)\n      onToggle?.(id, next.has(id))\n      return next\n    })\n\n  const share = done.size / Math.max(1, steps.length)\n\n  return (\n    <div className={cn(\"w-[320px]\", className)}>\n      <div className=\"flex items-baseline justify-between\">\n        <span className=\"text-[10px] tracking-[0.1em] text-foreground/40\">{title}</span>\n        <span className=\"tabular-nums text-[11px] text-foreground/45\">\n          {done.size} / {steps.length}\n        </span>\n      </div>\n\n      <div className=\"mt-2 h-[2px] w-full overflow-hidden rounded-full bg-foreground/[0.06]\">\n        <motion.div\n          className=\"h-full origin-left rounded-full\"\n          style={{ background: GREEN, opacity: 0.85 }}\n          animate={{ scaleX: share }}\n          initial={false}\n          transition={reduced ? { duration: 0 } : { duration: 0.6, ease: EASE }}\n        />\n      </div>\n\n      <div className=\"mt-4 flex flex-col\">\n        {steps.map((s) => {\n          const on = done.has(s.id)\n          return (\n            <button\n              key={s.id}\n              type=\"button\"\n              onClick={() => toggle(s.id)}\n              aria-pressed={on}\n              className=\"group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors duration-150 hover:bg-foreground/[0.02]\"\n            >\n              <span\n                className=\"grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border transition-colors duration-150\"\n                style={{\n                  borderColor: on ? \"rgba(42,161,115,0.6)\" : \"var(--border)\",\n                  background: on ? \"rgba(42,161,115,0.12)\" : \"transparent\",\n                }}\n              >\n                <svg width=\"9\" height=\"9\" viewBox=\"0 0 10 10\" fill=\"none\" aria-hidden>\n                  <motion.path\n                    d=\"M1.5 5.2 4 7.6 8.5 2.4\"\n                    stroke={GREEN}\n                    strokeWidth=\"1.6\"\n                    strokeLinecap=\"round\"\n                    strokeLinejoin=\"round\"\n                    initial={false}\n                    animate={{ pathLength: on ? 1 : 0, opacity: on ? 1 : 0 }}\n                    // box fills first, then the check draws in after it (transitions.dev checkbox)\n                    transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: on ? 0.12 : 0 }}\n                  />\n                </svg>\n              </span>\n              <span\n                className={cn(\n                  \"text-[13px] transition-colors duration-300\",\n                  on ? \"text-foreground/35 line-through decoration-foreground/20\" : \"text-foreground/75 group-hover:text-foreground/90\",\n                )}\n              >\n                {s.label}\n              </span>\n            </button>\n          )\n        })}\n      </div>\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/onboarding-checklist.tsx"
     }

@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const SURFACE = "#0A0E16"
+const SURFACE = "var(--card)"
 
 export interface NewsItem {
   time: string
@@ -13,9 +13,9 @@ export interface NewsItem {
 }
 
 const DEFAULT_ITEMS: NewsItem[] = [
-  { time: "12 hours ago", headline: "Subnet emissions rebalance lands — validator yields shift across the top 20.", source: "Sample Wire" },
+  { time: "12 hours ago", headline: "Quarterly index rebalance shifts sector weights across the top 20.", source: "Sample Wire" },
   { time: "18 hours ago", headline: "Developer API requests double after the public pricing launch.", source: "Sample Ledger" },
-  { time: "1 day ago", headline: "Liquidity pools cross τ230k recycled for registration this cycle.", source: "Sample Times" },
+  { time: "1 day ago", headline: "Trading volume crosses $230M on the session, a record for the quarter.", source: "Sample Times" },
 ]
 
 /**
@@ -25,7 +25,7 @@ const DEFAULT_ITEMS: NewsItem[] = [
  */
 export function NewsCard({
   items = DEFAULT_ITEMS,
-  title = "Network news",
+  title = "Market news",
   cycleMs = 5200,
   className,
 }: {
@@ -57,10 +57,10 @@ export function NewsCard({
 
   return (
     <div className={cn("w-full max-w-[380px]", className)}>
-      <div className="text-[10px] uppercase tracking-[0.1em] text-white/40">{title}</div>
+      <div className="text-[10px] tracking-[0.1em] text-foreground/40">{title}</div>
       <div
-        className="mt-3 rounded-xl border border-white/[0.04] px-5 py-5"
-        style={{ background: SURFACE, boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.04)" }}
+        className="mt-3 rounded-lg border border-foreground/[0.04] px-5 py-5"
+        style={{ background: SURFACE, boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)" }}
       >
         <div className="relative min-h-[108px]">
           <AnimatePresence mode="wait" initial={false}>
@@ -71,9 +71,9 @@ export function NewsCard({
               exit={{ opacity: 0, y: -4 }}
               transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }}
             >
-              <div className="text-[10px] text-white/35">{item.time}</div>
-              <p className="mt-2 text-[14.5px] font-semibold leading-snug text-white/90">{item.headline}</p>
-              <div className="mt-3 text-[10px] text-white/35">{item.source}</div>
+              <div className="text-[10px] text-foreground/35">{item.time}</div>
+              <p className="mt-2 text-[14.5px] font-semibold leading-snug text-foreground/90">{item.headline}</p>
+              <div className="mt-3 text-[10px] text-foreground/35">{item.source}</div>
             </motion.div>
           </AnimatePresence>
         </div>
@@ -89,7 +89,7 @@ export function NewsCard({
             onClick={() => jump(n)}
             className={cn(
               "h-1.5 rounded-full transition-all duration-300",
-              n === i ? "w-5 bg-white" : "w-1.5 bg-white/25 hover:bg-white/45",
+              n === i ? "w-5 bg-foreground" : "w-1.5 bg-foreground/25 hover:bg-foreground/45",
             )}
           />
         ))}

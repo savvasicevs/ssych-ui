@@ -9,10 +9,57 @@
     "motion",
     "tailwind-merge"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/segmented-control.mp4"
+  },
   "files": [
     {
       "path": "components/ui/segmented-control.tsx",
-      "content": "import { useId, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nexport interface SegmentedControlProps {\n  options: string[]\n  /** Controlled value; omit to let the control manage its own state. */\n  value?: string\n  onChange?: (v: string) => void\n  className?: string\n}\n\n/**\n * The range switcher as a primitive: a hairline pill whose thumb glides\n * between options with a shared-layout spring. Tabular labels, no chrome.\n */\nexport function SegmentedControl({ options, value, onChange, className }: SegmentedControlProps) {\n  const reduced = useReducedMotion()\n  const uid = useId()\n  const [inner, setInner] = useState(value ?? options[0])\n  const current = value ?? inner\n\n  return (\n    <div className={cn(\"inline-flex items-center gap-0.5 rounded-full border border-white/[0.04] p-0.5\", className)}>\n      {options.map((o) => {\n        const on = o === current\n        return (\n          <button\n            key={o}\n            type=\"button\"\n            aria-pressed={on}\n            onClick={() => {\n              setInner(o)\n              onChange?.(o)\n            }}\n            className={cn(\n              \"relative rounded-full px-3 py-1.5 text-[11px] tracking-[0.05em] transition-colors duration-200\",\n              on ? \"text-white\" : \"text-white/40 hover:text-white/70\",\n            )}\n          >\n            {on && (\n              <motion.span\n                layoutId={`${uid}-thumb`}\n                className=\"absolute inset-0 rounded-full bg-white/[0.08]\"\n                style={{ boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.06)\" }}\n                transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 500, damping: 38 }}\n              />\n            )}\n            <span className=\"relative\">{o}</span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
+      "content": "import { useId, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nexport interface SegmentedControlProps {\n  options: string[]\n  /** Controlled value; omit to let the control manage its own state. */\n  value?: string\n  onChange?: (v: string) => void\n  className?: string\n}\n\n/**\n * The range switcher as a primitive: a hairline pill whose thumb glides\n * between options with a shared-layout spring. Tabular labels, no chrome.\n */\nexport function SegmentedControl({ options, value, onChange, className }: SegmentedControlProps) {\n  const reduced = useReducedMotion()\n  const uid = useId()\n  const [inner, setInner] = useState(value ?? options[0])\n  const current = value ?? inner\n\n  return (\n    <div className={cn(\"inline-flex items-center gap-0.5 rounded-full border border-foreground/[0.04] p-0.5\", className)}>\n      {options.map((o) => {\n        const on = o === current\n        return (\n          <button\n            key={o}\n            type=\"button\"\n            aria-pressed={on}\n            onClick={() => {\n              setInner(o)\n              onChange?.(o)\n            }}\n            className={cn(\n              \"relative rounded-full px-3 py-1.5 text-[11px] tracking-[0.05em] transition-colors duration-200\",\n              on ? \"text-foreground\" : \"text-foreground/40 hover:text-foreground/70\",\n            )}\n          >\n            {on && (\n              /* transitions.dev sliding-tabs feel: a clean 250ms smooth-out tween */\n              <motion.span\n                layoutId={`${uid}-thumb`}\n                className=\"absolute inset-0 rounded-full bg-foreground/[0.08]\"\n                style={{ boxShadow: \"inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 6%, transparent)\" }}\n                transition={reduced ? { duration: 0 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}\n              />\n            )}\n            <span className=\"relative\">{o}</span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/segmented-control.tsx"
     }

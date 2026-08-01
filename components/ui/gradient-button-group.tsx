@@ -29,8 +29,8 @@ export function GradientButtonGroup({
     <nav
       className={cn("inline-flex items-center gap-0.5 rounded-full p-0.5", className)}
       style={{
-        background: "linear-gradient(180deg, #0e121b 0%, #070a11 100%)",
-        border: "1px solid rgba(255,255,255,0.06)",
+        background: "linear-gradient(180deg, var(--panel) 0%, var(--surface-soft) 100%)",
+        border: "1px solid color-mix(in srgb, var(--foreground) 6%, transparent)",
       }}
     >
       {items.map((item) => {
@@ -45,7 +45,7 @@ export function GradientButtonGroup({
             }}
             className={cn(
               "relative flex h-[34px] w-[34px] items-center justify-center rounded-full transition-colors duration-300",
-              isActive ? "text-white" : "text-[#6b6b6d] hover:text-zinc-300",
+              isActive ? "text-foreground" : "text-[#6b6b6d] hover:text-zinc-300",
             )}
             aria-label={item.label}
             aria-current={isActive ? "page" : undefined}
@@ -56,7 +56,7 @@ export function GradientButtonGroup({
                 className="absolute inset-0 rounded-full"
                 style={{
                   background: "linear-gradient(180deg, #2a2f3a 0%, #1d212a 100%)",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
+                  boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--foreground) 12%, transparent)",
                 }}
                 transition={{ type: "spring", stiffness: 400, damping: 32 }}
               />

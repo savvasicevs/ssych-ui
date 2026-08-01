@@ -1,364 +1,363 @@
-'use client';
+import { useRef, useState, type ReactNode } from "react"
+import {
+  AnimatePresence,
+  motion,
+  useAnimationControls,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "motion/react"
 
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { cn } from "@/lib/utils"
 
-// Types for the component
-interface DockApp {
-  id: string;
-  name: string;
-  /** An icon node, an emoji/text string, or an image URL string (/, http, data:, blob:). */
-  icon: React.ReactNode;
-  /** Tile background (CSS color/gradient). Defaults to a neutral slate. */
-  color?: string;
+/** Command Dock — macOS-style magnifying dock. Cursor distance drives per-icon
+ *  size (44→56px raised-cosine springs), a hairline tooltip chip sits above the
+ *  hovered tool, icons bounce on click and cast a soft floor reflection, and a
+ *  ⌘K slot at the end opens a small command menu. Light and dark via theme
+ *  tokens; the default items are CSS-drawn tiles — swap in your own via props. */
+
+const EASE = [0.16, 1, 0.3, 1] as const
+const FAR = 99999
+const REST = 44
+const PEAK = 56 // keep the magnify subtle — icons shouldn't balloon
+const RADIUS = 110 // px of cursor influence on either side of an icon
+/** Apple's icon grid: the squircle covers ~82% of its tile and the remaining
+ *  ~9% a side is transparent margin — every shipped macOS icon is drawn that
+ *  way. The plates the dock draws itself (the gradient tiles and the ⌘K slot)
+ *  sit on the same grid, otherwise they read a fifth larger than any real
+ *  artwork standing next to them. */
+const PLATE = "82%"
+/** icons are lit from above and float off the tray floor — traces the artwork's
+ *  alpha, so transparent-margin PNG/WebP icons cast the right silhouette */
+const ICON_SHADOW =
+  "drop-shadow(0 6px 10px var(--card-shadow, rgba(0,0,0,0.45))) drop-shadow(0 2px 3px var(--card-shadow, rgba(0,0,0,0.35)))"
+
+export type DockApp = {
+  id: string
+  label: string
+  /** any node — an <img>, an svg, or the built-in gradient tiles */
+  icon: ReactNode
 }
 
-interface MacOSDockProps {
-  /** Defaults to a small emoji demo set, so a bare <MacOSDock /> renders a working dock. */
-  apps?: DockApp[];
-  onAppClick?: (appId: string) => void;
-  openApps?: string[];
-  className?: string;
+/** gradient app tile — lit top-left, settling into the brand color */
+function Tile({ c, children }: { c: [number, number, number]; children: ReactNode }) {
+  const up = c.map((v) => Math.min(255, v + 38)).join(",")
+  const dn = c.map((v) => Math.max(0, v - 46)).join(",")
+  return (
+    <span aria-hidden className="flex h-full w-full items-center justify-center">
+      <span
+        className="flex items-center justify-center rounded-[22%]"
+        style={{
+          width: PLATE,
+          height: PLATE,
+          background: `linear-gradient(145deg, rgb(${up}) 0%, rgb(${c.join(",")}) 55%, rgb(${dn}) 100%)`,
+        }}
+      >
+        {children}
+      </span>
+    </span>
+  )
 }
 
-// Self-contained demo apps (emoji tiles) — what renders when no `apps` are passed,
-// e.g. v0 / preview sandboxes mounting the component bare.
-const DEMO_APPS: DockApp[] = [
-  { id: "finder", name: "Finder", icon: "\u{1F5C2}\u{FE0F}", color: "linear-gradient(180deg,#57a8ff,#1f7ae0)" },
-  { id: "mail", name: "Mail", icon: "\u2709\u{FE0F}", color: "linear-gradient(180deg,#5a67f2,#3f4ad4)" },
-  { id: "notes", name: "Notes", icon: "\u{1F4DD}", color: "linear-gradient(180deg,#ffd45e,#f0a92e)" },
-  { id: "music", name: "Music", icon: "\u{1F3B5}", color: "linear-gradient(180deg,#ff6482,#e6335a)" },
-  { id: "photos", name: "Photos", icon: "\u{1F5BC}\u{FE0F}", color: "linear-gradient(180deg,#35c5a8,#149a80)" },
-];
+const glyph = { fill: "none", stroke: "white", strokeWidth: 1.7, strokeLinecap: "round" as const }
 
-// Underglow colour: the site accent at rest, else the first hex found in the hovered app's tile.
-const ACCENT_GLOW = "#5aaaff";
-const firstHex = (c?: string) => c?.match(/#[0-9a-fA-F]{6}/)?.[0] ?? ACCENT_GLOW;
+/** demo tools — five fixed-color tiles (the tiles are brand objects, not themed) */
+const DEFAULT_ITEMS: DockApp[] = [
+  {
+    id: "spark",
+    label: "Spark",
+    icon: (
+      <Tile c={[223, 119, 87]}>
+        <svg width={18} height={18} viewBox="0 0 22 22" {...glyph}>
+          {Array.from({ length: 8 }, (_, i) => {
+            const a = (i * Math.PI) / 4
+            return <line key={i} x1={11 + Math.cos(a) * 3.2} y1={11 + Math.sin(a) * 3.2} x2={11 + Math.cos(a) * 8} y2={11 + Math.sin(a) * 8} />
+          })}
+        </svg>
+      </Tile>
+    ),
+  },
+  {
+    id: "signal",
+    label: "Signal",
+    icon: (
+      <Tile c={[99, 168, 255]}>
+        <svg width={18} height={18} viewBox="0 0 22 22" {...glyph}>
+          <path d="M3 17 C 8 17, 8.5 5, 11 5 S 14 17, 19 17" />
+        </svg>
+      </Tile>
+    ),
+  },
+  {
+    id: "frame",
+    label: "Frame",
+    icon: (
+      <Tile c={[40, 120, 250]}>
+        <svg width={18} height={18} viewBox="0 0 22 22" {...glyph}>
+          <rect x={5} y={5} width={12} height={12} rx={3} />
+          <circle cx={11} cy={11} r={2.4} />
+        </svg>
+      </Tile>
+    ),
+  },
+  {
+    id: "palette",
+    label: "Palette",
+    icon: (
+      <Tile c={[165, 89, 255]}>
+        <svg width={18} height={18} viewBox="0 0 22 22" {...glyph}>
+          <circle cx={7.5} cy={7.5} r={2.6} />
+          <circle cx={14.5} cy={7.5} r={2.6} />
+          <circle cx={7.5} cy={14.5} r={2.6} />
+          <circle cx={14.5} cy={14.5} r={2.6} />
+        </svg>
+      </Tile>
+    ),
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    icon: (
+      <Tile c={[112, 110, 244]}>
+        <svg width={18} height={18} viewBox="0 0 22 22" {...glyph}>
+          <path d="M6 7 L 10.5 11 L 6 15" />
+          <line x1={12.5} y1={15.5} x2={16.5} y2={15.5} />
+        </svg>
+      </Tile>
+    ),
+  },
+]
 
-const MacOSDock: React.FC<MacOSDockProps> = ({ 
-  apps = DEMO_APPS, 
-  onAppClick = () => {}, 
-  openApps = [],
-  className = ''
-}) => {
-  const [mouseX, setMouseX] = useState<number | null>(null);
-  const [currentScales, setCurrentScales] = useState<number[]>(apps.map(() => 1));
-  const [currentPositions, setCurrentPositions] = useState<number[]>([]);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const dockRef = useRef<HTMLDivElement>(null);
-  const iconRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const animationFrameRef = useRef<number | undefined>(undefined);
-  const lastMouseMoveTime = useRef<number>(0);
-  const [containerWidth, setContainerWidth] = useState(0);
+/** demo commands behind the ⌘K slot */
+const COMMANDS: Array<[string, string]> = [
+  ["Search tools", "/"],
+  ["New canvas", "N"],
+  ["Toggle theme", "T"],
+  ["Copy share link", "C"],
+]
 
-  // Size the dock to fit its container, so it scales cleanly from phones to
-  // desktops without clipping or overflowing.
-  const config = useMemo(() => {
-    const n = Math.max(1, apps.length);
-    // Total dock width ≈ base * (n icons + gaps@8% + 2×padding@12%); invert to fit.
-    const factor = n + 0.08 * (n - 1) + 0.24;
-    const avail = containerWidth > 0 ? containerWidth * 0.92 : n * 72;
-    const baseIconSize = Math.max(34, Math.min(72, avail / factor));
-    const maxScale = baseIconSize >= 60 ? 1.8 : baseIconSize >= 46 ? 1.6 : 1.45;
-    const effectWidth = Math.min((containerWidth || 300) * 0.85, baseIconSize * 4);
-    return { baseIconSize, maxScale, effectWidth };
-  }, [apps.length, containerWidth]);
+function DockItem({
+  mouseX,
+  reduce,
+  label,
+  hovered,
+  active = false,
+  onEnter,
+  onClick,
+  children,
+}: {
+  mouseX: MotionValue<number>
+  reduce: boolean
+  label: string
+  hovered: boolean
+  active?: boolean
+  onEnter: () => void
+  onClick?: () => void
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLButtonElement>(null)
+  const dist = useTransform(mouseX, (x: number) => {
+    const r = ref.current?.getBoundingClientRect()
+    return r ? x - (r.x + r.width / 2) : FAR
+  })
+  // authentic macOS magnification: a raised-cosine bell over the influence
+  // window, not a linear tent — neighbors ease in/out of the peak
+  const raw = useTransform(dist, (d: number) => {
+    const t = Math.min(1, Math.abs(d) / RADIUS)
+    return REST + (PEAK - REST) * ((1 + Math.cos(Math.PI * t)) / 2)
+  })
+  const size = useSpring(raw, { mass: 0.1, stiffness: 240, damping: 18 })
+  // macOS click bounce — the icon hops off the tray floor and settles back
+  const bounce = useAnimationControls()
+  const click = () => {
+    if (!reduce) void bounce.start({ y: [0, -12, 0], transition: { duration: 0.4, ease: EASE } })
+    onClick?.()
+  }
 
-  const { baseIconSize, maxScale, effectWidth } = config;
-  const minScale = 1.0;
-  const baseSpacing = Math.max(4, baseIconSize * 0.08);
+  return (
+    <button
+      ref={ref}
+      aria-label={label}
+      onMouseEnter={onEnter}
+      onFocus={onEnter}
+      onClick={click}
+      className="relative flex flex-col items-center outline-none"
+    >
+      <motion.span
+        animate={bounce}
+        style={{ width: reduce ? REST : size, height: reduce ? REST : size, filter: ICON_SHADOW }}
+        className="relative z-10 block overflow-hidden rounded-[10px]"
+      >
+        {children}
+      </motion.span>
+      {/* running-app dot — macOS marks the active tool under its icon */}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute -bottom-[1px] left-1/2 z-10 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-foreground/80 shadow-[0_0_4px_var(--card-shadow,rgba(0,0,0,0.3))]"
+        />
+      )}
+      {/* soft floor reflection — the icon mirrored + faded under the tray lip */}
+      <motion.span
+        aria-hidden
+        style={{ width: reduce ? REST : size, height: reduce ? REST * 0.5 : size }}
+        className="pointer-events-none absolute left-1/2 top-full mt-[3px] -translate-x-1/2 overflow-hidden rounded-[10px] opacity-25 [transform:translateX(-50%)_scaleY(-1)] [mask-image:linear-gradient(to_bottom,rgba(0,0,0,0.5),transparent_65%)]"
+      >
+        {children}
+      </motion.span>
+      <AnimatePresence>
+        {hovered && (
+          <motion.span
+            initial={{ opacity: 0, y: 10, scaleY: 0.5, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, scaleY: 1, x: "-50%" }}
+            exit={{ opacity: 0, y: 10, scaleY: 0.5, x: "-50%" }}
+            transition={{ duration: 0.22, ease: EASE }}
+            style={{ transformOrigin: "bottom center", background: "var(--surface, var(--card))" }}
+            className="pointer-events-none absolute -top-9 left-1/2 z-20 whitespace-nowrap rounded-md border border-foreground/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-foreground/70 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+          >
+            {label}
+            <span
+              aria-hidden
+              className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-foreground/[0.04]"
+              style={{ background: "var(--surface, var(--card))" }}
+            />
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </button>
+  )
+}
 
-  // Track the container width so the dock re-fits on resize / orientation change.
-  useEffect(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-    const update = () => setContainerWidth(el.clientWidth);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+/**
+ * macOS-style magnifying command dock — cursor-driven icon springs, click
+ * bounce, floor reflections, running-app dots, and a ⌘K command menu.
+ */
+export function MacOsDock({
+  items = DEFAULT_ITEMS,
+  activeIds = [],
+  onSelect,
+  onCommand,
+  className,
+}: {
+  items?: DockApp[]
+  /** tools marked with the macOS running-app dot */
+  activeIds?: string[]
+  onSelect?: (item: DockApp) => void
+  onCommand?: () => void
+  className?: string
+}) {
+  const reduce = !!useReducedMotion()
+  const mouseX = useMotionValue(FAR)
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
 
-  // Authentic macOS cosine-based magnification algorithm
-  const calculateTargetMagnification = useCallback((mousePosition: number | null) => {
-    if (mousePosition === null) {
-      return apps.map(() => minScale);
-    }
-
-    return apps.map((_, index) => {
-      const normalIconCenter = (index * (baseIconSize + baseSpacing)) + (baseIconSize / 2);
-      const minX = mousePosition - (effectWidth / 2);
-      const maxX = mousePosition + (effectWidth / 2);
-      
-      if (normalIconCenter < minX || normalIconCenter > maxX) {
-        return minScale;
-      }
-      
-      const theta = ((normalIconCenter - minX) / effectWidth) * 2 * Math.PI;
-      const cappedTheta = Math.min(Math.max(theta, 0), 2 * Math.PI);
-      const scaleFactor = (1 - Math.cos(cappedTheta)) / 2;
-      
-      return minScale + (scaleFactor * (maxScale - minScale));
-    });
-  }, [apps, baseIconSize, baseSpacing, effectWidth, maxScale, minScale]);
-
-  // Calculate positions based on current scales
-  const calculatePositions = useCallback((scales: number[]) => {
-    let currentX = 0;
-    
-    return scales.map((scale) => {
-      const scaledWidth = baseIconSize * scale;
-      const centerX = currentX + (scaledWidth / 2);
-      currentX += scaledWidth + baseSpacing;
-      return centerX;
-    });
-  }, [baseIconSize, baseSpacing]);
-
-  // Initialize positions
-  useEffect(() => {
-    const initialScales = apps.map(() => minScale);
-    const initialPositions = calculatePositions(initialScales);
-    setCurrentScales(initialScales);
-    setCurrentPositions(initialPositions);
-  }, [apps, calculatePositions, minScale, config]);
-
-  // Animation loop
-  const animateToTarget = useCallback(() => {
-    const targetScales = calculateTargetMagnification(mouseX);
-    const targetPositions = calculatePositions(targetScales);
-    const lerpFactor = mouseX !== null ? 0.2 : 0.12;
-
-    setCurrentScales(prevScales => {
-      return prevScales.map((currentScale, index) => {
-        const diff = targetScales[index] - currentScale;
-        return currentScale + (diff * lerpFactor);
-      });
-    });
-
-    setCurrentPositions(prevPositions => {
-      return prevPositions.map((currentPos, index) => {
-        const diff = targetPositions[index] - currentPos;
-        return currentPos + (diff * lerpFactor);
-      });
-    });
-
-    const scalesNeedUpdate = currentScales.some((scale, index) => 
-      Math.abs(scale - targetScales[index]) > 0.002
-    );
-    const positionsNeedUpdate = currentPositions.some((pos, index) => 
-      Math.abs(pos - targetPositions[index]) > 0.1
-    );
-    
-    if (scalesNeedUpdate || positionsNeedUpdate || mouseX !== null) {
-      animationFrameRef.current = requestAnimationFrame(animateToTarget);
-    }
-  }, [mouseX, calculateTargetMagnification, calculatePositions, currentScales, currentPositions]);
-
-  // Start/stop animation loop
-  useEffect(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    animationFrameRef.current = requestAnimationFrame(animateToTarget);
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [animateToTarget]);
-
-  // Throttled mouse movement handler
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    const now = performance.now();
-    
-    if (now - lastMouseMoveTime.current < 16) {
-      return;
-    }
-    
-    lastMouseMoveTime.current = now;
-    
-    if (dockRef.current) {
-      const rect = dockRef.current.getBoundingClientRect();
-      const padding = Math.max(8, baseIconSize * 0.12);
-      setMouseX(e.clientX - rect.left - padding);
-    }
-  }, [baseIconSize]);
-
-  const handleMouseLeave = useCallback(() => {
-    setMouseX(null);
-  }, []);
-
-  const createBounceAnimation = (element: HTMLElement) => {
-    const bounceHeight = Math.max(-8, -baseIconSize * 0.15);
-    element.style.transition = 'transform 0.2s ease-out';
-    element.style.transform = `translateY(${bounceHeight}px)`;
-    
-    setTimeout(() => {
-      element.style.transform = 'translateY(0px)';
-    }, 200);
-  };
-
-  const handleAppClick = (appId: string, index: number) => {
-    if (iconRefs.current[index]) {
-      if (typeof window !== 'undefined' && (window as any).gsap) {
-        const gsap = (window as any).gsap;
-        const bounceHeight = currentScales[index] > 1.3 ? -baseIconSize * 0.2 : -baseIconSize * 0.15;
-        
-        gsap.to(iconRefs.current[index], {
-          y: bounceHeight,
-          duration: 0.2,
-          ease: 'power2.out',
-          yoyo: true,
-          repeat: 1,
-          transformOrigin: 'bottom center'
-        });
-      } else {
-        createBounceAnimation(iconRefs.current[index]!);
-      }
-    }
-    
-    onAppClick(appId);
-  };
-
-  // Calculate content width
-  const contentWidth = currentPositions.length > 0 
-    ? Math.max(...currentPositions.map((pos, index) => 
-        pos + (baseIconSize * currentScales[index]) / 2
-      ))
-    : (apps.length * (baseIconSize + baseSpacing)) - baseSpacing;
-
-  const padding = Math.max(8, baseIconSize * 0.12);
-
-  // Command-Dock underglow + tooltip — the currently magnified icon (peak scale) drives both.
-  const hoveredIndex =
-    mouseX !== null && currentScales.length
-      ? currentScales.reduce((best, s, i, arr) => (s > arr[best] ? i : best), 0)
-      : null;
-  const glowHex = hoveredIndex !== null ? firstHex(apps[hoveredIndex]?.color) : ACCENT_GLOW;
-  const dockActive = mouseX !== null;
-
-    return (
-    <div ref={wrapperRef} className="flex w-full justify-center">
+  return (
     <div
-      ref={dockRef}
-      className={`relative backdrop-blur-md ${className}`}
-      style={{
-        width: `${contentWidth + padding * 2}px`,
-        background: 'linear-gradient(to bottom, rgba(28,34,48,0.92), rgba(8,11,18,0.94))',
-        borderRadius: `${Math.max(12, baseIconSize * 0.4)}px`,
-        border: '1px solid rgba(255,255,255,0.06)',
-        boxShadow: `
-          0 ${Math.max(8, baseIconSize * 0.18)}px ${Math.max(24, baseIconSize * 0.5)}px rgba(0,0,0,0.5),
-          inset 0 1px 0 rgba(255,255,255,0.10),
-          inset 0 -1px 0 rgba(0,0,0,0.5)
-        `,
-        padding: `${padding}px`
+      onMouseMove={(e) => {
+        if (!reduce) mouseX.set(e.clientX)
       }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      onMouseLeave={() => {
+        mouseX.set(FAR)
+        setHovered(null)
+      }}
+      className={cn("relative flex items-end gap-2 rounded-2xl p-3", className)}
+      style={{
+        // themed tray — near-black gradient in dark, a real light tray in light
+        background:
+          "linear-gradient(to bottom, color-mix(in srgb, var(--foreground) 6%, var(--card-raised, var(--card))), var(--surface, var(--card)))",
+        // The outline is a SPREAD inset ring, not an offset one: `inset 0 -1px 0`
+        // can only paint where the edge faces down, so it thinned out through the
+        // rounded corners and the bottom read as a line that stopped short. A
+        // spread ring follows the radius the whole way round.
+        boxShadow: [
+          "inset 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent)",
+          "inset 0 1px 0 color-mix(in srgb, var(--foreground) 12%, transparent)",
+          "0 12px 32px var(--card-shadow, rgba(0,0,0,0.45))",
+        ].join(", "),
+      }}
     >
       {/* specular top highlight along the tray lip */}
       <span
         aria-hidden
         className="pointer-events-none absolute inset-x-4 top-px h-px rounded-full"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)' }}
+        style={{ background: "linear-gradient(90deg, transparent, color-mix(in srgb, var(--foreground) 35%, transparent), transparent)" }}
       />
+      {items.map((it) => (
+        <DockItem
+          key={it.id}
+          mouseX={mouseX}
+          reduce={reduce}
+          label={it.label}
+          hovered={hovered === it.id}
+          active={activeIds.includes(it.id)}
+          onEnter={() => setHovered(it.id)}
+          onClick={() => onSelect?.(it)}
+        >
+          {it.icon}
+        </DockItem>
+      ))}
 
-      <div
-        className="relative"
-        style={{
-          height: `${baseIconSize}px`,
-          width: '100%'
+      <div className="mx-1 h-8 w-px self-center bg-foreground/[0.08]" />
+
+      <DockItem
+        mouseX={mouseX}
+        reduce={reduce}
+        label="Command menu"
+        hovered={hovered === "⌘K" && !menuOpen}
+        onEnter={() => setHovered("⌘K")}
+        onClick={() => {
+          setMenuOpen((o) => !o)
+          onCommand?.()
         }}
       >
-        {apps.map((app, index) => {
-          const scale = currentScales[index];
-          const position = currentPositions[index] || 0;
-          const scaledSize = baseIconSize * scale;
-          
-          return (
-            <div
-              key={app.id}
-              ref={(el) => { iconRefs.current[index] = el; }}
-              className="absolute flex cursor-pointer flex-col items-center justify-end"
-              aria-label={app.name}
-              onClick={() => handleAppClick(app.id, index)}
-              style={{
-                left: `${position - scaledSize / 2}px`,
-                bottom: '0px',
-                width: `${scaledSize}px`,
-                height: `${scaledSize}px`,
-                transformOrigin: 'bottom center',
-                zIndex: Math.round(scale * 10)
-              }}
-            >
-              {/* hairline tooltip chip — shown above the magnified icon */}
-              {hoveredIndex === index && (
-                <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/[0.06] bg-[#0A0E16] px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-white/70 shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
-                  {app.name}
-                  <span
-                    aria-hidden
-                    className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-b border-r border-white/[0.06] bg-[#0A0E16]"
-                  />
-                </div>
-              )}
+        <span className="flex h-full w-full items-center justify-center">
+          {/* same icon grid as the tiles — a full-bleed plate here read a fifth
+              larger than the app artwork beside it */}
+          <span
+            className="flex items-center justify-center rounded-[22%] border border-foreground/[0.06] bg-foreground/[0.05] text-[12px] text-foreground/70"
+            style={{ width: PLATE, height: PLATE }}
+          >
+            ⌘K
+          </span>
+        </span>
+      </DockItem>
 
-              {/* Rounded-square tile (iOS/macOS Big Sur style) holding a Phosphor icon or image */}
-              <div
-                className="flex items-center justify-center overflow-hidden text-white"
-                style={{
-                  width: `${scaledSize}px`,
-                  height: `${scaledSize}px`,
-                  borderRadius: `${Math.max(8, scaledSize * 0.235)}px`,
-                  background: app.color ?? 'linear-gradient(160deg, #3b3f4a 0%, #20242e 100%)',
-                  border: '1px solid rgba(255, 255, 255, 0.14)',
-                  boxShadow: `0 ${scale > 1.2 ? Math.max(2, baseIconSize * 0.05) : Math.max(1, baseIconSize * 0.03)}px ${scale > 1.2 ? Math.max(4, baseIconSize * 0.1) : Math.max(2, baseIconSize * 0.06)}px rgba(0,0,0,${0.25 + (scale - 1) * 0.15}), inset 0 1px 0 rgba(255,255,255,0.18)`
-                }}
+      {/* ⌘K command menu — a quiet sheet floating above the dock's right end */}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            role="menu"
+            aria-label="Commands"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
+            transition={{ duration: reduce ? 0 : 0.22, ease: EASE }}
+            style={{
+              transformOrigin: "bottom right",
+              background: "var(--surface, var(--card))",
+              boxShadow: "0 16px 40px var(--card-shadow, rgba(0,0,0,0.5))",
+            }}
+            className="absolute bottom-full right-0 z-30 mb-3 w-[190px] rounded-xl border border-foreground/[0.05] p-1"
+          >
+            {COMMANDS.map(([label, key]) => (
+              <button
+                key={label}
+                type="button"
+                role="menuitem"
+                onClick={() => setMenuOpen(false)}
+                className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] text-foreground/70 transition-colors duration-150 hover:bg-foreground/[0.05] hover:text-foreground"
               >
-                {typeof app.icon === 'string' && /^(\/|https?:|data:|blob:)/.test(app.icon) ? (
-                  <img src={app.icon} alt={app.name} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="flex items-center justify-center" style={{ fontSize: `${scaledSize * 0.52}px`, lineHeight: 1 }}>
-                    {app.icon}
-                  </span>
-                )}
-              </div>
-              
-              {/* App Indicator Dot */}
-              {openApps.includes(app.id) && (
-                <div 
-                  className="absolute"
-                  style={{
-                    bottom: `${Math.max(-2, -baseIconSize * 0.05)}px`,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: `${Math.max(3, baseIconSize * 0.06)}px`,
-                    height: `${Math.max(3, baseIconSize * 0.06)}px`,
-                    borderRadius: '50%',
-                    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                    boxShadow: '0 0 4px rgba(0, 0, 0, 0.3)',
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* accent underglow — colour follows the magnified icon (Command Dock language) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-4 -bottom-[6px] h-[2px] rounded-full transition-opacity duration-300"
-        style={{ background: `linear-gradient(90deg, transparent, ${glowHex}a6, transparent)`, opacity: dockActive ? 1 : 0.4 }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -inset-x-6 -bottom-4 top-1/3 transition-opacity duration-300"
-        style={{ background: `radial-gradient(55% 90% at 50% 100%, ${glowHex}29, transparent 70%)`, opacity: dockActive ? 1 : 0 }}
-      />
+                {label}
+                <span className="rounded border border-foreground/[0.08] px-1 text-[9px] text-foreground/35">⌘{key}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
-    </div>
-  );
-};
+  )
+}
 
-export default MacOSDock;
+export default MacOsDock

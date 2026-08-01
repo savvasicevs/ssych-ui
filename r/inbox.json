@@ -12,10 +12,57 @@
   "registryDependencies": [
     "https://www.ssicevs.com/r/avatar-stack.json"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/inbox.mp4"
+  },
   "files": [
     {
       "path": "components/ui/inbox.tsx",
-      "content": "import { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { AvatarStack } from \"@/components/ui/avatar-stack\"\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst ACCENT = \"rgba(90,170,255,1)\"\nconst SURFACE = \"#0A0E16\"\n\nexport interface InboxItem {\n  id: string\n  actor: string\n  text: string\n  time: string\n}\n\nconst DEFAULT_ITEMS: InboxItem[] = [\n  { id: \"n1\", actor: \"Jane Doe\", text: \"assigned you SSI-14 · Audit chart contrast\", time: \"2m\" },\n  { id: \"n2\", actor: \"Alex Kim\", text: \"commented on the metrics group\", time: \"18m\" },\n  { id: \"n3\", actor: \"Mia Chen\", text: \"marked SSI-11 as done\", time: \"1h\" },\n  { id: \"n4\", actor: \"Omar Ali\", text: \"requested a review on the footer block\", time: \"3h\" },\n]\n\n/**\n * Notification inbox in the Linear register: unread dot, actor coin, one line\n * of ink, tabular time. Clicking a row reads it (the dot dissolves, the row\n * settles back); \"mark all read\" clears the column.\n */\nexport function Inbox({\n  items = DEFAULT_ITEMS,\n  initiallyRead = [\"n3\"],\n  className,\n}: {\n  items?: InboxItem[]\n  /** Ids that start in the read state. */\n  initiallyRead?: string[]\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [read, setRead] = useState<Set<string>>(new Set(initiallyRead))\n  const unread = items.filter((i) => !read.has(i.id)).length\n\n  return (\n    <div\n      className={cn(\"w-full max-w-[420px] overflow-hidden rounded-xl border border-white/[0.04]\", className)}\n      style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.04)\" }}\n    >\n      <div className=\"flex items-center justify-between border-b border-white/[0.04] bg-white/[0.02] px-4 py-2.5\">\n        <span className=\"flex items-center gap-2\">\n          <span className=\"text-[10px] uppercase tracking-[0.1em] text-white/40\">Inbox</span>\n          {unread > 0 && (\n            <span className=\"tabular-nums text-[10px]\" style={{ color: ACCENT }}>\n              {unread}\n            </span>\n          )}\n        </span>\n        <button\n          type=\"button\"\n          onClick={() => setRead(new Set(items.map((i) => i.id)))}\n          disabled={unread === 0}\n          className=\"rounded-md px-2 py-1 text-[10px] text-white/45 transition-all duration-150 hover:bg-white/[0.04] hover:text-white/75 active:scale-95 disabled:pointer-events-none disabled:opacity-35\"\n        >\n          mark all read\n        </button>\n      </div>\n\n      {items.map((it) => {\n        const isRead = read.has(it.id)\n        return (\n          <button\n            key={it.id}\n            type=\"button\"\n            onClick={() => setRead((prev) => new Set(prev).add(it.id))}\n            className=\"flex w-full items-center gap-3 border-b border-white/[0.03] px-4 py-3 text-left transition-colors duration-150 last:border-b-0 hover:bg-white/[0.02]\"\n          >\n            <motion.span\n              className=\"h-1.5 w-1.5 shrink-0 rounded-full\"\n              animate={{ opacity: isRead ? 0 : 1, scale: isRead ? 0.4 : 1, backgroundColor: ACCENT }}\n              transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}\n              aria-hidden\n            />\n            <AvatarStack names={[it.actor]} max={1} />\n            <span className=\"min-w-0 flex-1\">\n              <span\n                className={cn(\n                  \"block truncate text-[12px] transition-colors duration-300\",\n                  isRead ? \"text-white/40\" : \"text-white/80\",\n                )}\n              >\n                <span className={isRead ? \"\" : \"text-white\"}>{it.actor.split(\" \")[0]}</span> {it.text}\n              </span>\n            </span>\n            <span className=\"shrink-0 tabular-nums text-[10px] text-white/30\">{it.time}</span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
+      "content": "import { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { AvatarStack } from \"@/components/ui/avatar-stack\"\nimport { cn } from \"@/lib/utils\"\n\n// transitions.dev signature smooth-out easing.\nconst EASE = [0.22, 1, 0.36, 1] as const\nconst ACCENT = \"rgba(90,170,255,1)\"\nconst SURFACE = \"var(--card)\"\n\nexport interface InboxItem {\n  id: string\n  actor: string\n  text: string\n  time: string\n  /** Actor portrait; falls back to an initial coin when omitted. */\n  image?: string\n}\n\nconst DEFAULT_ITEMS: InboxItem[] = [\n  { id: \"n1\", actor: \"Jane Doe\", text: \"assigned you SSI-14 · Audit chart contrast\", time: \"2m\", image: \"/lab-icons/avatars/abs-1.svg\" },\n  { id: \"n2\", actor: \"Alex Kim\", text: \"commented on the metrics group\", time: \"18m\", image: \"/lab-icons/avatars/abs-2.svg\" },\n  { id: \"n3\", actor: \"Mia Chen\", text: \"marked SSI-11 as done\", time: \"1h\", image: \"/lab-icons/avatars/abs-3.svg\" },\n  { id: \"n4\", actor: \"Omar Ali\", text: \"requested a review on the footer block\", time: \"3h\", image: \"/lab-icons/avatars/abs-4.svg\" },\n]\n\n/**\n * Notification inbox in the Linear register: unread dot, actor coin, one line\n * of ink, tabular time. Clicking a row reads it (the dot dissolves, the row\n * settles back); \"mark all read\" clears the column.\n */\nexport function Inbox({\n  items = DEFAULT_ITEMS,\n  initiallyRead = [\"n3\"],\n  className,\n}: {\n  items?: InboxItem[]\n  /** Ids that start in the read state. */\n  initiallyRead?: string[]\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [read, setRead] = useState<Set<string>>(new Set(initiallyRead))\n  const unread = items.filter((i) => !read.has(i.id)).length\n\n  return (\n    <div\n      className={cn(\"w-full max-w-[420px] overflow-hidden rounded-xl border border-foreground/[0.04]\", className)}\n      style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)\" }}\n    >\n      <div className=\"flex items-center justify-between border-b border-foreground/[0.04] bg-foreground/[0.02] px-4 py-2.5\">\n        <span className=\"flex items-center gap-2\">\n          <span className=\"text-[10px] uppercase tracking-[0.1em] text-foreground/40\">Inbox</span>\n          {unread > 0 && (\n            <span className=\"tabular-nums text-[10px]\" style={{ color: ACCENT }}>\n              {unread}\n            </span>\n          )}\n        </span>\n        <button\n          type=\"button\"\n          onClick={() => setRead(new Set(items.map((i) => i.id)))}\n          disabled={unread === 0}\n          className=\"rounded-md px-2 py-1 text-[10px] text-foreground/45 transition-all duration-150 hover:bg-foreground/[0.04] hover:text-foreground/75 active:scale-95 disabled:pointer-events-none disabled:opacity-35\"\n        >\n          mark all read\n        </button>\n      </div>\n\n      {items.map((it) => {\n        const isRead = read.has(it.id)\n        return (\n          <button\n            key={it.id}\n            type=\"button\"\n            onClick={() => setRead((prev) => new Set(prev).add(it.id))}\n            className=\"flex w-full items-center gap-3 border-b border-foreground/[0.03] px-4 py-3 text-left transition-colors duration-150 last:border-b-0 hover:bg-foreground/[0.02]\"\n          >\n            <motion.span\n              className=\"h-1.5 w-1.5 shrink-0 rounded-full\"\n              animate={{ opacity: isRead ? 0 : 1, scale: isRead ? 0.4 : 1, backgroundColor: ACCENT }}\n              transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}\n              aria-hidden\n            />\n            {it.image ? (\n              <img\n                src={it.image}\n                alt={it.actor}\n                className=\"h-6 w-6 shrink-0 rounded-full\"\n                style={{ boxShadow: \"0 0 0 2px var(--card)\" }}\n                draggable={false}\n              />\n            ) : (\n              <AvatarStack names={[it.actor]} max={1} />\n            )}\n            <span className=\"min-w-0 flex-1\">\n              <span\n                className={cn(\n                  \"block truncate text-[12px] transition-colors duration-300\",\n                  isRead ? \"text-foreground/40\" : \"text-foreground/80\",\n                )}\n              >\n                <span className={isRead ? \"\" : \"text-foreground\"}>{it.actor.split(\" \")[0]}</span> {it.text}\n              </span>\n            </span>\n            <span className=\"shrink-0 tabular-nums text-[10px] text-foreground/30\">{it.time}</span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/inbox.tsx"
     }

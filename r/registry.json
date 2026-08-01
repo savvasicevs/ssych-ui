@@ -28,6 +28,30 @@
       "type": "registry:ui"
     },
     {
+      "name": "price-target-fan",
+      "type": "registry:ui"
+    },
+    {
+      "name": "market-watchlist",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sma-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "market-snapshot",
+      "type": "registry:ui"
+    },
+    {
+      "name": "index-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "range-navigator",
+      "type": "registry:ui"
+    },
+    {
       "name": "sectors-donut",
       "type": "registry:ui"
     },
@@ -36,7 +60,19 @@
       "type": "registry:ui"
     },
     {
+      "name": "analyst-radar",
+      "type": "registry:ui"
+    },
+    {
+      "name": "kpi-card-row",
+      "type": "registry:ui"
+    },
+    {
       "name": "heat-calendar",
+      "type": "registry:ui"
+    },
+    {
+      "name": "returns-calendar",
       "type": "registry:ui"
     },
     {
@@ -60,15 +96,15 @@
       "type": "registry:ui"
     },
     {
-      "name": "payment-sheet",
-      "type": "registry:ui"
-    },
-    {
       "name": "preferences-card",
       "type": "registry:ui"
     },
     {
       "name": "empty-state",
+      "type": "registry:ui"
+    },
+    {
+      "name": "swap-ticket",
       "type": "registry:ui"
     },
     {
@@ -80,7 +116,11 @@
       "type": "registry:ui"
     },
     {
-      "name": "pricing-card",
+      "name": "amount",
+      "type": "registry:ui"
+    },
+    {
+      "name": "crypto-fiat",
       "type": "registry:ui"
     }
   ]

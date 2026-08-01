@@ -3,15 +3,63 @@
   "name": "avatar-stack",
   "type": "registry:ui",
   "title": "Avatar Stack",
-  "description": "Overlapping initial coins with a surface ring; the overflow count is just ink.",
+  "description": "Overlapping gradient-orb coins with a surface ring; hovering a coin lifts and names it, and the overflow count floats the hidden names without widening the stack.",
   "dependencies": [
     "clsx",
+    "motion",
     "tailwind-merge"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/avatar-stack.mp4"
+  },
   "files": [
     {
       "path": "components/ui/avatar-stack.tsx",
-      "content": "import { cn } from \"@/lib/utils\"\n\nexport interface AvatarStackProps {\n  names: string[]\n  /** Coins shown before folding the rest into a \"+N\" count. */\n  max?: number\n  className?: string\n}\n\nconst COIN_BG = [\"#1d2634\", \"#24202f\", \"#1e2b26\", \"#2b2420\"]\n\nconst initials = (n: string) =>\n  n\n    .split(\" \")\n    .map((p) => p[0])\n    .slice(0, 2)\n    .join(\"\")\n    .toUpperCase()\n\n/**\n * Overlapping initial coins with a surface ring so each stays legible; the\n * overflow count is just ink.\n */\nexport function AvatarStack({ names, max = 4, className }: AvatarStackProps) {\n  const shown = names.slice(0, max)\n  const rest = names.length - shown.length\n\n  return (\n    <span className={cn(\"inline-flex items-center\", className)}>\n      <span className=\"flex -space-x-1.5\">\n        {shown.map((n, i) => (\n          <span\n            key={n}\n            title={n}\n            className=\"grid h-6 w-6 place-items-center rounded-full text-[9px] text-white/70\"\n            style={{\n              background: COIN_BG[i % COIN_BG.length],\n              boxShadow: \"0 0 0 2px #070a12\",\n              zIndex: shown.length - i,\n            }}\n          >\n            {initials(n)}\n          </span>\n        ))}\n      </span>\n      {rest > 0 && <span className=\"ml-2 text-[11px] text-white/40\">+{rest}</span>}\n    </span>\n  )\n}\n",
+      "content": "import { useState } from \"react\"\nimport { AnimatePresence, motion } from \"motion/react\"\nimport { cn } from \"@/lib/utils\"\n\nexport interface AvatarStackProps {\n  names: string[]\n  /** Avatar image per name (same order); a missing entry falls back to initials. */\n  images?: (string | undefined)[]\n  /** Coins shown before folding the rest into a \"+N\" count. */\n  max?: number\n  className?: string\n}\n\n/** Initials-fallback coin faces — a tint of the chart ramp over the card surface,\n * so the four faces stay distinguishable in either theme without a fixed hex. */\nconst COIN_BG = [\n  \"color-mix(in srgb, var(--chart-1) 18%, var(--card))\",\n  \"color-mix(in srgb, var(--chart-5) 18%, var(--card))\",\n  \"color-mix(in srgb, var(--chart-2) 18%, var(--card))\",\n  \"color-mix(in srgb, var(--chart-3) 18%, var(--card))\",\n]\n\n/** Bundled gradient profile orbs — the same set the Inbox uses. */\nconst DEFAULT_IMAGES = [1, 2, 3, 4, 5, 6].map((i) => `/lab-icons/avatars/abs-${i}.svg`)\n\nconst initials = (n: string) =>\n  n\n    .split(\" \")\n    .map((p) => p[0])\n    .slice(0, 2)\n    .join(\"\")\n    .toUpperCase()\n\n/** Floating label above a coin or the overflow chip — never widens the row. */\nfunction Tooltip({ children }: { children: React.ReactNode }) {\n  return (\n    <motion.span\n      className=\"pointer-events-none absolute -top-7 left-1/2 z-50 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[9.5px] text-foreground/85\"\n      style={{\n        background: \"var(--card)\",\n        borderColor: \"color-mix(in srgb, var(--foreground) 8%, transparent)\",\n        boxShadow: \"0 6px 18px var(--card-shadow)\",\n      }}\n      initial={{ opacity: 0, y: 3, x: \"-50%\" }}\n      animate={{ opacity: 1, y: 0, x: \"-50%\" }}\n      exit={{ opacity: 0, y: 3, x: \"-50%\" }}\n      transition={{ duration: 0.15 }}\n    >\n      {children}\n    </motion.span>\n  )\n}\n\nfunction Coin({\n  name,\n  img,\n  z,\n  lifted,\n  onHover,\n}: {\n  name: string\n  img?: string\n  z: number\n  lifted: boolean\n  onHover: (v: boolean) => void\n}) {\n  return (\n    <motion.span\n      className=\"relative inline-grid h-6 w-6 place-items-center rounded-full text-[9px] text-foreground/70\"\n      style={{\n        background: COIN_BG[z % COIN_BG.length],\n        boxShadow: \"0 0 0 2px var(--surface-soft)\",\n        zIndex: lifted ? 50 : z,\n      }}\n      animate={{ y: lifted ? -5 : 0 }}\n      transition={{ type: \"spring\", stiffness: 500, damping: 30 }}\n      onMouseEnter={() => onHover(true)}\n      onMouseLeave={() => onHover(false)}\n    >\n      {img ? (\n        <img src={img} alt={name} className=\"h-full w-full rounded-full object-cover\" draggable={false} />\n      ) : (\n        initials(name)\n      )}\n      <AnimatePresence>{lifted && <Tooltip>{name}</Tooltip>}</AnimatePresence>\n    </motion.span>\n  )\n}\n\n/**\n * Overlapping gradient-orb coins with a surface ring so each stays legible.\n * Hovering a coin lifts it out of the stack and floats its name; hovering the\n * \"+N\" chip floats the hidden names above it — the stack itself never widens.\n * Falls back to initial coins when an image is missing.\n */\nexport function AvatarStack({ names, images = DEFAULT_IMAGES, max = 4, className }: AvatarStackProps) {\n  const [hot, setHot] = useState<string | null>(null)\n  const [peek, setPeek] = useState(false)\n\n  const shown = names.slice(0, max)\n  const hidden = names.slice(max)\n\n  return (\n    <span\n      className={cn(\"inline-flex items-center\", className)}\n      onMouseLeave={() => {\n        setPeek(false)\n        setHot(null)\n      }}\n    >\n      <span className=\"flex -space-x-1.5\">\n        {shown.map((n, i) => (\n          <Coin\n            key={n}\n            name={n}\n            img={images[names.indexOf(n)]}\n            z={shown.length - i}\n            lifted={hot === n}\n            onHover={(v) => setHot(v ? n : null)}\n          />\n        ))}\n      </span>\n      {hidden.length > 0 && (\n        <motion.span\n          className=\"relative ml-2 cursor-default text-[11px] text-foreground/40\"\n          onMouseEnter={() => setPeek(true)}\n          onMouseLeave={() => setPeek(false)}\n          whileHover={{ y: -2 }}\n        >\n          +{hidden.length}\n          <AnimatePresence>{peek && <Tooltip>{hidden.join(\" · \")}</Tooltip>}</AnimatePresence>\n        </motion.span>\n      )}\n    </span>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/avatar-stack.tsx"
     }

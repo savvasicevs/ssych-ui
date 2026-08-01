@@ -5,15 +5,62 @@
   "title": "Alert Stack",
   "description": "Collapsed notification deck that fans open on hover; each dismiss re-settles the pile.",
   "dependencies": [
-    "@phosphor-icons/react",
     "clsx",
+    "lucide-react",
     "motion",
     "tailwind-merge"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/alert-stack.mp4"
+  },
   "files": [
     {
       "path": "components/ui/alert-stack.tsx",
-      "content": "import { useState } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\nimport { Sparkle, X } from \"@phosphor-icons/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst SURFACE_RAISED = \"linear-gradient(180deg, #10141E 0%, #0A0E16 100%)\"\n\nconst DEFAULT_ALERTS = [\n  \"Realtime quotes are coming soon\",\n  \"Options chains are coming soon\",\n  \"Screener alerts are coming soon\",\n]\n\n/**\n * Collapsed notification deck in the Fey register: rows sit stacked with a\n * peeking edge, fan open on hover, and each dismiss re-settles the pile.\n * Dismiss everything and a quiet restore control appears.\n */\nexport function AlertStack({\n  alerts = DEFAULT_ALERTS,\n  onDismiss,\n  className,\n}: {\n  alerts?: string[]\n  onDismiss?: (alert: string) => void\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [open, setOpen] = useState(false)\n  const [rows, setRows] = useState(alerts)\n\n  return (\n    <div\n      className={cn(\"w-[300px]\", className)}\n      onMouseEnter={() => setOpen(true)}\n      onMouseLeave={() => setOpen(false)}\n    >\n      {rows.length === 0 ? (\n        <button\n          type=\"button\"\n          onClick={() => setRows(alerts)}\n          className=\"mx-auto block rounded-full border border-white/[0.04] bg-white/[0.03] px-3 py-1.5 text-[11px] text-white/40 transition-all duration-150 hover:bg-white/[0.06] hover:text-white/75 active:scale-[0.98]\"\n        >\n          Restore alerts\n        </button>\n      ) : (\n        <div className=\"relative\" style={{ height: open ? rows.length * 52 - 8 : 44 + (rows.length - 1) * 7 }}>\n          <AnimatePresence initial={false}>\n            {rows.map((label, i) => (\n              <motion.div\n                key={label}\n                className=\"absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-xl border border-white/[0.05] px-3.5\"\n                style={{\n                  background: SURFACE_RAISED,\n                  zIndex: rows.length - i,\n                  boxShadow: \"0 10px 24px -12px rgba(0,0,0,0.8)\",\n                }}\n                initial={false}\n                animate={{\n                  y: open ? i * 52 : i * 7,\n                  scale: open ? 1 : 1 - i * 0.035,\n                  opacity: open ? 1 : i > 2 ? 0 : 1 - i * 0.18,\n                }}\n                exit={{ opacity: 0, x: 24, transition: { duration: reduced ? 0 : 0.2 } }}\n                transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 300, damping: 30 }}\n              >\n                <Sparkle className=\"h-3.5 w-3.5 shrink-0 text-white/45\" />\n                <span className=\"flex-1 truncate text-[12.5px] text-white/80\">{label}</span>\n                <button\n                  type=\"button\"\n                  aria-label={`Dismiss \"${label}\"`}\n                  onClick={() => {\n                    setRows((r) => r.filter((x) => x !== label))\n                    onDismiss?.(label)\n                  }}\n                  className=\"rounded p-1 text-white/30 transition-colors duration-150 hover:text-white/70\"\n                >\n                  <X className=\"h-3 w-3\" weight=\"bold\" />\n                </button>\n              </motion.div>\n            ))}\n          </AnimatePresence>\n        </div>\n      )}\n    </div>\n  )\n}\n",
+      "content": "import { useState } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\nimport { Sparkles, X } from \"lucide-react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst SURFACE_RAISED = \"linear-gradient(180deg, var(--card-raised, var(--card)) 0%, var(--surface, var(--card)) 100%)\"\n\nconst DEFAULT_ALERTS = [\n  \"Realtime quotes are coming soon\",\n  \"Options chains are coming soon\",\n  \"Screener alerts are coming soon\",\n]\n\n/**\n * Collapsed notification deck: rows sit stacked with a\n * peeking edge, fan open on hover, and each dismiss re-settles the pile.\n * Dismiss everything and a quiet restore control appears.\n */\nexport function AlertStack({\n  alerts = DEFAULT_ALERTS,\n  onDismiss,\n  className,\n}: {\n  alerts?: string[]\n  onDismiss?: (alert: string) => void\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [open, setOpen] = useState(false)\n  const [rows, setRows] = useState(alerts)\n\n  return (\n    <div\n      className={cn(\"w-[300px]\", className)}\n      onMouseEnter={() => setOpen(true)}\n      onMouseLeave={() => setOpen(false)}\n    >\n      {rows.length === 0 ? (\n        <button\n          type=\"button\"\n          onClick={() => setRows(alerts)}\n          className=\"mx-auto block rounded-full border border-foreground/[0.04] px-3 py-1.5 text-[11px] text-foreground/40 transition-colors hover:text-foreground/70\"\n        >\n          Restore alerts\n        </button>\n      ) : (\n        <div className=\"relative\" style={{ height: open ? rows.length * 52 - 8 : 44 + (rows.length - 1) * 7 }}>\n          <AnimatePresence initial={false}>\n            {rows.map((label, i) => (\n              <motion.div\n                key={label}\n                className=\"absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-lg border border-foreground/[0.05] px-3.5\"\n                style={{\n                  background: SURFACE_RAISED,\n                  zIndex: rows.length - i,\n                  boxShadow: \"0 10px 24px -12px var(--card-shadow)\",\n                }}\n                initial={false}\n                animate={{\n                  y: open ? i * 52 : i * 7,\n                  scale: open ? 1 : 1 - i * 0.035,\n                  opacity: open ? 1 : i > 2 ? 0 : 1 - i * 0.18,\n                }}\n                // toast-style dismiss: slide out with a soft cross-blur, quick + smooth\n                exit={{ opacity: 0, x: 24, filter: \"blur(2px)\", transition: { duration: reduced ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] } }}\n                transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 300, damping: 30 }}\n              >\n                <Sparkles className=\"h-3.5 w-3.5 shrink-0 text-foreground/45\" />\n                <span className=\"flex-1 truncate text-[12.5px] text-foreground/80\">{label}</span>\n                <button\n                  type=\"button\"\n                  aria-label={`Dismiss \"${label}\"`}\n                  onClick={() => {\n                    setRows((r) => r.filter((x) => x !== label))\n                    onDismiss?.(label)\n                  }}\n                  className=\"rounded p-1 text-foreground/30 transition-colors duration-150 hover:text-foreground/70\"\n                >\n                  <X className=\"h-3 w-3\" strokeWidth={2.5} />\n                </button>\n              </motion.div>\n            ))}\n          </AnimatePresence>\n        </div>\n      )}\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/alert-stack.tsx"
     }

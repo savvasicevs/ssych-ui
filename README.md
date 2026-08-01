@@ -17,9 +17,9 @@ npx shadcn@latest add https://www.ssicevs.com/r/sidebar.json
 Swap `sidebar` for any free slug below. The whole free family is **MIT** — use it
 in anything, commercial included.
 
-## Free family — MIT (20 components)
+## Free family — MIT (30 components)
 
-`accordion` · `alert-stack` · `avatar-stack` · `browser-window` · `empty-state` · `gradient-button-group` · `heat-calendar` · `inbox` · `macbook-frame` · `macos-dock` · `news-card` · `onboarding-checklist` · `payment-sheet` · `preferences-card` · `pricing-card` · `ratings-radar` · `request-log` · `sectors-donut` · `segmented-control` · `sidebar`
+`accordion` · `alert-stack` · `amount` · `analyst-radar` · `avatar-stack` · `browser-window` · `crypto-fiat` · `empty-state` · `gradient-button-group` · `heat-calendar` · `inbox` · `index-card` · `kpi-card-row` · `macbook-frame` · `macos-dock` · `market-snapshot` · `market-watchlist` · `news-card` · `onboarding-checklist` · `preferences-card` · `price-target-fan` · `range-navigator` · `ratings-radar` · `request-log` · `returns-calendar` · `sectors-donut` · `segmented-control` · `sidebar` · `sma-chart` · `swap-ticket`
 
 ## Pro family — sign in to install
 

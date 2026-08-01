@@ -5,18 +5,65 @@
   "title": "Accordion",
   "description": "Expanding accordion rows — each reveals its body, a checklist, and a visual.",
   "dependencies": [
-    "@phosphor-icons/react",
     "clsx",
+    "lucide-react",
     "motion",
     "tailwind-merge"
   ],
   "registryDependencies": [
     "https://www.ssicevs.com/r/macbook-frame.json"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/accordion.mp4"
+  },
   "files": [
     {
       "path": "components/ui/accordion.tsx",
-      "content": "import { useState, type ComponentType, type ReactNode } from \"react\";\nimport { AnimatePresence, motion } from \"motion/react\";\nimport { CaretDown, Check } from \"@phosphor-icons/react\";\nimport { cn } from \"@/lib/utils\";\n\nexport type AccordionItem = {\n  title: string;\n  body: string;\n  icon?: ComponentType<{ className?: string }>;\n  deliverables?: string[];\n};\n\n/**\n * Accordion (WAI-ARIA) — a vertical list of titles; the active row expands to\n * reveal its body + deliverables alongside a visual supplied by `stage(i)`.\n * Pulled from the /pro-services \"Variant 02 · accordion\".\n */\nexport function Accordion({\n  items = [],\n  stage,\n  defaultOpen = 0,\n}: {\n  items?: AccordionItem[];\n  stage?: (i: number) => ReactNode;\n  defaultOpen?: number;\n}) {\n  const [active, setActive] = useState(defaultOpen);\n\n  return (\n    <div className=\"w-full\">\n      {items.map((it, i) => {\n        const on = active === i;\n        const Icon = it.icon;\n        return (\n          <div key={i} className=\"border-t border-white/[0.08] first:border-t-0\">\n            <h3>\n              <button\n                type=\"button\"\n                id={`acc-tab-${i}`}\n                aria-expanded={on}\n                aria-controls={`acc-panel-${i}`}\n                onClick={() => setActive(on ? -1 : i)}\n                className={cn(\n                  \"flex w-full cursor-pointer items-center justify-between gap-4 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-white/40\",\n                  on ? \"pb-2\" : \"pb-4\"\n                )}\n              >\n                <span className=\"flex items-center gap-3\">\n                  {Icon && (\n                    <Icon\n                      className={cn(\n                        \"h-5 w-5 shrink-0 text-white transition-opacity duration-300\",\n                        on ? \"opacity-100\" : \"opacity-35\"\n                      )}\n                    />\n                  )}\n                  <span\n                    className={cn(\n                      \"text-[22px] font-bold leading-[1.1] transition-colors duration-300\",\n                      on ? \"text-white\" : \"text-white/40 hover:text-white/60\"\n                    )}\n                  >\n                    {it.title}\n                  </span>\n                </span>\n                <CaretDown\n                  className={cn(\n                    \"h-5 w-5 shrink-0 transition-transform duration-300\",\n                    on ? \"rotate-180 text-white\" : \"text-white/40\"\n                  )}\n                />\n              </button>\n            </h3>\n\n            <AnimatePresence initial={false}>\n              {on && (\n                <motion.section\n                  key=\"panel\"\n                  id={`acc-panel-${i}`}\n                  role=\"region\"\n                  aria-labelledby={`acc-tab-${i}`}\n                  initial={{ height: 0, opacity: 0 }}\n                  animate={{ height: \"auto\", opacity: 1 }}\n                  exit={{ height: 0, opacity: 0 }}\n                  transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}\n                  className=\"overflow-hidden\"\n                >\n                  <div className=\"grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10\">\n                    {/* left — body + deliverables */}\n                    <div>\n                      <p className=\"max-w-xl text-[14px] font-light leading-[1.55] text-white/50\">{it.body}</p>\n                      {it.deliverables && it.deliverables.length > 0 && (\n                        <ul className=\"mt-5 flex flex-col gap-2.5\">\n                          {it.deliverables.map((d) => (\n                            <li key={d} className=\"flex items-start gap-2.5 text-[13px] leading-snug text-white/55\">\n                              <span className=\"mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/[0.03]\">\n                                <Check className=\"h-4 w-4 text-white opacity-70\" />\n                              </span>\n                              <span>{d}</span>\n                            </li>\n                          ))}\n                        </ul>\n                      )}\n                    </div>\n\n                    {/* right — visual */}\n                    {stage && <div className=\"relative\">{stage(i)}</div>}\n                  </div>\n                </motion.section>\n              )}\n            </AnimatePresence>\n          </div>\n        );\n      })}\n    </div>\n  );\n}\n",
+      "content": "import { useState, type ComponentType, type ReactNode } from \"react\";\nimport { AnimatePresence, motion } from \"motion/react\";\nimport { ChevronDown, Check } from \"lucide-react\";\nimport { cn } from \"@/lib/utils\";\n\n// transitions.dev signature smooth-out easing (cubic-bezier(0.22, 1, 0.36, 1)).\nconst EASE = [0.22, 1, 0.36, 1] as const;\n\nexport type AccordionItem = {\n  title: string;\n  body: string;\n  icon?: ComponentType<{ className?: string }>;\n  deliverables?: string[];\n};\n\n/**\n * Accordion (WAI-ARIA) — a vertical list of titles; the active row expands to\n * reveal its body + deliverables alongside a visual supplied by `stage(i)`.\n * Pulled from the /pro-services \"Variant 02 · accordion\".\n */\nexport function Accordion({\n  items = [],\n  stage,\n  defaultOpen = 0,\n}: {\n  items?: AccordionItem[];\n  stage?: (i: number) => ReactNode;\n  defaultOpen?: number;\n}) {\n  const [active, setActive] = useState(defaultOpen);\n\n  return (\n    <div className=\"w-full\">\n      {items.map((it, i) => {\n        const on = active === i;\n        const Icon = it.icon;\n        return (\n          <div key={i} className=\"border-t border-foreground/[0.08] first:border-t-0\">\n            <h3>\n              <button\n                type=\"button\"\n                id={`acc-tab-${i}`}\n                aria-expanded={on}\n                aria-controls={`acc-panel-${i}`}\n                onClick={() => setActive(on ? -1 : i)}\n                className={cn(\n                  \"flex w-full cursor-pointer items-center justify-between gap-4 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-foreground/40\",\n                  on ? \"pb-2\" : \"pb-4\"\n                )}\n              >\n                <span className=\"flex items-center gap-3\">\n                  {Icon && (\n                    <Icon\n                      className={cn(\n                        \"h-5 w-5 shrink-0 text-foreground transition-opacity duration-300\",\n                        on ? \"opacity-100\" : \"opacity-35\"\n                      )}\n                    />\n                  )}\n                  <span\n                    className={cn(\n                      \"text-[22px] font-bold leading-[1.1] transition-colors duration-300\",\n                      on ? \"text-foreground\" : \"text-foreground/40 hover:text-foreground/60\"\n                    )}\n                  >\n                    {it.title}\n                  </span>\n                </span>\n                {/* chevron flips vertically (scaleY) — a \"v\" through a flat line to a \"^\" */}\n                <motion.span\n                  aria-hidden\n                  className=\"inline-flex shrink-0\"\n                  animate={{ scaleY: on ? -1 : 1 }}\n                  transition={{ duration: 0.25, ease: EASE }}\n                >\n                  <ChevronDown className={cn(\"h-5 w-5\", on ? \"text-foreground\" : \"text-foreground/40\")} />\n                </motion.span>\n              </button>\n            </h3>\n\n            <AnimatePresence initial={false}>\n              {on && (\n                <motion.section\n                  key=\"panel\"\n                  id={`acc-panel-${i}`}\n                  role=\"region\"\n                  aria-labelledby={`acc-tab-${i}`}\n                  initial={{ height: 0 }}\n                  animate={{ height: \"auto\" }}\n                  exit={{ height: 0 }}\n                  transition={{ duration: 0.28, ease: EASE }}\n                  className=\"overflow-hidden\"\n                >\n                  {/* body rises out of a soft blur as the panel grows */}\n                  <motion.div\n                    initial={{ opacity: 0, filter: \"blur(2px)\" }}\n                    animate={{ opacity: 1, filter: \"blur(0px)\" }}\n                    exit={{ opacity: 0, filter: \"blur(2px)\" }}\n                    transition={{ duration: 0.28, ease: EASE }}\n                    className=\"grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10\"\n                  >\n                    {/* left — body + deliverables */}\n                    <div>\n                      <p className=\"max-w-xl text-[14px] font-light leading-[1.55] text-foreground/50\">{it.body}</p>\n                      {it.deliverables && it.deliverables.length > 0 && (\n                        <ul className=\"mt-5 flex flex-col gap-2.5\">\n                          {it.deliverables.map((d) => (\n                            <li key={d} className=\"flex items-start gap-2.5 text-[13px] leading-snug text-foreground/55\">\n                              <span className=\"mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-foreground/[0.03]\">\n                                <Check className=\"h-4 w-4 text-foreground opacity-70\" />\n                              </span>\n                              <span>{d}</span>\n                            </li>\n                          ))}\n                        </ul>\n                      )}\n                    </div>\n\n                    {/* right — visual */}\n                    {stage && <div className=\"relative\">{stage(i)}</div>}\n                  </motion.div>\n                </motion.section>\n              )}\n            </AnimatePresence>\n          </div>\n        );\n      })}\n    </div>\n  );\n}\n",
       "type": "registry:ui",
       "target": "components/ui/accordion.tsx"
     }

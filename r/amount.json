@@ -1,0 +1,66 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "amount",
+  "type": "registry:ui",
+  "title": "Amount",
+  "description": "Money-formatting family — Fiat, Crypto and Percent agree on symbol placement, precision, abbreviation and sign colouring.",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/amount.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/amount.tsx",
+      "content": "import { cn } from \"@/lib/utils\"\n\nconst GREEN = \"var(--chart-up)\"\nconst RED = \"var(--chart-down)\"\n\nconst group = (n: number, dp: number) =>\n  n.toLocaleString(\"en-US\", { minimumFractionDigits: dp, maximumFractionDigits: dp })\n\n/** Fiat: fixed symbol placement, 2dp, sub-cent values widen to 4dp, optional K/M/B/T. */\nexport function formatFiat(value: number, { abbr = false, dp = 2, symbol = \"$\" } = {}) {\n  const abs = Math.abs(value)\n  if (abbr && abs >= 1e12) return `${symbol}${(value / 1e12).toFixed(2)}T`\n  if (abbr && abs >= 1e9) return `${symbol}${(value / 1e9).toFixed(2)}B`\n  if (abbr && abs >= 1e6) return `${symbol}${(value / 1e6).toFixed(2)}M`\n  if (abbr && abs >= 1e4) return `${symbol}${(value / 1e3).toFixed(1)}K`\n  return `${symbol}${group(value, abs > 0 && abs < 0.01 ? 4 : dp)}`\n}\n\n/** Crypto: trailing symbol, significant precision only — dust decimals collapse. */\nexport function formatCrypto(value: number, symbol: string, dp = 8) {\n  return `${value.toLocaleString(\"en-US\", { maximumFractionDigits: dp })} ${symbol}`\n}\n\n/** Percent: fixed precision, explicit + on gains. */\nexport function formatPercent(value: number, { signed = true, dp = 2 } = {}) {\n  return `${signed && value > 0 ? \"+\" : \"\"}${value.toFixed(dp)}%`\n}\n\nexport interface FiatAmountProps {\n  value: number\n  /** Collapse large values to K / M / B / T. */\n  abbr?: boolean\n  /** Decimal places (sub-cent values still widen to 4). */\n  dp?: number\n  /** Currency symbol, prefixed. */\n  symbol?: string\n  /** Render in the muted ink instead of the primary one. */\n  muted?: boolean\n  className?: string\n}\n\n/** A fiat balance — symbol first, grouped, tabular so columns line up. */\nexport function FiatAmount({ value, abbr, dp, symbol, muted, className }: FiatAmountProps) {\n  return (\n    <span className={cn(\"tabular-nums\", muted ? \"text-foreground/45\" : \"text-foreground\", className)}>\n      {formatFiat(value, { abbr, dp, symbol })}\n    </span>\n  )\n}\n\nexport interface CryptoAmountProps {\n  value: number\n  /** Asset ticker, appended after the number. */\n  symbol: string\n  /** Maximum decimal places kept. */\n  dp?: number\n  muted?: boolean\n  className?: string\n}\n\n/** A crypto balance — ticker last, precision trimmed to what is significant. */\nexport function CryptoAmount({ value, symbol, dp, muted, className }: CryptoAmountProps) {\n  return (\n    <span className={cn(\"tabular-nums\", muted ? \"text-foreground/45\" : \"text-foreground\", className)}>\n      {formatCrypto(value, symbol, dp)}\n    </span>\n  )\n}\n\nexport interface PercentAmountProps {\n  value: number\n  /** Prefix gains with +. */\n  signed?: boolean\n  dp?: number\n  /** Colour by sign (up / down). Off keeps it in the primary ink. */\n  colored?: boolean\n  className?: string\n}\n\n/** A change in percent — signed, and coloured up / down off that sign. */\nexport function PercentAmount({ value, signed, dp, colored = true, className }: PercentAmountProps) {\n  return (\n    <span\n      className={cn(\"tabular-nums\", !colored && \"text-foreground\", className)}\n      style={colored ? { color: value >= 0 ? GREEN : RED } : undefined}\n    >\n      {formatPercent(value, { signed, dp })}\n    </span>\n  )\n}\n\n/**\n * The money-formatting family as one namespace — `Amount.Fiat`, `Amount.Crypto`,\n * `Amount.Percent`. One import so every number in a screen agrees on symbol\n * placement, precision, abbreviation and sign colouring.\n */\nexport const Amount = { Fiat: FiatAmount, Crypto: CryptoAmount, Percent: PercentAmount }\n",
+      "type": "registry:ui",
+      "target": "components/ui/amount.tsx"
+    }
+  ]
+}

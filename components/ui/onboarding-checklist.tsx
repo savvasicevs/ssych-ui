@@ -3,8 +3,9 @@ import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
-const EASE = [0.16, 1, 0.3, 1] as const
-const GREEN = "#34C28A"
+// transitions.dev signature smooth-out easing.
+const EASE = [0.22, 1, 0.36, 1] as const
+const GREEN = "var(--chart-up)"
 
 export interface ChecklistStep {
   id: string
@@ -54,13 +55,13 @@ export function OnboardingChecklist({
   return (
     <div className={cn("w-[320px]", className)}>
       <div className="flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-[0.1em] text-white/40">{title}</span>
-        <span className="tabular-nums text-[11px] text-white/45">
+        <span className="text-[10px] tracking-[0.1em] text-foreground/40">{title}</span>
+        <span className="tabular-nums text-[11px] text-foreground/45">
           {done.size} / {steps.length}
         </span>
       </div>
 
-      <div className="mt-2 h-[2px] w-full overflow-hidden rounded-full bg-white/[0.06]">
+      <div className="mt-2 h-[2px] w-full overflow-hidden rounded-full bg-foreground/[0.06]">
         <motion.div
           className="h-full origin-left rounded-full"
           style={{ background: GREEN, opacity: 0.85 }}
@@ -79,12 +80,12 @@ export function OnboardingChecklist({
               type="button"
               onClick={() => toggle(s.id)}
               aria-pressed={on}
-              className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.02]"
+              className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors duration-150 hover:bg-foreground/[0.02]"
             >
               <span
-                className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border transition-colors duration-300"
+                className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border transition-colors duration-150"
                 style={{
-                  borderColor: on ? "rgba(42,161,115,0.6)" : "rgba(255,255,255,0.14)",
+                  borderColor: on ? "rgba(42,161,115,0.6)" : "var(--border)",
                   background: on ? "rgba(42,161,115,0.12)" : "transparent",
                 }}
               >
@@ -97,14 +98,15 @@ export function OnboardingChecklist({
                     strokeLinejoin="round"
                     initial={false}
                     animate={{ pathLength: on ? 1 : 0, opacity: on ? 1 : 0 }}
-                    transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }}
+                    // box fills first, then the check draws in after it (transitions.dev checkbox)
+                    transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: on ? 0.12 : 0 }}
                   />
                 </svg>
               </span>
               <span
                 className={cn(
                   "text-[13px] transition-colors duration-300",
-                  on ? "text-white/35 line-through decoration-white/20" : "text-white/75 group-hover:text-white/90",
+                  on ? "text-foreground/35 line-through decoration-foreground/20" : "text-foreground/75 group-hover:text-foreground/90",
                 )}
               >
                 {s.label}

@@ -9,10 +9,57 @@
     "motion",
     "tailwind-merge"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/ratings-radar.mp4"
+  },
   "files": [
     {
       "path": "components/ui/ratings-radar.tsx",
-      "content": "import { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"#34C28A\"\n\nexport interface RadarRating {\n  label: string\n  count: number\n}\n\nconst DEFAULT_RATINGS: RadarRating[] = [\n  { label: \"Neutral\", count: 3 },\n  { label: \"Buy\", count: 15 },\n  { label: \"Strong Buy\", count: 43 },\n  { label: \"Strong Sell\", count: 0 },\n  { label: \"Sell\", count: 1 },\n]\n\nconst CX = 150\nconst CY = 128\nconst R = 86\nconst RINGS = 4\n\n/**\n * Analyst-ratings pentagon in the Fey register: hairline rings and spokes with\n * one green wedge pulled toward the dominant rating. Counts sit beside their\n * labels so the shape and the numbers read together; the caption derives from\n * the data.\n */\nexport function RatingsRadar({\n  ratings = DEFAULT_RATINGS,\n  title = \"Analyst ratings\",\n  caption,\n  className,\n}: {\n  /** One axis per rating, drawn clockwise from the top. */\n  ratings?: RadarRating[]\n  title?: string\n  /** Defaults to \"<total> analysts · last 90 days\". */\n  caption?: string\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const max = Math.max(...ratings.map((r) => r.count), 1)\n  const total = ratings.reduce((a, r) => a + r.count, 0)\n\n  const pt = (i: number, r: number) => {\n    const a = -Math.PI / 2 + (i / ratings.length) * Math.PI * 2\n    return [CX + Math.cos(a) * r, CY + Math.sin(a) * r] as const\n  }\n  const wedge = ratings.map((r, i) => pt(i, 6 + (r.count / max) * (R - 6)))\n\n  return (\n    <div className={cn(\"w-[300px]\", className)}>\n      <div className=\"text-center\">\n        <div className=\"text-[13px] font-medium text-white/85\">{title}</div>\n        <div className=\"mt-0.5 text-[10.5px] text-white/40\">{caption ?? `${total} analysts · last 90 days`}</div>\n      </div>\n\n      <svg width={300} height={252} className=\"mt-1 block\">\n        {Array.from({ length: RINGS }, (_, ri) => {\n          const rr = ((ri + 1) / RINGS) * R\n          const d = `M${ratings.map((_, i) => pt(i, rr).join(\",\")).join(\" L\")} Z`\n          return <path key={ri} d={d} fill=\"none\" stroke=\"rgba(255,255,255,0.06)\" strokeWidth={1} />\n        })}\n        {ratings.map((_, i) => {\n          const [x2, y2] = pt(i, R)\n          return <line key={i} x1={CX} y1={CY} x2={x2} y2={y2} stroke=\"rgba(255,255,255,0.05)\" strokeWidth={1} />\n        })}\n\n        <motion.path\n          d={`M${wedge.map((p) => p.join(\",\")).join(\" L\")} Z`}\n          fill={GREEN}\n          fillOpacity={0.16}\n          stroke={GREEN}\n          strokeOpacity={0.7}\n          strokeWidth={1.2}\n          style={{ transformOrigin: `${CX}px ${CY}px` }}\n          initial={{ scale: reduced ? 1 : 0.2, opacity: reduced ? 1 : 0 }}\n          animate={{ scale: 1, opacity: 1 }}\n          transition={reduced ? { duration: 0 } : { duration: 0.7, ease: EASE, delay: 0.15 }}\n        />\n        {ratings.map((r, i) => {\n          if (r.count === 0) return null\n          const [x, y] = wedge[i]\n          return (\n            <motion.circle\n              key={r.label}\n              cx={x}\n              cy={y}\n              r={2.2}\n              fill=\"#fff\"\n              initial={{ opacity: reduced ? 1 : 0 }}\n              animate={{ opacity: 1 }}\n              transition={reduced ? { duration: 0 } : { delay: 0.7 + i * 0.05 }}\n            />\n          )\n        })}\n\n        {ratings.map((r, i) => {\n          const [x, y] = pt(i, R + 18)\n          const anchor = Math.abs(x - CX) < 8 ? \"middle\" : x > CX ? \"start\" : \"end\"\n          return (\n            <text key={r.label} x={x} y={y + 3} textAnchor={anchor} fontSize={10.5}>\n              <tspan fill=\"rgba(255,255,255,0.45)\">{r.label} </tspan>\n              {r.count > 0 && (\n                <tspan fill=\"rgba(255,255,255,0.9)\" fontWeight={600}>\n                  {r.count}\n                </tspan>\n              )}\n            </text>\n          )\n        })}\n      </svg>\n    </div>\n  )\n}\n",
+      "content": "import { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-up)\"\n\nexport interface RadarRating {\n  label: string\n  count: number\n}\n\nconst DEFAULT_RATINGS: RadarRating[] = [\n  { label: \"Neutral\", count: 11 },\n  { label: \"Buy\", count: 27 },\n  { label: \"Strong Buy\", count: 38 },\n  { label: \"Strong Sell\", count: 3 },\n  { label: \"Sell\", count: 8 },\n]\n\nconst CX = 150\nconst CY = 128\nconst R = 102\nconst RINGS = 4\n\n/**\n * Analyst-ratings pentagon in the Ink register: hairline rings and spokes with\n * one green wedge pulled toward the dominant rating. Counts sit beside their\n * labels so the shape and the numbers read together; the caption derives from\n * the data.\n */\nexport function RatingsRadar({\n  ratings = DEFAULT_RATINGS,\n  title = \"Analyst ratings\",\n  caption,\n  className,\n}: {\n  /** One axis per rating, drawn clockwise from the top. */\n  ratings?: RadarRating[]\n  title?: string\n  /** Defaults to \"<total> analysts · last 90 days\". */\n  caption?: string\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const max = Math.max(...ratings.map((r) => r.count), 1)\n  const total = ratings.reduce((a, r) => a + r.count, 0)\n\n  const pt = (i: number, r: number) => {\n    const a = -Math.PI / 2 + (i / ratings.length) * Math.PI * 2\n    return [CX + Math.cos(a) * r, CY + Math.sin(a) * r] as const\n  }\n  const wedge = ratings.map((r, i) => pt(i, 6 + (r.count / max) * (R - 6)))\n\n  return (\n    <div className={cn(\"w-[300px]\", className)}>\n      <div className=\"text-center\">\n        <div className=\"text-[13px] font-medium text-foreground/85\">{title}</div>\n        <div className=\"mt-0.5 text-[10.5px] text-foreground/40\">{caption ?? `${total} analysts · last 90 days`}</div>\n      </div>\n\n      <svg width={300} height={252} className=\"mt-1 block text-foreground\">\n        {Array.from({ length: RINGS }, (_, ri) => {\n          const rr = ((ri + 1) / RINGS) * R\n          const d = `M${ratings.map((_, i) => pt(i, rr).join(\",\")).join(\" L\")} Z`\n          return <path key={ri} d={d} fill=\"none\" stroke=\"currentColor\" strokeOpacity={0.06} strokeWidth={1} />\n        })}\n        {ratings.map((_, i) => {\n          const [x2, y2] = pt(i, R)\n          return <line key={i} x1={CX} y1={CY} x2={x2} y2={y2} stroke=\"currentColor\" strokeOpacity={0.05} strokeWidth={1} />\n        })}\n\n        <motion.path\n          d={`M${wedge.map((p) => p.join(\",\")).join(\" L\")} Z`}\n          fill={GREEN}\n          fillOpacity={0.16}\n          stroke={GREEN}\n          strokeOpacity={0.7}\n          strokeWidth={1.2}\n          style={{ transformOrigin: `${CX}px ${CY}px` }}\n          initial={{ scale: reduced ? 1 : 0.2, opacity: reduced ? 1 : 0 }}\n          animate={{ scale: 1, opacity: 1 }}\n          transition={reduced ? { duration: 0 } : { duration: 0.7, ease: EASE, delay: 0.15 }}\n        />\n        {ratings.map((r, i) => {\n          const [x, y] = pt(i, R + 18)\n          const anchor = Math.abs(x - CX) < 8 ? \"middle\" : x > CX ? \"start\" : \"end\"\n          return (\n            <text key={r.label} x={x} y={y + 3} textAnchor={anchor} fontSize={10.5}>\n              <tspan fill=\"currentColor\" fillOpacity={0.45}>{r.label} </tspan>\n              {r.count > 0 && (\n                <tspan fill=\"currentColor\" fillOpacity={0.9} fontWeight={600}>\n                  {r.count}\n                </tspan>\n              )}\n            </text>\n          )\n        })}\n      </svg>\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/ratings-radar.tsx"
     }

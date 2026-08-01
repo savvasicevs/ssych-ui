@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const GREEN = "#34C28A"
+const GREEN = "var(--chart-up)"
 
 export interface RadarRating {
   label: string
@@ -11,20 +11,20 @@ export interface RadarRating {
 }
 
 const DEFAULT_RATINGS: RadarRating[] = [
-  { label: "Neutral", count: 3 },
-  { label: "Buy", count: 15 },
-  { label: "Strong Buy", count: 43 },
-  { label: "Strong Sell", count: 0 },
-  { label: "Sell", count: 1 },
+  { label: "Neutral", count: 11 },
+  { label: "Buy", count: 27 },
+  { label: "Strong Buy", count: 38 },
+  { label: "Strong Sell", count: 3 },
+  { label: "Sell", count: 8 },
 ]
 
 const CX = 150
 const CY = 128
-const R = 86
+const R = 102
 const RINGS = 4
 
 /**
- * Analyst-ratings pentagon in the Fey register: hairline rings and spokes with
+ * Analyst-ratings pentagon in the Ink register: hairline rings and spokes with
  * one green wedge pulled toward the dominant rating. Counts sit beside their
  * labels so the shape and the numbers read together; the caption derives from
  * the data.
@@ -55,19 +55,19 @@ export function RatingsRadar({
   return (
     <div className={cn("w-[300px]", className)}>
       <div className="text-center">
-        <div className="text-[13px] font-medium text-white/85">{title}</div>
-        <div className="mt-0.5 text-[10.5px] text-white/40">{caption ?? `${total} analysts · last 90 days`}</div>
+        <div className="text-[13px] font-medium text-foreground/85">{title}</div>
+        <div className="mt-0.5 text-[10.5px] text-foreground/40">{caption ?? `${total} analysts · last 90 days`}</div>
       </div>
 
-      <svg width={300} height={252} className="mt-1 block">
+      <svg width={300} height={252} className="mt-1 block text-foreground">
         {Array.from({ length: RINGS }, (_, ri) => {
           const rr = ((ri + 1) / RINGS) * R
           const d = `M${ratings.map((_, i) => pt(i, rr).join(",")).join(" L")} Z`
-          return <path key={ri} d={d} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+          return <path key={ri} d={d} fill="none" stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />
         })}
         {ratings.map((_, i) => {
           const [x2, y2] = pt(i, R)
-          return <line key={i} x1={CX} y1={CY} x2={x2} y2={y2} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
+          return <line key={i} x1={CX} y1={CY} x2={x2} y2={y2} stroke="currentColor" strokeOpacity={0.05} strokeWidth={1} />
         })}
 
         <motion.path
@@ -83,30 +83,13 @@ export function RatingsRadar({
           transition={reduced ? { duration: 0 } : { duration: 0.7, ease: EASE, delay: 0.15 }}
         />
         {ratings.map((r, i) => {
-          if (r.count === 0) return null
-          const [x, y] = wedge[i]
-          return (
-            <motion.circle
-              key={r.label}
-              cx={x}
-              cy={y}
-              r={2.2}
-              fill="#fff"
-              initial={{ opacity: reduced ? 1 : 0 }}
-              animate={{ opacity: 1 }}
-              transition={reduced ? { duration: 0 } : { delay: 0.7 + i * 0.05 }}
-            />
-          )
-        })}
-
-        {ratings.map((r, i) => {
           const [x, y] = pt(i, R + 18)
           const anchor = Math.abs(x - CX) < 8 ? "middle" : x > CX ? "start" : "end"
           return (
             <text key={r.label} x={x} y={y + 3} textAnchor={anchor} fontSize={10.5}>
-              <tspan fill="rgba(255,255,255,0.45)">{r.label} </tspan>
+              <tspan fill="currentColor" fillOpacity={0.45}>{r.label} </tspan>
               {r.count > 0 && (
-                <tspan fill="rgba(255,255,255,0.9)" fontWeight={600}>
+                <tspan fill="currentColor" fillOpacity={0.9} fontWeight={600}>
                   {r.count}
                 </tspan>
               )}

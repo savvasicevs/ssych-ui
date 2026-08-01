@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "returns-calendar",
+  "type": "registry:ui",
+  "title": "Returns Calendar",
+  "description": "Monthly-returns heat grid — years × months diverging up/down by magnitude, a compounded year-total column, and a hover read-out that dims everything unrelated.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/returns-calendar.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/returns-calendar.tsx",
+      "content": "import { useMemo, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-up)\"\nconst RED = \"var(--chart-down)\"\n\nconst INITIALS = [\"J\", \"F\", \"M\", \"A\", \"M\", \"J\", \"J\", \"A\", \"S\", \"O\", \"N\", \"D\"]\nconst MONTHS = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\n\nconst DEFAULT_YEARS = [2021, 2022, 2023, 2024, 2025]\n\n/** Deterministic sample field so every render agrees (2022 reads as a down year). */\nconst DEFAULT_RETURNS: number[][] = (() => {\n  let seed = 2021\n  const rnd = () => {\n    seed = (seed * 1103515245 + 12345) & 0x7fffffff\n    return seed / 0x7fffffff\n  }\n  return DEFAULT_YEARS.map((_, yi) =>\n    INITIALS.map(() => Math.round(((yi === 1 ? -1.6 : 0.9) + (rnd() - 0.5) * 12) * 10) / 10),\n  )\n})()\n\n/** Compounded year return from its months, in percent. */\nconst compound = (row: number[]) => (row.reduce((acc, r) => acc * (1 + r / 100), 1) - 1) * 100\n\nconst signed = (v: number, dp: number) => `${v >= 0 ? \"+\" : \"−\"}${Math.abs(v).toFixed(dp)}`\n\nexport interface ReturnsCalendarProps {\n  /** Heading above the grid. */\n  title?: string\n  /** Caption shown while nothing is hovered. */\n  hint?: string\n  /** Row labels — one per row of `returns`. */\n  years?: number[]\n  /** `returns[year][month]` in percent (12 months per row). */\n  returns?: number[][]\n  className?: string\n}\n\n/**\n * Monthly-returns heat grid — years × months, diverging up/down by magnitude,\n * with a compounded year-total column. Hovering a cell reads out the month and\n * dims every unrelated cell; cells settle in on a diagonal delay.\n */\nexport function ReturnsCalendar({\n  title = \"Monthly returns\",\n  hint = \"hover a month · year = compounded\",\n  years = DEFAULT_YEARS,\n  returns = DEFAULT_RETURNS,\n  className,\n}: ReturnsCalendarProps) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<{ y: number; m: number } | null>(null)\n\n  const totals = useMemo(() => returns.map(compound), [returns])\n  const hotValue = hot ? returns[hot.y]?.[hot.m] : undefined\n\n  /** magnitude → tinted fill of the single up/down hue, never a second color */\n  const cellFill = (r: number, on: boolean) =>\n    `color-mix(in srgb, ${r >= 0 ? GREEN : RED} ${Math.round(Math.min(Math.abs(r) / 8, 1) * 55 + (on ? 22 : 7))}%, transparent)`\n\n  return (\n    <div className={cn(\"w-[440px]\", className)}>\n      <div className=\"mb-2 flex items-baseline justify-between px-0.5\">\n        <span className=\"text-[13px] font-medium text-foreground\">{title}</span>\n        <span className=\"text-[10px] tabular-nums text-foreground/45\">\n          {hot && hotValue != null ? (\n            <>\n              <span className=\"text-foreground\">\n                {MONTHS[hot.m]} {years[hot.y]}\n              </span>\n              <span className=\"mx-1.5 text-foreground/25\">·</span>\n              <span style={{ color: hotValue >= 0 ? GREEN : RED }}>{signed(hotValue, 1)}%</span>\n            </>\n          ) : (\n            hint\n          )}\n        </span>\n      </div>\n\n      <div\n        className=\"grid gap-[3px]\"\n        style={{ gridTemplateColumns: \"30px repeat(12, 1fr) 46px\" }}\n        onPointerLeave={() => setHot(null)}\n      >\n        <span />\n        {INITIALS.map((m, i) => (\n          <span\n            key={i}\n            className=\"pb-0.5 text-center text-[9px] text-foreground/45\"\n            style={{ opacity: hot && hot.m !== i ? 0.4 : 1 }}\n          >\n            {m}\n          </span>\n        ))}\n        <span className=\"pb-0.5 text-center text-[9px] text-foreground/45\">Yr</span>\n\n        {years.map((year, y) => (\n          <div key={year} className=\"contents\">\n            <span\n              className=\"flex items-center justify-end pr-1 text-[9.5px] tabular-nums text-foreground/45\"\n              style={{ opacity: hot && hot.y !== y ? 0.4 : 1 }}\n            >\n              {`’${String(year).slice(2)}`}\n            </span>\n\n            {(returns[y] ?? []).map((r, m) => {\n              const on = hot?.y === y && hot?.m === m\n              const dim = !!hot && !on && hot.y !== y && hot.m !== m\n              return (\n                <motion.button\n                  key={m}\n                  type=\"button\"\n                  aria-label={`${MONTHS[m]} ${year} ${signed(r, 1)}%`}\n                  onPointerEnter={() => setHot({ y, m })}\n                  onFocus={() => setHot({ y, m })}\n                  className=\"grid aspect-square place-items-center rounded-[3px] text-[8px] font-semibold tabular-nums outline-none\"\n                  style={{\n                    background: cellFill(r, on),\n                    color: `color-mix(in srgb, var(--foreground) ${Math.round(40 + Math.min(Math.abs(r) / 8, 1) * 45)}%, transparent)`,\n                    outline: on ? `1.5px solid ${r >= 0 ? GREEN : RED}` : \"none\",\n                    outlineOffset: \"-1.5px\",\n                  }}\n                  initial={{ opacity: reduced ? 1 : 0, scale: reduced ? 1 : 0.6 }}\n                  animate={{ opacity: dim ? 0.35 : 1, scale: 1 }}\n                  transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.008 * (y * 12 + m) }}\n                >\n                  {Math.abs(r) >= 4 ? Math.round(r) : \"\"}\n                </motion.button>\n              )\n            })}\n\n            <span\n              className=\"grid place-items-center rounded-[3px] text-[9px] font-semibold tabular-nums\"\n              style={{ background: cellFill(totals[y] / 3, false), color: totals[y] >= 0 ? GREEN : RED }}\n            >\n              {signed(totals[y], 0)}\n            </span>\n          </div>\n        ))}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/returns-calendar.tsx"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -11,7 +11,14 @@ export interface DonutSector {
 }
 
 /** Blue-family ramp plus two semantic hues — six distinct arcs before cycling. */
-const DEFAULT_COLORS = ["#4790E4", "#7FB4EF", "#2E5FA3", "#2AA173", "#B98634", "rgba(255,255,255,0.22)"]
+const DEFAULT_COLORS = [
+  "var(--chart-1, #4790E4)",
+  "#5C9EE8",
+  "#2E5FA3",
+  "var(--chart-2, #23976B)",
+  "var(--chart-3, #B98634)",
+  "color-mix(in srgb, var(--foreground) 22%, transparent)",
+]
 
 const DEFAULT_SECTORS: DonutSector[] = [
   { label: "Technology", pct: 31.2 },
@@ -27,7 +34,7 @@ const STROKE = 13
 const C = 2 * Math.PI * R
 
 /**
- * Allocation ring in the Fey register: sectors as arc segments around a
+ * Allocation ring: sectors as arc segments around a
  * centered symbol, legend rows beside it. Hovering a row or arc dims the rest
  * of the ring so one weight reads at a time.
  */
@@ -58,7 +65,7 @@ export function SectorsDonut({
   return (
     <div className={cn("flex items-center gap-7", className)}>
       <div className="relative h-[132px] w-[132px]">
-        <svg width={132} height={132} viewBox="0 0 132 132" className="-rotate-90">
+        <svg width={132} height={132} viewBox="0 0 132 132" className="-rotate-90 text-foreground">
           {arcs.map((a, i) => (
             <motion.circle
               key={a.label}
@@ -80,8 +87,37 @@ export function SectorsDonut({
           ))}
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[15px] font-semibold tracking-wide text-white/90">{symbol}</span>
-          <span className="mt-0.5 text-[9px] text-white/35">{caption}</span>
+          <AnimatePresence mode="wait" initial={false}>
+            {hot === null ? (
+              <motion.div
+                key="idle"
+                className="flex flex-col items-center"
+                initial={reduced ? false : { opacity: 0, scale: 0.94 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
+                transition={{ duration: reduced ? 0 : 0.16, ease: EASE }}
+              >
+                <span className="text-[15px] font-semibold tracking-wide text-foreground/90">{symbol}</span>
+                <span className="mt-0.5 text-[9px] text-foreground/35">{caption}</span>
+              </motion.div>
+            ) : (
+              <motion.div
+                key={arcs[hot].label}
+                className="flex flex-col items-center"
+                initial={reduced ? false : { opacity: 0, scale: 0.94 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
+                transition={{ duration: reduced ? 0 : 0.16, ease: EASE }}
+              >
+                <span className="text-[19px] font-semibold tabular-nums" style={{ color: arcs[hot].color }}>
+                  {arcs[hot].pct.toFixed(1)}%
+                </span>
+                <span className="mt-0.5 max-w-[92px] truncate text-center text-[9px] text-foreground/45">
+                  {arcs[hot].label}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -100,8 +136,8 @@ export function SectorsDonut({
             )}
           >
             <span className="h-2 w-2 shrink-0 rounded-[3px]" style={{ background: a.color }} />
-            <span className="w-[120px] truncate text-[11.5px] text-white/65">{a.label}</span>
-            <span className="text-[11px] tabular-nums text-white/50">{a.pct.toFixed(1)}%</span>
+            <span className="w-[120px] truncate text-[11.5px] text-foreground/65">{a.label}</span>
+            <span className="text-[11px] tabular-nums text-foreground/50">{a.pct.toFixed(1)}%</span>
           </button>
         ))}
       </div>

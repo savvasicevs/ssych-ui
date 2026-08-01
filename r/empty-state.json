@@ -8,10 +8,57 @@
     "clsx",
     "tailwind-merge"
   ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://www.ssicevs.com/component-videos/empty-state.mp4"
+  },
   "files": [
     {
       "path": "components/ui/empty-state.tsx",
-      "content": "import { type ReactNode } from \"react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst SURFACE = \"#0A0E16\"\nconst SURFACE_DEEP = \"#080B12\"\n\nconst EnvelopeGlyph = (\n  <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden>\n    <path\n      d=\"M3 8l9 5 9-5M4.8 5h14.4c1 0 1.8.8 1.8 1.8v10.4c0 1-.8 1.8-1.8 1.8H4.8c-1 0-1.8-.8-1.8-1.8V6.8C3 5.8 3.8 5 4.8 5z\"\n      stroke=\"rgba(255,255,255,0.45)\"\n      strokeWidth=\"1.4\"\n      strokeLinecap=\"round\"\n      strokeLinejoin=\"round\"\n    />\n  </svg>\n)\n\n/**\n * \"Nothing yet\" register in the Resend style: a dotted field, a hairline icon\n * chip, one line of ink and one quiet action. The emptiness is the design;\n * nothing decorates it.\n */\nexport function EmptyState({\n  icon = EnvelopeGlyph,\n  title = \"No emails sent yet\",\n  hint = \"your first send appears here in real time\",\n  action = \"Send a test email\",\n  onAction,\n  className,\n}: {\n  icon?: ReactNode\n  title?: string\n  hint?: string\n  /** Button label; pass null to render no action. */\n  action?: string | null\n  onAction?: () => void\n  className?: string\n}) {\n  return (\n    <div\n      className={cn(\"flex w-full max-w-[420px] flex-col items-center rounded-xl border border-white/[0.03] px-8 py-12\", className)}\n      style={{\n        background: \"radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 14px 14px, \" + SURFACE_DEEP,\n      }}\n    >\n      <span\n        className=\"grid h-9 w-9 place-items-center rounded-[10px] border border-white/[0.04]\"\n        style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 rgba(255,255,255,0.06)\" }}\n      >\n        {icon}\n      </span>\n      <p className=\"mt-4 text-[13px] text-white/75\">{title}</p>\n      <p className=\"mt-1 text-[11px] text-white/35\">{hint}</p>\n      {action && (\n        <button\n          type=\"button\"\n          onClick={onAction}\n          className=\"mt-5 rounded-full border border-white/[0.04] bg-white/[0.03] px-4 py-1.5 text-[11px] text-white/75 transition-all duration-150 hover:bg-white/[0.06] hover:text-white active:scale-[0.98]\"\n        >\n          {action}\n        </button>\n      )}\n    </div>\n  )\n}\n",
+      "content": "import { type ReactNode } from \"react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst SURFACE = \"var(--card)\"\nconst SURFACE_DEEP = \"var(--card)\"\n\nconst EnvelopeGlyph = (\n  <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden>\n    <path\n      d=\"M3 8l9 5 9-5M4.8 5h14.4c1 0 1.8.8 1.8 1.8v10.4c0 1-.8 1.8-1.8 1.8H4.8c-1 0-1.8-.8-1.8-1.8V6.8C3 5.8 3.8 5 4.8 5z\"\n      stroke=\"var(--muted-foreground)\"\n      strokeWidth=\"1.4\"\n      strokeLinecap=\"round\"\n      strokeLinejoin=\"round\"\n    />\n  </svg>\n)\n\n/**\n * \"Nothing yet\" register in the Resend style: a dotted field, a hairline icon\n * chip, one line of ink and one quiet action. The emptiness is the design;\n * nothing decorates it.\n */\nexport function EmptyState({\n  icon = EnvelopeGlyph,\n  title = \"No emails sent yet\",\n  hint = \"your first send appears here in real time\",\n  action = \"Send a test email\",\n  onAction,\n  className,\n}: {\n  icon?: ReactNode\n  title?: string\n  hint?: string\n  /** Button label; pass null to render no action. */\n  action?: string | null\n  onAction?: () => void\n  className?: string\n}) {\n  return (\n    <div\n      className={cn(\"flex w-full max-w-[420px] flex-col items-center rounded-xl border border-foreground/[0.03] px-8 py-12\", className)}\n      style={{\n        background: \"radial-gradient(color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px) 0 0 / 14px 14px, \" + SURFACE_DEEP,\n      }}\n    >\n      <span\n        className=\"grid h-9 w-9 place-items-center rounded-[10px] border border-foreground/[0.04]\"\n        style={{ background: SURFACE, boxShadow: \"inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 6%, transparent)\" }}\n      >\n        {icon}\n      </span>\n      <p className=\"mt-4 text-[13px] text-foreground/75\">{title}</p>\n      <p className=\"mt-1 text-[11px] text-foreground/35\">{hint}</p>\n      {action && (\n        <button\n          type=\"button\"\n          onClick={onAction}\n          className=\"mt-5 rounded-full border border-foreground/[0.04] bg-foreground/[0.03] px-4 py-1.5 text-[11px] text-foreground/75 transition-all duration-150 hover:bg-foreground/[0.06] hover:text-foreground active:scale-[0.98]\"\n        >\n          {action}\n        </button>\n      )}\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/empty-state.tsx"
     }

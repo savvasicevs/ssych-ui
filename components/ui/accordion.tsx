@@ -1,7 +1,10 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretDown, Check } from "@phosphor-icons/react";
+import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// transitions.dev signature smooth-out easing (cubic-bezier(0.22, 1, 0.36, 1)).
+const EASE = [0.22, 1, 0.36, 1] as const;
 
 export type AccordionItem = {
   title: string;
@@ -32,7 +35,7 @@ export function Accordion({
         const on = active === i;
         const Icon = it.icon;
         return (
-          <div key={i} className="border-t border-white/[0.08] first:border-t-0">
+          <div key={i} className="border-t border-foreground/[0.08] first:border-t-0">
             <h3>
               <button
                 type="button"
@@ -41,7 +44,7 @@ export function Accordion({
                 aria-controls={`acc-panel-${i}`}
                 onClick={() => setActive(on ? -1 : i)}
                 className={cn(
-                  "flex w-full cursor-pointer items-center justify-between gap-4 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                  "flex w-full cursor-pointer items-center justify-between gap-4 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-foreground/40",
                   on ? "pb-2" : "pb-4"
                 )}
               >
@@ -49,7 +52,7 @@ export function Accordion({
                   {Icon && (
                     <Icon
                       className={cn(
-                        "h-5 w-5 shrink-0 text-white transition-opacity duration-300",
+                        "h-5 w-5 shrink-0 text-foreground transition-opacity duration-300",
                         on ? "opacity-100" : "opacity-35"
                       )}
                     />
@@ -57,18 +60,21 @@ export function Accordion({
                   <span
                     className={cn(
                       "text-[22px] font-bold leading-[1.1] transition-colors duration-300",
-                      on ? "text-white" : "text-white/40 hover:text-white/60"
+                      on ? "text-foreground" : "text-foreground/40 hover:text-foreground/60"
                     )}
                   >
                     {it.title}
                   </span>
                 </span>
-                <CaretDown
-                  className={cn(
-                    "h-5 w-5 shrink-0 transition-transform duration-300",
-                    on ? "rotate-180 text-white" : "text-white/40"
-                  )}
-                />
+                {/* chevron flips vertically (scaleY) — a "v" through a flat line to a "^" */}
+                <motion.span
+                  aria-hidden
+                  className="inline-flex shrink-0"
+                  animate={{ scaleY: on ? -1 : 1 }}
+                  transition={{ duration: 0.25, ease: EASE }}
+                >
+                  <ChevronDown className={cn("h-5 w-5", on ? "text-foreground" : "text-foreground/40")} />
+                </motion.span>
               </button>
             </h3>
 
@@ -79,22 +85,29 @@ export function Accordion({
                   id={`acc-panel-${i}`}
                   role="region"
                   aria-labelledby={`acc-tab-${i}`}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                  initial={{ height: 0 }}
+                  animate={{ height: "auto" }}
+                  exit={{ height: 0 }}
+                  transition={{ duration: 0.28, ease: EASE }}
                   className="overflow-hidden"
                 >
-                  <div className="grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10">
+                  {/* body rises out of a soft blur as the panel grows */}
+                  <motion.div
+                    initial={{ opacity: 0, filter: "blur(2px)" }}
+                    animate={{ opacity: 1, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, filter: "blur(2px)" }}
+                    transition={{ duration: 0.28, ease: EASE }}
+                    className="grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10"
+                  >
                     {/* left — body + deliverables */}
                     <div>
-                      <p className="max-w-xl text-[14px] font-light leading-[1.55] text-white/50">{it.body}</p>
+                      <p className="max-w-xl text-[14px] font-light leading-[1.55] text-foreground/50">{it.body}</p>
                       {it.deliverables && it.deliverables.length > 0 && (
                         <ul className="mt-5 flex flex-col gap-2.5">
                           {it.deliverables.map((d) => (
-                            <li key={d} className="flex items-start gap-2.5 text-[13px] leading-snug text-white/55">
-                              <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/[0.03]">
-                                <Check className="h-4 w-4 text-white opacity-70" />
+                            <li key={d} className="flex items-start gap-2.5 text-[13px] leading-snug text-foreground/55">
+                              <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-foreground/[0.03]">
+                                <Check className="h-4 w-4 text-foreground opacity-70" />
                               </span>
                               <span>{d}</span>
                             </li>
@@ -105,7 +118,7 @@ export function Accordion({
 
                     {/* right — visual */}
                     {stage && <div className="relative">{stage(i)}</div>}
-                  </div>
+                  </motion.div>
                 </motion.section>
               )}
             </AnimatePresence>
