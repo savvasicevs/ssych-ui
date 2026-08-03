@@ -3,7 +3,7 @@
   "name": "avatar-stack",
   "type": "registry:ui",
   "title": "Avatar Stack",
-  "description": "Overlapping gradient-orb coins with a surface ring; hovering a coin lifts and names it, and the overflow count floats the hidden names without widening the stack.",
+  "description": "Overlapping gradient-orb coins with a surface ring. Hovering lifts and names a coin, and the overflow count floats the hidden names without widening the stack.",
   "dependencies": [
     "clsx",
     "motion",

@@ -3,7 +3,7 @@
   "name": "swap-ticket",
   "type": "registry:ui",
   "title": "Swap Ticket",
-  "description": "Composed trade card — a flip button on the seam that really swaps the cards, a token-select overlay covering the whole ticket, and a CTA whose label IS the validation state.",
+  "description": "Composed trade card. A flip button on the seam really swaps the cards, a token-select overlay covers the ticket, and the CTA label is the validation state.",
   "dependencies": [
     "clsx",
     "lucide-react",
