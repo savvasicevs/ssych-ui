@@ -202,7 +202,6 @@ export function PriceTargetFan({
             fill="none"
             stroke="color-mix(in srgb, var(--foreground) 78%, transparent)"
             strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
             initial={{ pathLength: reduced ? 1 : 0 }}
             animate={{ pathLength: 1 }}
             transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}

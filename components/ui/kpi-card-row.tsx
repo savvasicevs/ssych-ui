@@ -138,7 +138,6 @@ function KpiSpark({
           strokeWidth="1.75"
           strokeLinecap="round"
           strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
           initial={{ pathLength: reduced ? 1 : 0 }}
           animate={{ pathLength: 1 }}
           transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}

@@ -64,7 +64,6 @@ function Sparkline({ data, color, width = 72, reduced }: { data: number[]; color
         d={line}
         stroke={color}
         strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
         initial={{ pathLength: reduced ? 1 : 0 }}
         animate={{ pathLength: 1 }}
         transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
