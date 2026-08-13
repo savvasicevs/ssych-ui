@@ -1,3 +1,5 @@
+"use client"
+
 import { useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
@@ -223,7 +225,7 @@ export function PriceTargetFan({
               >
                 <path d={p.d} fill="none" stroke="transparent" strokeWidth={16} />
                 <path d={p.d} fill="none" stroke={p.color} strokeWidth={on ? 2.2 : 1.4} strokeOpacity={on ? 1 : 0.7} strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
-                <circle cx={geo.endX} cy={p.ty} r={on ? 4 : 3.2} fill="var(--surface)" stroke={p.color} strokeWidth={1.6} />
+                <circle cx={geo.endX} cy={p.ty} r={on ? 4 : 3.2} fill="var(--surface, var(--card))" stroke={p.color} strokeWidth={1.6} />
                 <text x={geo.endX + 10} y={p.ty - 2.5} fontSize={8} fill="color-mix(in srgb, var(--foreground) 40%, transparent)">
                   {p.key}
                 </text>
@@ -241,7 +243,7 @@ export function PriceTargetFan({
           {scrub !== null && (
             <g pointerEvents="none">
               <line x1={geo.hx(scrub)} y1={PAD.t} x2={geo.hx(scrub)} y2={H - PAD.b} stroke="color-mix(in srgb, var(--foreground) 22%, transparent)" strokeWidth={1} />
-              <circle cx={geo.hx(scrub)} cy={y(hist[scrub])} r={3.2} fill="var(--foreground)" stroke="var(--surface)" strokeWidth={1.5} />
+              <circle cx={geo.hx(scrub)} cy={y(hist[scrub])} r={3.2} fill="var(--foreground)" stroke="var(--surface, var(--card))" strokeWidth={1.5} />
             </g>
           )}
         </svg>
@@ -254,7 +256,7 @@ export function PriceTargetFan({
               width: CARD_W,
               left: overlay.px < W / 2 ? Math.min(W - CARD_W - 4, overlay.px + 14) : Math.max(4, overlay.px - CARD_W - 14),
               top: Math.max(2, Math.min(H - 44, overlay.py - 18)),
-              background: "linear-gradient(180deg, var(--card-raised) 0%, var(--surface) 100%)",
+              background: "linear-gradient(180deg, var(--card-raised, var(--card)) 0%, var(--surface, var(--card)) 100%)",
             }}
           >
             <div className="text-[13px] font-semibold tabular-nums" style={{ color: overlay.color ?? "var(--foreground)" }}>

@@ -1,3 +1,5 @@
+"use client"
+
 import { type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import { ChevronRight, MessageCircle, CreditCard, Heart, Keyboard, User } from "lucide-react"

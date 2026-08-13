@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "cutout-card",
+  "type": "registry:ui",
+  "title": "Cutout Card",
+  "description": "Media card with a scooped-out content tray (concave corners), hover-reveal action button, and gradient overlay.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/cutout-card.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/cutout-card.tsx",
+      "content": "\"use client\"\n\n\nimport {\n  createContext,\n  useCallback,\n  useContext,\n  useMemo,\n  useState,\n  type ComponentProps,\n  type HTMLAttributes,\n  type ImgHTMLAttributes,\n  type MouseEventHandler,\n} from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n// Minimal controllable-state hook (replaces @radix-ui/react-use-controllable-state)\nfunction useControllableState<T>({\n  prop,\n  defaultProp,\n  onChange,\n}: {\n  prop?: T\n  defaultProp: T\n  onChange?: (value: T) => void\n}) {\n  const [uncontrolled, setUncontrolled] = useState<T>(defaultProp)\n  const isControlled = prop !== undefined\n  const value = isControlled ? (prop as T) : uncontrolled\n  const setValue = useCallback(\n    (next: T) => {\n      if (!isControlled) setUncontrolled(next)\n      onChange?.(next)\n    },\n    [isControlled, onChange],\n  )\n  return [value, setValue] as const\n}\n\nconst CORNER_PATH = \"M0 200C155.996 199.961 200.029 156.308 200 0V200H0Z\"\n\n// ============================================================================\n// Context\n// ============================================================================\n\nexport interface CutoutCardContextValue {\n  hovered: boolean\n  setHovered: (next: boolean) => void\n}\n\nconst CutoutCardContext = createContext<CutoutCardContextValue | null>(null)\n\nfunction useCutoutCard() {\n  const ctx = useContext(CutoutCardContext)\n  if (!ctx) {\n    throw new Error(\"useCutoutCard must be used within <CutoutCard>\")\n  }\n  return ctx\n}\n\n// ============================================================================\n// Root\n// ============================================================================\n\nexport type CutoutCardProps = Omit<\n  ComponentProps<typeof motion.div>,\n  \"defaultValue\"\n> & {\n  /** When set, hover state is controlled by the parent. */\n  hovered?: boolean\n  /** Initial hover state when uncontrolled. */\n  defaultHovered?: boolean\n  /** Called when pointer hover changes (after internal state updates). */\n  onHoveredChange?: (hovered: boolean) => void\n  /**\n   * When true (default), pointer enter/leave on the root update hover state.\n   * Set false if you only drive hover programmatically or via CSS.\n   */\n  trackPointerHover?: boolean\n}\n\nexport function CutoutCard({\n  className,\n  hovered: hoveredProp,\n  defaultHovered = false,\n  onHoveredChange,\n  trackPointerHover = true,\n  onMouseEnter,\n  onMouseLeave,\n  children,\n  ...props\n}: CutoutCardProps) {\n  const reduceMotion = useReducedMotion()\n  const [hovered, setHovered] = useControllableState({\n    prop: hoveredProp,\n    defaultProp: defaultHovered,\n    onChange: onHoveredChange,\n  })\n\n  const setHoveredStable = useCallback(\n    (next: boolean) => {\n      setHovered(next)\n    },\n    [setHovered]\n  )\n\n  const ctx = useMemo<CutoutCardContextValue>(\n    () => ({\n      hovered: hovered ?? false,\n      setHovered: setHoveredStable,\n    }),\n    [hovered, setHoveredStable]\n  )\n\n  const handleMouseEnter: MouseEventHandler<HTMLDivElement> = (e) => {\n    onMouseEnter?.(e)\n    if (e.defaultPrevented || !trackPointerHover) {\n      return\n    }\n    setHoveredStable(true)\n  }\n\n  const handleMouseLeave: MouseEventHandler<HTMLDivElement> = (e) => {\n    onMouseLeave?.(e)\n    if (e.defaultPrevented || !trackPointerHover) {\n      return\n    }\n    setHoveredStable(false)\n  }\n\n  return (\n    <CutoutCardContext.Provider value={ctx}>\n      <motion.div\n        animate={{ opacity: 1 }}\n        className={cn(className)}\n        data-slot=\"cutout-card\"\n        data-state={ctx.hovered ? \"hovered\" : \"idle\"}\n        initial={{ opacity: 0 }}\n        onMouseEnter={handleMouseEnter}\n        onMouseLeave={handleMouseLeave}\n        transition={\n          reduceMotion\n            ? { duration: 0.22, ease: [0.23, 1, 0.32, 1] }\n            : { duration: 0.36, ease: [0.23, 1, 0.32, 1] }\n        }\n        {...props}\n      >\n        {children}\n      </motion.div>\n    </CutoutCardContext.Provider>\n  )\n}\n\n// ============================================================================\n// Layout primitives\n// ============================================================================\n\nexport type CutoutCardMediaProps = HTMLAttributes<HTMLDivElement>\n\nexport function CutoutCardMedia({ className, ...props }: CutoutCardMediaProps) {\n  return (\n    <div\n      className={cn(\"relative overflow-hidden\", className)}\n      data-slot=\"cutout-card-media\"\n      {...props}\n    />\n  )\n}\n\nexport type CutoutCardImageProps = ImgHTMLAttributes<HTMLImageElement>\n\n/** Parent `CutoutCardMedia` should be `relative` with a defined block size. */\nexport function CutoutCardImage({ className, alt = \"\", ...props }: CutoutCardImageProps) {\n  return (\n    // eslint-disable-next-line @next/next/no-img-element\n    <img\n      alt={alt}\n      className={cn(\n        \"absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/cutout:scale-105\",\n        className\n      )}\n      data-slot=\"cutout-card-image\"\n      {...props}\n    />\n  )\n}\n\nexport type CutoutCardOverlayProps = HTMLAttributes<HTMLDivElement>\n\nexport function CutoutCardOverlay({\n  className,\n  ...props\n}: CutoutCardOverlayProps) {\n  return (\n    <div\n      className={cn(\n        \"pointer-events-none absolute inset-0 bg-linear-to-t from-background/35 via-transparent to-transparent dark:from-background/50\",\n        className\n      )}\n      data-slot=\"cutout-card-overlay\"\n      {...props}\n    />\n  )\n}\n\nexport type CutoutCardContentProps = HTMLAttributes<HTMLDivElement>\n\nexport function CutoutCardContent({\n  className,\n  ...props\n}: CutoutCardContentProps) {\n  return (\n    <div\n      className={cn(\"p-6\", className)}\n      data-slot=\"cutout-card-content\"\n      {...props}\n    />\n  )\n}\n\nexport type CutoutCardFooterProps = HTMLAttributes<HTMLDivElement>\n\nexport function CutoutCardFooter({\n  className,\n  ...props\n}: CutoutCardFooterProps) {\n  return (\n    <div\n      className={cn(\"flex items-center justify-between\", className)}\n      data-slot=\"cutout-card-footer\"\n      {...props}\n    />\n  )\n}\n\n// ============================================================================\n// Cutout geometry\n// ============================================================================\n\nexport type CutoutCornerProps = ComponentProps<\"svg\"> & {\n  /** Pixel width/height of the SVG viewBox (square). */\n  size?: number\n}\n\nexport function CutoutCorner({\n  className,\n  size = 32,\n  viewBox = \"0 0 200 200\",\n  ...props\n}: CutoutCornerProps) {\n  return (\n    <>\n      {/* biome-ignore lint/a11y/noSvgWithoutTitle: decorative corner mask; hidden from AT via aria-hidden */}\n      <svg\n        aria-hidden\n        className={cn(className)}\n        data-slot=\"cutout-corner\"\n        height={size}\n        viewBox={viewBox}\n        width={size}\n        xmlns=\"http://www.w3.org/2000/svg\"\n        {...props}\n      >\n        <path d={CORNER_PATH} fill=\"currentColor\" />\n      </svg>\n    </>\n  )\n}\n\nexport type CutoutCardInsetLabelProps = HTMLAttributes<HTMLDivElement>\n\n/** Absolutely positioned strip (e.g. bottom-left “Featured”); add corners as siblings inside. Static (no entrance motion) to avoid compositing seams next to the media edge. */\nexport function CutoutCardInsetLabel({\n  className,\n  ...props\n}: CutoutCardInsetLabelProps) {\n  return (\n    <div\n      className={cn(\"absolute\", className)}\n      data-slot=\"cutout-card-inset-label\"\n      {...props}\n    />\n  )\n}\n\nexport type CutoutCardPinProps = HTMLAttributes<HTMLDivElement>\n\n/** Corner badge shell (e.g. top-right “New”); add corners as siblings inside. Static (no entrance motion). */\nexport function CutoutCardPin({ className, ...props }: CutoutCardPinProps) {\n  return (\n    <div\n      className={cn(\"absolute\", className)}\n      data-slot=\"cutout-card-pin\"\n      {...props}\n    />\n  )\n}\n\n// ============================================================================\n// Context-sensitive action region\n// ============================================================================\n\nexport type CutoutCardActionProps = ComponentProps<typeof motion.div> & {\n  /**\n   * When true (default), visibility follows card hover from context.\n   * Set false to always show the region.\n   */\n  revealOnHover?: boolean\n}\n\nexport function CutoutCardAction({\n  className,\n  revealOnHover = true,\n  ...props\n}: CutoutCardActionProps) {\n  const { hovered } = useCutoutCard()\n  const reduceMotion = useReducedMotion()\n  const visible = !revealOnHover || hovered\n\n  return (\n    <motion.div\n      animate={\n        visible\n          ? { opacity: 1, transform: \"translateY(0px)\" }\n          : { opacity: 0, transform: \"translateY(8px)\" }\n      }\n      className={cn(\n        \"absolute\",\n        revealOnHover && !visible && \"pointer-events-none\",\n        className\n      )}\n      data-reveal={revealOnHover ? \"hover\" : \"always\"}\n      data-slot=\"cutout-card-action\"\n      transition={\n        reduceMotion\n          ? { duration: 0.15, ease: [0.23, 1, 0.32, 1] }\n          : { duration: 0.24, ease: [0.23, 1, 0.32, 1] }\n      }\n      {...props}\n    />\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/cutout-card.tsx"
+    }
+  ]
+}

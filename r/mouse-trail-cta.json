@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "mouse-trail-cta",
+  "type": "registry:ui",
+  "title": "Mouse-Trail CTA",
+  "description": "CTA stage where the cursor's particle trail gravitates into the pill and feeds its glow.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/mouse-trail-cta.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/mouse-trail-cta.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useRef } from \"react\"\nimport { useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst ACCENT: [number, number, number] = [90, 170, 255]\nconst accentRgba = (a: number) => `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${a})`\n\ntype Particle = { x: number; y: number; vx: number; vy: number; born: number; size: number }\n\nconst LIFE_MS = 600\nconst GRAVITY_R = 140\nconst SPAWN_GAP_MS = 28\n\n/**\n * A CTA stage where the cursor leaves a restrained particle trail (1–2px\n * accent dots with a soft additive glow, 0.6s decay). Near the pill the dots\n * gravitate toward it and feed its border glow — signal language, no glitter.\n * Honors reduced motion by rendering a static pill.\n */\nexport function MouseTrailCta({\n  label = \"Start your free trial\",\n  href = \"#\",\n  className,\n  onClick,\n}: {\n  label?: string\n  href?: string\n  className?: string\n  onClick?: () => void\n}) {\n  const rootRef = useRef<HTMLDivElement | null>(null)\n  const canvasRef = useRef<HTMLCanvasElement | null>(null)\n  const pillRef = useRef<HTMLAnchorElement | null>(null)\n  const ringRef = useRef<HTMLDivElement | null>(null)\n  const reduced = useReducedMotion() ?? false\n\n  useEffect(() => {\n    if (reduced) return\n    const root = rootRef.current\n    const canvas = canvasRef.current\n    const pill = pillRef.current\n    const ring = ringRef.current\n    if (!root || !canvas || !pill) return\n    const ctx = canvas.getContext(\"2d\")\n    if (!ctx) return\n\n    let raf = 0\n    let running = false\n    let onScreen = true\n    let lastSpawn = 0\n    let charge = 0 // 0..1 — particles arriving at the pill feed this\n    const particles: Particle[] = []\n\n    const dpr = Math.min(window.devicePixelRatio || 1, 2)\n    const resize = () => {\n      const r = root.getBoundingClientRect()\n      canvas.width = Math.max(1, Math.round(r.width * dpr))\n      canvas.height = Math.max(1, Math.round(r.height * dpr))\n    }\n    resize()\n    const ro = new ResizeObserver(resize)\n    ro.observe(root)\n\n    const pillCenter = () => {\n      const rr = root.getBoundingClientRect()\n      const pr = pill.getBoundingClientRect()\n      return { x: pr.left - rr.left + pr.width / 2, y: pr.top - rr.top + pr.height / 2, rx: pr.width / 2 }\n    }\n\n    const applyCharge = () => {\n      const [cr, cg, cb] = ACCENT\n      const t = charge\n      const r = Math.round(255 + (cr - 255) * t)\n      const g = Math.round(255 + (cg - 255) * t)\n      const b = Math.round(255 + (cb - 255) * t)\n      pill.style.borderColor = `rgba(${r},${g},${b},${0.4 + 0.5 * t})`\n      pill.style.boxShadow = t > 0.02 ? `0 0 ${22 * t}px ${accentRgba(0.34 * t)}` : \"none\"\n      // the hairline ring brightens as charge arrives\n      if (ring) {\n        ring.style.opacity = String(0.35 + 0.65 * t)\n        ring.style.filter = `saturate(${1 + t}) brightness(${1 + 0.5 * t})`\n      }\n    }\n\n    const tick = (now: number) => {\n      raf = 0\n      const w = canvas.width / dpr\n      const h = canvas.height / dpr\n      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)\n      ctx.clearRect(0, 0, w, h)\n      ctx.globalCompositeOperation = \"lighter\"\n\n      const c = pillCenter()\n      for (let i = particles.length - 1; i >= 0; i--) {\n        const p = particles[i]\n        const age = (now - p.born) / LIFE_MS\n        if (age >= 1) {\n          particles.splice(i, 1)\n          continue\n        }\n        const dx = c.x - p.x\n        const dy = c.y - p.y\n        const d = Math.hypot(dx, dy)\n        if (d < GRAVITY_R && d > 1) {\n          const pull = (1 - d / GRAVITY_R) * 0.9\n          p.vx += (dx / d) * pull\n          p.vy += (dy / d) * pull\n        }\n        if (d < c.rx + 10) {\n          charge = Math.min(1, charge + 0.08)\n          particles.splice(i, 1)\n          continue\n        }\n        p.vx *= 0.92\n        p.vy *= 0.92\n        p.x += p.vx\n        p.y += p.vy\n        const fade = 1 - age\n        // soft additive glow halo + crisp core\n        ctx.beginPath()\n        ctx.arc(p.x, p.y, p.size * 2.4, 0, Math.PI * 2)\n        ctx.fillStyle = accentRgba(0.16 * fade)\n        ctx.fill()\n        ctx.beginPath()\n        ctx.arc(p.x, p.y, p.size * 0.75, 0, Math.PI * 2)\n        ctx.fillStyle = `rgba(${Math.round(160 + 95 * fade)},${Math.round(200 + 55 * fade)},255,${0.85 * fade})`\n        ctx.fill()\n      }\n      ctx.globalCompositeOperation = \"source-over\"\n\n      charge = Math.max(0, charge - 0.012)\n      applyCharge()\n\n      if (onScreen && (particles.length > 0 || charge > 0.01)) raf = requestAnimationFrame(tick)\n      else running = false\n    }\n\n    const ensureLoop = () => {\n      if (!running && onScreen) {\n        running = true\n        raf = requestAnimationFrame(tick)\n      }\n    }\n\n    const onMove = (e: PointerEvent) => {\n      const now = performance.now()\n      if (now - lastSpawn < SPAWN_GAP_MS) return\n      lastSpawn = now\n      const r = root.getBoundingClientRect()\n      particles.push({\n        x: e.clientX - r.left + (Math.random() - 0.5) * 6,\n        y: e.clientY - r.top + (Math.random() - 0.5) * 6,\n        vx: (Math.random() - 0.5) * 0.4,\n        vy: (Math.random() - 0.5) * 0.4,\n        born: now,\n        size: Math.random() < 0.5 ? 1 : 2,\n      })\n      if (particles.length > 80) particles.shift()\n      ensureLoop()\n    }\n\n    const io = new IntersectionObserver(([entry]) => {\n      onScreen = entry.isIntersecting\n      if (!onScreen && raf) {\n        cancelAnimationFrame(raf)\n        raf = 0\n        running = false\n      } else if (onScreen) ensureLoop()\n    })\n    io.observe(root)\n    root.addEventListener(\"pointermove\", onMove)\n\n    return () => {\n      root.removeEventListener(\"pointermove\", onMove)\n      io.disconnect()\n      ro.disconnect()\n      if (raf) cancelAnimationFrame(raf)\n    }\n  }, [reduced])\n\n  return (\n    <div\n      ref={rootRef}\n      className={cn(\"relative flex items-center justify-center overflow-hidden\", className)}\n    >\n      <canvas ref={canvasRef} className=\"pointer-events-none absolute inset-0 h-full w-full\" aria-hidden />\n      <div className=\"relative\">\n        {/* hairline accent ring — intensity driven by the charge (opacity/filter on the ref) */}\n        <div\n          ref={ringRef}\n          aria-hidden\n          className=\"pointer-events-none absolute -inset-px z-0 rounded-[60px]\"\n          style={{ opacity: 0.35, boxShadow: `inset 0 0 0 1px ${accentRgba(0.55)}` }}\n        />\n        <a\n          ref={pillRef}\n          href={href}\n          onClick={onClick}\n          className=\"group relative z-10 inline-flex overflow-hidden rounded-[60px] border border-foreground/40 px-6 py-3 text-[15px] font-semibold text-foreground transition-colors\"\n        >\n          <span className=\"absolute inset-0 origin-bottom scale-y-0 bg-foreground transition-transform duration-300 ease-out group-hover:scale-y-100\" />\n          <span className=\"relative transition-colors duration-300 group-hover:text-background\">{label}</span>\n        </a>\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/mouse-trail-cta.tsx"
+    }
+  ]
+}

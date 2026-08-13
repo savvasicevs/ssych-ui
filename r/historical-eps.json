@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "historical-eps",
+  "type": "registry:ui",
+  "title": "Historical EPS",
+  "description": "Forecast-vs-reported quarterly bars — dashed forecasts, a derived Beat-by tip, and a surprise tooltip.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/historical-eps.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/historical-eps.tsx",
+      "content": "\"use client\"\n\nimport { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst FORECAST = \"var(--chart-1)\"\nconst RED = \"var(--chart-down)\"\nconst GREEN = \"var(--chart-up)\"\n\nexport interface EpsQuarter {\n  label: string\n  forecast: number\n  reported: number\n}\n\nconst DEFAULT_DATA: EpsQuarter[] = [\n  { label: \"Q1 23\", forecast: 0.42, reported: 0.31 },\n  { label: \"Q2 23\", forecast: 0.18, reported: 0.66 },\n  { label: \"Q3 23\", forecast: 0.55, reported: 0.47 },\n  { label: \"Q4 23\", forecast: 0.09, reported: -0.22 },\n  { label: \"Q1 24\", forecast: -0.12, reported: 0.06 },\n  { label: \"Q2 24\", forecast: 0.71, reported: 0.94 },\n  { label: \"Q3 24\", forecast: 0.28, reported: 0.19 },\n  { label: \"Q4 24\", forecast: 0.44, reported: 1.02 },\n  { label: \"Q1 25\", forecast: 0.83, reported: 0.58 },\n]\n\nconst W = 560\nconst H = 190\nconst PAD = { l: 8, r: 36, t: 34, b: 24 }\n\n/**\n * Forecast-vs-reported quarterly bars in the Ink register: dashed bars are\n * forecasts, solid bars are reported, a \"Beat by\" tip points at the biggest\n * positive surprise, and hovering opens a tooltip with the surprise line.\n * Growth figures derive from the data.\n */\nexport function HistoricalEps({\n  data = DEFAULT_DATA,\n  title = \"Historical EPS\",\n  className,\n}: {\n  data?: EpsQuarter[]\n  title?: string\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<number | null>(null)\n  const colW = (W - PAD.l - PAD.r) / data.length\n  const barW = 11\n\n  const max = Math.max(...data.flatMap((q) => [q.forecast, q.reported]), 0.1) * 1.1\n  const min = Math.min(...data.flatMap((q) => [q.forecast, q.reported]), 0) * 1.4\n  const y = (v: number) => PAD.t + (1 - (v - min) / (max - min)) * (H - PAD.t - PAD.b)\n  const zero = y(0)\n\n  const surprise = (q: EpsQuarter) => (q.reported - q.forecast) / Math.max(0.01, Math.abs(q.forecast))\n\n  // growth vs 4 quarters back (YoY) and the previous quarter (QoQ)\n  const last = data[data.length - 1]\n  const yoyBase = data[data.length - 5]\n  const qoqBase = data[data.length - 2]\n  const pct = (now: number, base?: number) =>\n    base === undefined || base === 0 ? null : Math.round(((now - base) / Math.abs(base)) * 100)\n  const yoy = pct(last.reported, yoyBase?.reported)\n  const qoq = pct(last.reported, qoqBase?.reported)\n\n  return (\n    <div className={cn(\"w-full max-w-[620px]\", className)}>\n      <div className=\"flex items-center justify-between\">\n        <div>\n          <span className=\"text-[13px] font-medium text-foreground/85\">{title}</span>\n          <span className=\"ml-4 inline-flex items-center gap-3 text-[10px] text-foreground/40\">\n            <span className=\"inline-flex items-center gap-1.5\">\n              <span className=\"h-1.5 w-1.5 rounded-full border\" style={{ borderColor: FORECAST }} /> Forecast\n            </span>\n            <span className=\"inline-flex items-center gap-1.5\">\n              <span className=\"h-1.5 w-1.5 rounded-full bg-foreground/70\" /> Reported\n            </span>\n          </span>\n        </div>\n        <span className=\"text-[10px] text-foreground/40\">\n          {yoy !== null && (\n            <>\n              Growth YoY: <span style={{ color: yoy >= 0 ? GREEN : RED }}>{yoy}%</span>\n            </>\n          )}\n          {yoy !== null && qoq !== null && <span className=\"mx-2 text-foreground/20\">·</span>}\n          {qoq !== null && (\n            <>\n              QoQ: <span style={{ color: qoq >= 0 ? GREEN : RED }}>{qoq}%</span>\n            </>\n          )}\n        </span>\n      </div>\n\n      <div className=\"relative\">\n        <svg viewBox={`0 0 ${W} ${H}`} className=\"mt-1 block w-full text-foreground\" onMouseLeave={() => setHot(null)}>\n          {[max * 0.98, max * 0.49, 0].map((v) => (\n            <g key={v}>\n              <line\n                x1={PAD.l}\n                y1={y(v)}\n                x2={W - PAD.r}\n                y2={y(v)}\n                stroke=\"currentColor\" strokeOpacity={0.05}\n                strokeDasharray={v === 0 ? undefined : \"2 4\"}\n              />\n              <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={9} fill=\"currentColor\" fillOpacity={0.3}>\n                {v.toFixed(2)}\n              </text>\n            </g>\n          ))}\n\n          {data.map((q, i) => {\n            const cx = PAD.l + i * colW + colW / 2\n            const dim = hot !== null && hot !== i\n            const fTop = Math.min(y(q.forecast), zero)\n            const fH = Math.abs(y(q.forecast) - zero)\n            const rTop = Math.min(y(q.reported), zero)\n            const rH = Math.abs(y(q.reported) - zero)\n            return (\n              <motion.g\n                key={q.label}\n                onMouseEnter={() => setHot(i)}\n                initial={{ opacity: reduced ? 1 : 0 }}\n                animate={{ opacity: dim ? 0.3 : 1 }}\n                transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: i * 0.04 }}\n              >\n                <rect\n                  x={cx - barW - 2}\n                  y={fTop}\n                  width={barW}\n                  height={Math.max(2, fH)}\n                  rx={2.5}\n                  fill=\"color-mix(in srgb, var(--chart-1) 7%, transparent)\"\n                  stroke={FORECAST}\n                  strokeOpacity={0.35}\n                  strokeWidth={1}\n                  strokeDasharray=\"3 2.5\"\n                />\n                <rect\n                  x={cx + 2}\n                  y={rTop}\n                  width={barW}\n                  height={Math.max(2, rH)}\n                  rx={2.5}\n                  fill=\"currentColor\"\n                  fillOpacity={dim ? 0.35 : 0.78}\n                />\n                <text\n                  x={cx}\n                  y={H - 6}\n                  textAnchor=\"middle\"\n                  fontSize={9}\n                  fill=\"currentColor\"\n                  fillOpacity={hot === i ? 0.75 : 0.3}\n                >\n                  {q.label}\n                </text>\n              </motion.g>\n            )\n          })}\n        </svg>\n\n        {hot !== null && (\n          <div\n            className=\"pointer-events-none absolute z-10 w-[150px] rounded-lg border border-foreground/[0.05] p-2.5\"\n            style={{\n              background: \"var(--card)\",\n              boxShadow: \"inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 6%, transparent), 0 12px 32px rgba(0,0,0,0.5)\",\n              // sit BESIDE the hovered column (right of it in the left half, left of it\n              // in the right half) so the tooltip never covers the bar you're reading\n              left: `${((hot < data.length / 2\n                ? Math.min(W - 152, PAD.l + hot * colW + colW / 2 + 16)\n                : Math.max(2, PAD.l + hot * colW + colW / 2 - 166)) / W) * 100}%`,\n              top: 8,\n            }}\n          >\n            <div className=\"text-[9px] text-foreground/35\">{data[hot].label} · after close</div>\n            <div className=\"mt-1.5 flex justify-between text-[10px]\">\n              <span className=\"text-foreground/50\">Forecast</span>\n              <span className=\"tabular-nums text-foreground/80\">{data[hot].forecast.toFixed(2)}</span>\n            </div>\n            <div className=\"mt-1 flex justify-between text-[10px]\">\n              <span className=\"text-foreground/50\">Reported</span>\n              <span className=\"tabular-nums text-foreground/80\">{data[hot].reported.toFixed(2)}</span>\n            </div>\n            <div className=\"mt-1.5 flex justify-between border-t border-foreground/[0.04] pt-1.5 text-[10px]\">\n              <span className=\"text-foreground/50\">Surprise</span>\n              <span className=\"tabular-nums\" style={{ color: data[hot].reported >= data[hot].forecast ? GREEN : RED }}>\n                {data[hot].reported >= data[hot].forecast ? \"+\" : \"−\"}\n                {Math.abs(surprise(data[hot]) * 100).toFixed(1)}%\n              </span>\n            </div>\n          </div>\n        )}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/historical-eps.tsx"
+    }
+  ]
+}

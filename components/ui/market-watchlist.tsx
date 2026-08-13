@@ -1,3 +1,5 @@
+"use client"
+
 import { useId, useMemo, useState } from "react"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"

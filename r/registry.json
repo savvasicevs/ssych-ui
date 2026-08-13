@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
-  "name": "ssicevs-ui",
-  "homepage": "https://www.ssicevs.com/library",
+  "name": "ssych-ui",
+  "homepage": "https://ssych.com/library",
   "items": [
     {
       "name": "sidebar",
@@ -16,6 +16,26 @@
       "type": "registry:ui"
     },
     {
+      "name": "card-stack",
+      "type": "registry:ui"
+    },
+    {
+      "name": "card-grid",
+      "type": "registry:ui"
+    },
+    {
+      "name": "card-list",
+      "type": "registry:ui"
+    },
+    {
+      "name": "bento-gallery",
+      "type": "registry:ui"
+    },
+    {
+      "name": "cutout-card",
+      "type": "registry:ui"
+    },
+    {
       "name": "gradient-button-group",
       "type": "registry:ui"
     },
@@ -24,11 +44,27 @@
       "type": "registry:ui"
     },
     {
+      "name": "project-card",
+      "type": "registry:ui"
+    },
+    {
       "name": "macbook-frame",
       "type": "registry:ui"
     },
     {
+      "name": "historical-eps",
+      "type": "registry:ui"
+    },
+    {
       "name": "price-target-fan",
+      "type": "registry:ui"
+    },
+    {
+      "name": "coverflow-rail",
+      "type": "registry:ui"
+    },
+    {
+      "name": "profile-card",
       "type": "registry:ui"
     },
     {
@@ -76,11 +112,19 @@
       "type": "registry:ui"
     },
     {
+      "name": "holdings-table",
+      "type": "registry:ui"
+    },
+    {
       "name": "request-log",
       "type": "registry:ui"
     },
     {
       "name": "inbox",
+      "type": "registry:ui"
+    },
+    {
+      "name": "project-index",
       "type": "registry:ui"
     },
     {
@@ -121,6 +165,14 @@
     },
     {
       "name": "crypto-fiat",
+      "type": "registry:ui"
+    },
+    {
+      "name": "screen-shuffle",
+      "type": "registry:ui"
+    },
+    {
+      "name": "mouse-trail-cta",
       "type": "registry:ui"
     }
   ]

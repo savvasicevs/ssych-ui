@@ -1,4 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react"
+"use client"
+
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUpDown, ChevronDown, Settings, X } from "lucide-react"
 
@@ -25,7 +27,18 @@ export interface SwapToken {
   /** Unit price in the quote currency, used for the rate and the fiat line. */
   price: number
   balance: number
+  /**
+   * How the balance should PRINT, when the ticket sits next to a register that
+   * already prints it (e.g. "4.10", "1,500"). Defaults to a locale format of
+   * `balance`, so the two can never read as different holdings.
+   */
+  balanceLabel?: string
 }
+
+/** the balance as text — the caller's own wording wins, otherwise locale-format
+ *  (raw `String(8200)` printed "8200" next to a register's "8,200") */
+const balanceOf = (t: SwapToken) =>
+  t.balanceLabel ?? t.balance.toLocaleString("en-US", { maximumFractionDigits: 6 })
 
 /** Generic majors, so the ticket ships with a coherent sample book. Brand hues
  * are overridable custom properties — set `--coin-eth` etc. to re-skin the discs. */
@@ -172,6 +185,12 @@ export interface SwapTicketProps {
   slippage?: string
   /** Fired when a valid ticket is submitted, before the side flips. */
   onSubmit?: (ticket: { side: "buy" | "sell"; pay: SwapToken; receive: SwapToken; amount: number }) => void
+  /**
+   * Fired on mount and whenever the pair changes (pick, flip, or a Buy/Sell that
+   * swaps the sides). Lets a host surface read the live pair — e.g. a balance
+   * panel beside the ticket that lists exactly the two tokens on screen.
+   */
+  onPairChange?: (pair: { pay: SwapToken; receive: SwapToken }) => void
   className?: string
 }
 
@@ -192,6 +211,7 @@ export function SwapTicket({
   defaultAmount = "1.2",
   slippage = "Auto · 0.5%",
   onSubmit,
+  onPairChange,
   className,
 }: SwapTicketProps) {
   const reduced = useReducedMotion()
@@ -202,6 +222,13 @@ export function SwapTicket({
   const [picking, setPicking] = useState<"pay" | "receive" | null>(null)
   // CTA side toggle — starts as Buy (green); pressing flips it red and it reads Sell
   const [side, setSide] = useState<"buy" | "sell">("buy")
+
+  // the pair is internal state, so a host can only learn it by being told —
+  // announced on mount too, so a balance panel is correct before the first pick
+  useEffect(() => {
+    onPairChange?.({ pay: payTok, receive: recvTok })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payTok, recvTok])
 
   const rate = payTok.price / recvTok.price
   const buyAmt = useMemo(() => {
@@ -256,7 +283,7 @@ export function SwapTicket({
             value={sell}
             onChange={setSell}
             asset={payTok}
-            balance={`${payTok.balance} ${payTok.symbol}`}
+            balance={`${balanceOf(payTok)} ${payTok.symbol}`}
             onMax={() => setSell(String(payTok.balance))}
             onPickToken={() => setPicking("pay")}
           />
@@ -285,7 +312,12 @@ export function SwapTicket({
         <span className="tabular-nums">
           1 {payTok.symbol} = {rate.toLocaleString("en-US", { maximumFractionDigits: rate >= 100 ? 0 : 5 })} {recvTok.symbol}
         </span>
-        <span className="flex items-center gap-1 rounded-md px-1.5 py-0.5 tabular-nums" style={{ background: "var(--card)" }}>
+        {/* ink tint, not --card: that token is #ffffff in light mode, the same as
+            the page ground, so the chip had no chip */}
+        <span
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 tabular-nums"
+          style={{ background: "color-mix(in srgb, var(--foreground) 6%, transparent)" }}
+        >
           {slippage}
         </span>
       </div>
@@ -311,7 +343,15 @@ export function SwapTicket({
         className="group relative h-14 rounded-xl text-[15px] font-bold transition-[filter,opacity,background-color] duration-200 enabled:cursor-pointer enabled:hover:brightness-[1.07] enabled:active:brightness-[0.93] disabled:cursor-not-allowed"
         style={{
           background: enabled ? (side === "buy" ? GREEN : RED) : RAISED,
-          color: enabled ? "var(--background)" : TEXT_MUTED,
+          /* the ink that sits ON the fill, per fill. `var(--background)` was wrong
+             in light mode: white on the light green (#2f9e70) is 3.4:1, under AA
+             for a 15px bold label. Buy now measures 8.4:1 dark / 5.7:1 light and
+             Sell 5.9:1 dark / 4.6:1 light. */
+          color: enabled
+            ? side === "buy"
+              ? "var(--on-accent, var(--background))"
+              : "var(--on-danger, var(--background))"
+            : TEXT_MUTED,
         }}
       >
         {enabled && (
@@ -376,7 +416,7 @@ export function SwapTicket({
                     role="option"
                     aria-selected={active}
                     className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors"
-                    style={{ background: active ? "var(--card)" : "transparent" }}
+                    style={{ background: active ? "color-mix(in srgb, var(--foreground) 6%, transparent)" : "transparent" }}
                   >
                     <AssetIcon symbol={t.symbol} color={t.color} size={26} />
                     <span className="flex min-w-0 flex-1 flex-col">
@@ -388,7 +428,7 @@ export function SwapTicket({
                       </span>
                     </span>
                     <span className="text-[11px] tabular-nums" style={{ color: TEXT_MUTED }}>
-                      {t.balance} {t.symbol}
+                      {balanceOf(t)} {t.symbol}
                     </span>
                   </button>
                 )

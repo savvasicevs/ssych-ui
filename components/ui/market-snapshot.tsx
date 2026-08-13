@@ -1,3 +1,5 @@
+"use client"
+
 import { useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 

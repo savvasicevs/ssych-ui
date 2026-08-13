@@ -1,3 +1,5 @@
+"use client"
+
 import { useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 

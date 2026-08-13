@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "screen-shuffle",
+  "type": "registry:ui",
+  "title": "Screen Shuffle",
+  "description": "Stacked screens where the front card arcs to the back on a timer or click.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/screen-shuffle.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/screen-shuffle.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useRef, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\n\nexport interface ShuffleScreen {\n  id: string\n  /** Product shot URL; falls back to a gradient mock when absent. */\n  image?: string\n  grad?: string\n  tint?: string\n}\n\nconst DEFAULT_SCREENS: ShuffleScreen[] = [\n  { id: \"overview\", grad: \"linear-gradient(135deg, #1b2a4a 0%, #0e1526 55%, var(--surface) 100%)\", tint: \"rgba(90,170,255,0.5)\" },\n  { id: \"markets\", grad: \"linear-gradient(135deg, #123a33 0%, #0c1f1d 55%, var(--surface) 100%)\", tint: \"rgba(42,161,115,0.5)\" },\n  { id: \"reports\", grad: \"linear-gradient(135deg, #3a2a12 0%, #201709 55%, var(--surface) 100%)\", tint: \"rgba(185,134,52,0.55)\" },\n  { id: \"billing\", grad: \"linear-gradient(135deg, #32204a 0%, #1a1128 55%, var(--surface) 100%)\", tint: \"rgba(167,139,250,0.5)\" },\n  { id: \"settings\", grad: \"linear-gradient(135deg, #14273e 0%, #0d1726 55%, var(--surface) 100%)\", tint: \"rgba(140,196,255,0.45)\" },\n]\n\nconst SX = 26 // per-slot x offset\nconst SY = 20 // per-slot y offset\nconst SCALE = 0.055 // per-slot shrink\n\n/**\n * A stacked-screens loop as a live component: screens hold a 3D-ish stack;\n * every few seconds the front one arcs out to the right and settles at the\n * back while the rest step forward. Click advances immediately. Depth is\n * scale + blur + dim, no real z. Pass `image` per screen for real product\n * shots; the default slots are gradient mocks.\n */\nexport function ScreenShuffle({\n  screens = DEFAULT_SCREENS,\n  stepMs = 2600,\n  caption = \"click to shuffle\",\n  className,\n}: {\n  screens?: ShuffleScreen[]\n  /** Auto-advance interval; ignored when the user prefers reduced motion. */\n  stepMs?: number\n  caption?: string\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [step, setStep] = useState(0)\n  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined)\n  const n = screens.length\n\n  useEffect(() => {\n    if (reduced) return\n    timer.current = setInterval(() => setStep((s) => s + 1), stepMs)\n    return () => clearInterval(timer.current)\n  }, [reduced, stepMs])\n\n  return (\n    <button\n      type=\"button\"\n      aria-label=\"Advance the screen stack\"\n      onClick={() => setStep((s) => s + 1)}\n      className={cn(\"relative h-[300px] w-full max-w-[520px] cursor-pointer\", className)}\n      style={{ perspective: 1200 }}\n    >\n      {screens.map((screen, i) => {\n        const slot = (((i - step) % n) + n) % n\n        const front = slot === 0\n        return (\n          <motion.div\n            key={screen.id}\n            className=\"absolute left-1/2 top-1/2 w-[360px] overflow-hidden rounded-xl border border-foreground/[0.04]\"\n            style={{ aspectRatio: \"1495 / 1024\", transformOrigin: \"50% 60%\" }}\n            animate={{\n              x: `calc(-50% + ${slot * SX}px)`,\n              y: `calc(-50% - ${slot * SY}px)`,\n              scale: 1 - slot * SCALE,\n              rotateZ: (slot - (n - 1) / 2) * 1.2,\n              filter: `blur(${slot * 0.7}px) brightness(${1 - slot * 0.14})`,\n              zIndex: n - slot,\n            }}\n            transition={\n              reduced\n                ? { duration: 0 }\n                : front\n                  ? { duration: 0.8, ease: EASE } // arriving at the front\n                  : { duration: 0.7, ease: EASE, delay: 0.08 }\n            }\n          >\n            {screen.image ? (\n              <img src={screen.image} alt=\"\" className=\"absolute inset-0 h-full w-full object-cover\" draggable={false} />\n            ) : (\n              /* gradient mock screen — chrome bar + skeleton content */\n              <div className=\"absolute inset-0\" style={{ background: screen.grad }}>\n                <div className=\"flex h-[14%] items-center gap-1.5 border-b border-foreground/[0.07] px-[5%]\">\n                  <span className=\"h-1.5 w-1.5 rounded-full bg-foreground/20\" />\n                  <span className=\"h-1.5 w-1.5 rounded-full bg-foreground/12\" />\n                  <span className=\"h-1.5 w-1.5 rounded-full bg-foreground/12\" />\n                  <span className=\"ml-3 h-[22%] w-[26%] rounded-full bg-foreground/[0.08]\" />\n                </div>\n                <div className=\"flex h-[86%] gap-[4%] p-[5%]\">\n                  <div className=\"flex w-[30%] flex-col gap-[8%]\">\n                    <span className=\"h-[9%] w-full rounded-full\" style={{ background: screen.tint }} />\n                    <span className=\"h-[9%] w-4/5 rounded-full bg-foreground/[0.10]\" />\n                    <span className=\"h-[9%] w-3/5 rounded-full bg-foreground/[0.07]\" />\n                    <span className=\"h-[9%] w-4/6 rounded-full bg-foreground/[0.05]\" />\n                  </div>\n                  <div className=\"flex-1 rounded-lg border border-foreground/[0.07] bg-background/25\" />\n                </div>\n              </div>\n            )}\n            <span\n              className=\"pointer-events-none absolute inset-0\"\n              style={{ background: \"linear-gradient(160deg, color-mix(in srgb, var(--foreground) 5%, transparent), transparent 40%)\" }}\n            />\n          </motion.div>\n        )\n      })}\n      {caption && <span className=\"absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-foreground/30\">{caption}</span>}\n    </button>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/screen-shuffle.tsx"
+    }
+  ]
+}

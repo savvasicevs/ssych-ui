@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useState, type ComponentType } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, PanelLeft, Menu, X } from "lucide-react";
@@ -5,7 +7,13 @@ import { cn } from "@/lib/utils";
 
 type IconCmp = ComponentType<{ className?: string }>;
 
-export type SidebarItem = { label: string };
+export type SidebarItem = {
+  label: string;
+  /** when set, the item renders as a real link and "active" follows the page's
+   *  activeLabel prop instead of internal state — dashboard navigation rather
+   *  than demo state */
+  href?: string;
+};
 export type SidebarSection = { label: string; icon: IconCmp; items: SidebarItem[] };
 
 // Brand marks are inlined — lucide dropped brand logos, and a registry component
@@ -86,18 +94,34 @@ function NavSection({
                 const on = it.label === active;
                 return (
                   <li key={it.label}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(it.label)}
-                      className={cn(
-                        "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors",
-                        on
-                          ? "text-foreground before:absolute before:left-[-1px] before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-foreground before:content-['']"
-                          : "text-foreground/50 hover:text-foreground/80"
-                      )}
-                    >
-                      {it.label}
-                    </button>
+                    {it.href ? (
+                      <a
+                        href={it.href}
+                        aria-current={on ? "page" : undefined}
+                        onClick={() => onSelect(it.label)}
+                        className={cn(
+                          "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors",
+                          on
+                            ? "text-foreground before:absolute before:left-[-1px] before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-foreground before:content-['']"
+                            : "text-foreground/50 hover:text-foreground/80"
+                        )}
+                      >
+                        {it.label}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onSelect(it.label)}
+                        className={cn(
+                          "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors",
+                          on
+                            ? "text-foreground before:absolute before:left-[-1px] before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-foreground before:content-['']"
+                            : "text-foreground/50 hover:text-foreground/80"
+                        )}
+                      >
+                        {it.label}
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -110,7 +134,7 @@ function NavSection({
 }
 
 /**
- * Collapsible accordion sidebar — the chrome of the SSICEVS UI library itself:
+ * Collapsible accordion sidebar — the chrome of the ssych ui library itself:
  * wordmark + collapse toggle, icon'd accordion sections, indented links with an
  * active rail, and socials in the footer.
  *
@@ -122,6 +146,9 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [active, setActive] = useState(activeLabel ?? sections[0]?.items[0]?.label ?? "");
+  useEffect(() => {
+    if (activeLabel) setActive(activeLabel);
+  }, [activeLabel]);
 
   const select = (label: string, close: boolean) => {
     setActive(label);
@@ -132,7 +159,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
   const panel = (onClose?: () => void) => (
     <div className="flex h-full w-[264px] flex-col px-4 py-5">
       <div className="flex items-center justify-between gap-2">
-        <img src="/assets/wordmark.svg" alt="SSICEVS" className="h-[18px] w-auto select-none" draggable={false} />
+        <img src="/assets/wordmark.svg" alt="ssych" className="h-[24px] w-auto select-none" draggable={false} />
         <button
           type="button"
           onClick={onClose ?? (() => setCollapsed(true))}
@@ -179,7 +206,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
           >
             <Menu className="h-5 w-5" />
           </button>
-          <img src="/assets/wordmark.svg" alt="SSICEVS" className="h-[18px] w-auto select-none" draggable={false} />
+          <img src="/assets/wordmark.svg" alt="ssych" className="h-[18px] w-auto select-none" draggable={false} />
         </div>
 
         <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-foreground/30">

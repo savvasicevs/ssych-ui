@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { animate, motion, useReducedMotion } from "motion/react"
 import { Activity, Target, Timer } from "lucide-react"

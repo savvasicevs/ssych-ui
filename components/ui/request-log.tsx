@@ -1,3 +1,5 @@
+"use client"
+
 import { useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
@@ -21,7 +23,7 @@ export interface LogRow {
 
 const DEFAULT_LOGS: LogRow[] = [
   { id: "req_01", code: 200, method: "POST", path: "/v1/emails", ms: 42, time: "09:41:02", body: '{ "id": "re_8Xk2mPq4", "status": "queued" }' },
-  { id: "req_02", code: 200, method: "GET", path: "/v1/domains", ms: 18, time: "09:40:56", body: '{ "data": [{ "name": "ssicevs.com", "status": "verified" }] }' },
+  { id: "req_02", code: 200, method: "GET", path: "/v1/domains", ms: 18, time: "09:40:56", body: '{ "data": [{ "name": "ssych.com", "status": "verified" }] }' },
   { id: "req_03", code: 422, method: "POST", path: "/v1/broadcasts", ms: 31, time: "09:39:11", body: '{ "error": "audience_id is required" }' },
   { id: "req_04", code: 200, method: "DELETE", path: "/v1/api-keys/k_9vTz", ms: 26, time: "09:35:47", body: '{ "deleted": true }' },
   { id: "req_05", code: 404, method: "GET", path: "/v1/emails/em_missing", ms: 12, time: "09:31:08", body: '{ "error": "not_found" }' },

@@ -1,3 +1,5 @@
+"use client"
+
 import { useRef, useState, type ReactNode } from "react"
 import {
   AnimatePresence,
