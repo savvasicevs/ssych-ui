@@ -8,7 +8,6 @@ import {
   CutoutCardMedia,
   CutoutCardOverlay,
   CutoutCardAction,
-  CutoutCorner,
 } from "@/components/ui/cutout-card";
 import { MetalFx } from "metal-fx";
 import { type CardData } from "@/components/ui/project-card-utils";
@@ -75,14 +74,26 @@ export function ProjectCard({
       >
         {variant === "list" ? (
           <>
-            <CutoutCardMedia className="relative aspect-[16/9] w-full shrink-0 overflow-hidden border-b border-foreground/5 bg-secondary sm:aspect-[3/2] sm:w-72 sm:border-b-0 sm:border-r">
+            {/* media fills the whole row; it fades to black before the text
+                column, so the type never sits on the image itself */}
+            <CutoutCardMedia className="absolute inset-0">
               <CardMedia card={card} />
+              <div
+                aria-hidden
+                className="absolute inset-0 sm:hidden"
+                style={{ background: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.85) 55%, #000 82%)" }}
+              />
+              <div
+                aria-hidden
+                className="absolute inset-0 hidden sm:block"
+                style={{ background: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.85) 40%, #000 60%)" }}
+              />
             </CutoutCardMedia>
-            <div className="flex min-w-0 flex-1 flex-col justify-center py-5 pl-5 pr-12">
-              <h3 className="truncate text-lg font-semibold text-card-foreground">{card.title}</h3>
-              <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">{card.description}</p>
+            <div className="relative z-10 ml-auto flex min-h-[124px] w-full min-w-0 flex-col justify-end py-5 pl-5 pr-12 pt-24 sm:w-[55%] sm:justify-center sm:pt-5">
+              <h3 className="truncate text-lg font-semibold text-white/95">{card.title}</h3>
+              <p className="mt-1.5 line-clamp-2 text-sm text-white/60">{card.description}</p>
             </div>
-            <CutoutCardAction className="right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary/70 text-foreground backdrop-blur sm:top-1/2 sm:-translate-y-1/2">
+            <CutoutCardAction className="right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white backdrop-blur sm:top-1/2 sm:-translate-y-1/2">
               <ArrowUpRight className="h-4 w-4" />
             </CutoutCardAction>
           </>
@@ -91,22 +102,24 @@ export function ProjectCard({
             <CutoutCardMedia className="absolute inset-0">
               <CardMedia card={card} />
               <CutoutCardOverlay className="from-black/40 via-transparent to-transparent" />
+              {/* the image runs the full card and dissolves to black just above
+                  the title — no tray, no second surface, the type stands on
+                  the fade */}
+              <div
+                aria-hidden
+                className="absolute inset-x-0 bottom-0 h-[58%]"
+                style={{ background: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.88) 52%, #000 100%)" }}
+              />
             </CutoutCardMedia>
 
-            <CutoutCardAction className="right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 bg-background/40 text-foreground backdrop-blur">
+            <CutoutCardAction className="right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white backdrop-blur">
               <ArrowUpRight className="h-4 w-4" />
             </CutoutCardAction>
 
-            {/* Cutout content tray — scooped out of the media via concave corners */}
-            <div
-              className="absolute inset-x-0 bottom-0 z-10 px-5 pb-5 pt-4"
-              style={{ background: "linear-gradient(180deg, var(--panel) 0%, var(--surface-soft) 100%)" }}
-            >
-              <CutoutCorner aria-hidden size={26} className="absolute bottom-full left-0 -scale-x-100 text-[var(--panel)]" />
-              <CutoutCorner aria-hidden size={26} className="absolute bottom-full right-0 text-[var(--panel)]" />
+            <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-5 pt-4">
               <h3
                 className={cn(
-                  "font-semibold text-card-foreground",
+                  "font-semibold text-white/95",
                   emphasis === "lg" ? "text-xl sm:text-2xl" : "text-base"
                 )}
               >
@@ -114,7 +127,7 @@ export function ProjectCard({
               </h3>
               <p
                 className={cn(
-                  "mt-1 line-clamp-2 text-muted-foreground",
+                  "mt-1 line-clamp-2 text-white/60",
                   emphasis === "lg" ? "max-w-2xl text-sm sm:text-base" : "text-xs sm:text-sm"
                 )}
               >

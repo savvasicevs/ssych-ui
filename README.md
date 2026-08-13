@@ -1,4 +1,4 @@
-# SSICEVS UI
+# ssych ui
 
 **Control surfaces for AI agents & dense dashboards** — a dark, terminal-grade
 component library for the surfaces operators actually have to read, trust, and
