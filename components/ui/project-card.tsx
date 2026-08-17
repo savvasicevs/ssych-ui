@@ -1,32 +1,32 @@
 "use client"
 
-import { useState, type CSSProperties } from "react";
-import { ArrowUpRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState, type CSSProperties } from "react"
+import { ArrowUpRight } from "lucide-react"
+import { cn } from "@/lib/utils"
 import {
   CutoutCard,
   CutoutCardMedia,
   CutoutCardOverlay,
   CutoutCardAction,
-} from "@/components/ui/cutout-card";
-import { MetalFx } from "metal-fx";
-import { type CardData } from "@/components/ui/project-card-utils";
+} from "@/components/ui/cutout-card"
+import { MetalFx } from "metal-fx"
+import { type CardData } from "@/components/ui/project-card-utils"
 
 /** Switcher-matched card surface (gradient bg + bezel stroke). */
 const SURFACE_STYLE: CSSProperties = {
   background: "linear-gradient(180deg, var(--panel) 0%, var(--surface-soft) 100%)",
   border: "1px solid color-mix(in srgb, var(--foreground) 5%, transparent)",
   borderTop: "1px solid color-mix(in srgb, var(--foreground) 10%, transparent)",
-};
+}
 
 // The project image, heavily blurred + over-scaled so it reads as an ambient
 // color gradient rather than the literal screenshot. (No video — that's the
 // "actual visual" we're replacing.)
 const BLUR_MEDIA =
-  "absolute inset-0 h-full w-full scale-[1.75] object-cover blur-[44px] saturate-[1.4] brightness-90 transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/cutout:scale-[2]";
+  "absolute inset-0 h-full w-full scale-[1.75] object-cover blur-[44px] saturate-[1.4] brightness-90 transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/cutout:scale-[2]"
 
 function CardMedia({ card }: { card: CardData }) {
-  const src = card.image;
+  const src = card.image
   if (!src) {
     return (
       <div
@@ -34,9 +34,9 @@ function CardMedia({ card }: { card: CardData }) {
         className="absolute inset-0"
         style={{ background: "radial-gradient(circle at 30% 25%, #1b2433, var(--surface) 70%)" }}
       />
-    );
+    )
   }
-  return <img src={src} alt="" aria-hidden className={BLUR_MEDIA} />;
+  return <img src={src} alt="" aria-hidden className={BLUR_MEDIA} />
 }
 
 /**
@@ -53,11 +53,11 @@ export function ProjectCard({
   variant = "overlay",
   emphasis = "lg",
 }: {
-  card: CardData;
-  variant?: "overlay" | "list";
-  emphasis?: "lg" | "sm";
+  card: CardData
+  variant?: "overlay" | "list"
+  emphasis?: "lg" | "sm"
 }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered] = useState(false)
 
   return (
     <div
@@ -90,9 +90,11 @@ export function ProjectCard({
               />
             </CutoutCardMedia>
             <div className="relative z-10 ml-auto flex min-h-[124px] w-full min-w-0 flex-col justify-end py-5 pl-5 pr-12 pt-24 sm:w-[55%] sm:justify-center sm:pt-5">
-              <h3 className="truncate text-lg font-semibold text-white/95">{card.title}</h3>
-              <p className="mt-1.5 line-clamp-2 text-sm text-white/60">{card.description}</p>
+              <h3 className="truncate text-[18px] font-semibold text-white/95">{card.title}</h3>
+              <p className="mt-1.5 line-clamp-2 text-[14px] text-white/60">{card.description}</p>
             </div>
+            {/* blur: the project photo underneath — the arrow sits directly on the
+                media, and a flat scrim at this size would punch a hole in the image. */}
             <CutoutCardAction className="right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white backdrop-blur sm:top-1/2 sm:-translate-y-1/2">
               <ArrowUpRight className="h-4 w-4" />
             </CutoutCardAction>
@@ -112,6 +114,7 @@ export function ProjectCard({
               />
             </CutoutCardMedia>
 
+            {/* blur: the project photo underneath — same reason as the overlay variant. */}
             <CutoutCardAction className="right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/40 text-white backdrop-blur">
               <ArrowUpRight className="h-4 w-4" />
             </CutoutCardAction>
@@ -120,7 +123,7 @@ export function ProjectCard({
               <h3
                 className={cn(
                   "font-semibold text-white/95",
-                  emphasis === "lg" ? "text-xl sm:text-2xl" : "text-base"
+                  emphasis === "lg" ? "text-[20px] sm:text-[24px]" : "text-[16px]"
                 )}
               >
                 {card.title}
@@ -128,7 +131,7 @@ export function ProjectCard({
               <p
                 className={cn(
                   "mt-1 line-clamp-2 text-white/60",
-                  emphasis === "lg" ? "max-w-2xl text-sm sm:text-base" : "text-xs sm:text-sm"
+                  emphasis === "lg" ? "max-w-2xl text-[14px] sm:text-[16px]" : "text-[12px] sm:text-[14px]"
                 )}
               >
                 {card.description}
@@ -155,5 +158,5 @@ export function ProjectCard({
         </span>
       )}
     </div>
-  );
+  )
 }

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "new-items-pill",
+  "type": "registry:ui",
+  "title": "New Items Pill",
+  "description": "A live tape that pins the row you are reading — arrivals stop pushing the list down and count into a pill until you tap back to the top.",
+  "dependencies": [
+    "clsx",
+    "lucide-react",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/new-items-pill.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/new-items-pill.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useLayoutEffect, useRef, useState } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\nimport { ArrowUp } from \"lucide-react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\n\nexport interface FeedFill {\n  id: number\n  time: string\n  side: \"buy\" | \"sell\"\n  symbol: string\n  size: string\n  price: string\n}\n\nconst SYMBOLS = [\"NOVX\", \"ARDN\", \"MRDX\", \"ZTH\", \"ORBN\"]\n\n/** Fixed session anchor so the tape never depends on the wall clock — the same\n *  index always renders the same second, on the server and on every re-render. */\nconst OPEN_SECONDS = 9 * 3600 + 32 * 60\n\nfunction clock(i: number) {\n  const t = OPEN_SECONDS + i * 7\n  const pad = (n: number) => String(n).padStart(2, \"0\")\n  return `${pad(Math.floor(t / 3600) % 24)}:${pad(Math.floor((t % 3600) / 60))}:${pad(t % 60)}`\n}\n\n/* hash-sine: a fill is a pure function of its sequence number, so replaying the\n   tape gives byte-identical rows. */\nfunction makeFill(i: number): FeedFill {\n  const g = Math.abs(Math.sin(i * 12.9898 + 78.233) * 43758.5453) % 1\n  const symbol = SYMBOLS[i % SYMBOLS.length]\n  const base = 120 + (i % SYMBOLS.length) * 37\n  return {\n    id: i,\n    time: clock(i),\n    side: g > 0.5 ? \"buy\" : \"sell\",\n    symbol,\n    size: (Math.floor(g * 900) + 25).toLocaleString(\"en-US\"),\n    price: (base + g * 4).toFixed(2),\n  }\n}\n\nconst SEED = 16\nconst DEFAULT_FILLS: FeedFill[] = Array.from({ length: SEED }, (_, i) => makeFill(SEED - 1 - i))\n\n/** the tape stops growing here so a long session cannot leak rows */\nconst CAP = 80\n/** anything under this counts as \"parked at the top\", where arrivals may land freely */\nconst TOP = 4\n\n/**\n * A live tape that refuses to move the ground under you.\n *\n * Parked at the top, fills land and the list grows. Scroll down to read a row and\n * the behaviour inverts: fills still land, but the scroll position is pinned to the\n * row you were on, and the arrivals are counted into a pill instead. Tap the pill to\n * come back to the top and clear it.\n *\n * The pin is the whole component. Prepending to a scrolled list slides everything\n * down by the height of the new row, so the line under your cursor at mousedown is\n * not the line you click — on a fills blotter that is a misread position, and on a\n * request log it is the wrong trace opened. The count is the exact number that\n * arrived while you were away: never rounded, never capped at \"9+\", because the one\n * question the pill exists to answer is how much you have not seen.\n */\nexport function NewItemsPill({\n  fills = DEFAULT_FILLS,\n  intervalMs = 2600,\n  live = true,\n  title = \"Sample tape\",\n  className,\n}: {\n  fills?: FeedFill[]\n  /** gap between arrivals; the tape freezes when live is false */\n  intervalMs?: number\n  live?: boolean\n  title?: string\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const scroller = useRef<HTMLDivElement>(null)\n  const next = useRef(SEED)\n  /** scrollHeight captured before a prepend, so the pin can measure the delta */\n  const before = useRef(0)\n  /** ids seeded on mount — they must not animate in, only later arrivals do */\n  const seeded = useRef(new Set(fills.map((f) => f.id)))\n\n  const [tape, setTape] = useState(fills)\n  const [pending, setPending] = useState(0)\n  const [away, setAway] = useState(false)\n\n  useEffect(() => {\n    if (!live) return\n    const t = window.setInterval(() => {\n      const el = scroller.current\n      before.current = el ? el.scrollHeight : 0\n      const parked = !el || el.scrollTop < TOP\n      setTape((prev) => [makeFill(next.current++), ...prev].slice(0, CAP))\n      if (!parked) setPending((n) => n + 1)\n    }, intervalMs)\n    return () => window.clearInterval(t)\n  }, [live, intervalMs])\n\n  /* Runs before paint: add back exactly the height that was inserted above the\n     viewport, so the visible rows never move. useEffect is too late and shows a jump. */\n  useLayoutEffect(() => {\n    const el = scroller.current\n    if (!el || !before.current) return\n    const delta = el.scrollHeight - before.current\n    if (delta > 0 && el.scrollTop > 0) el.scrollTop += delta\n    before.current = 0\n  }, [tape])\n\n  const onScroll = () => {\n    const el = scroller.current\n    if (!el) return\n    const parked = el.scrollTop < TOP\n    setAway(!parked)\n    if (parked) setPending(0)\n  }\n\n  const jump = () => {\n    scroller.current?.scrollTo({ top: 0, behavior: reduced ? \"auto\" : \"smooth\" })\n    setPending(0)\n  }\n\n  const showPill = pending > 0 && away\n\n  return (\n    <div\n      className={cn(\"relative w-full max-w-[480px] overflow-hidden rounded-xl border border-foreground/[0.04]\", className)}\n      style={{\n        background: \"var(--card)\",\n        boxShadow: \"inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)\",\n      }}\n    >\n      <div className=\"flex items-center justify-between border-b border-foreground/[0.04] bg-foreground/[0.02] px-4 py-2.5\">\n        <span className=\"text-[13px] font-medium text-foreground/85\">{title}</span>\n        <span className=\"flex items-center gap-1.5\">\n          <span\n            className=\"h-1.5 w-1.5 rounded-full\"\n            style={{ background: live ? \"var(--chart-up)\" : \"color-mix(in srgb, var(--foreground) 25%, transparent)\" }}\n            aria-hidden\n          />\n          <span className=\"text-[9px] uppercase tracking-[0.1em] text-foreground/30\">{live ? \"live\" : \"paused\"}</span>\n        </span>\n      </div>\n\n      <div className=\"grid grid-cols-[64px_1fr_72px_76px] gap-2 border-b border-foreground/[0.04] px-4 py-1.5 text-[9px] uppercase tracking-[0.1em] text-foreground/30\">\n        <span>Time</span>\n        <span>Symbol</span>\n        <span className=\"text-right\">Size</span>\n        <span className=\"text-right\">Price</span>\n      </div>\n\n      <div className=\"relative\">\n        {/* the pill floats over the tape; only the button itself takes the pointer */}\n        <div className=\"pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2\">\n          <AnimatePresence>\n            {showPill && (\n              <motion.button\n                type=\"button\"\n                onClick={jump}\n                role=\"status\"\n                aria-live=\"polite\"\n                initial={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}\n                animate={{ opacity: 1, y: 0 }}\n                exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}\n                transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}\n                className=\"pointer-events-auto flex items-center gap-1.5 rounded-full border border-foreground/[0.05] px-2.5 py-1 text-[11px] text-foreground/80 transition-colors duration-150 hover:bg-foreground/[0.03]\"\n                style={{ background: \"var(--card)\", boxShadow: \"0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))\" }}\n              >\n                <ArrowUp className=\"h-3 w-3 text-foreground/45\" aria-hidden />\n                <span className=\"tabular-nums\">{pending}</span>\n                <span className=\"text-foreground/50\">new</span>\n              </motion.button>\n            )}\n          </AnimatePresence>\n        </div>\n\n        {/* overflow-anchor: none is load-bearing. Chrome ships scroll anchoring on by\n            default and already shifts scrollTop when content lands above the viewport,\n            so leaving it on makes the pin below fire on top of the browser's and the\n            tape jumps by twice the inserted height. Safari implements neither, so the\n            fix is to switch the browser's off everywhere and own the correction here. */}\n        <div\n          ref={scroller}\n          onScroll={onScroll}\n          role=\"log\"\n          aria-label={`${title}, newest first`}\n          className=\"h-[264px] overflow-y-auto\"\n          style={{ overflowAnchor: \"none\" }}\n        >\n          {tape.map((f) => {\n            const fresh = !seeded.current.has(f.id)\n            const up = f.side === \"buy\"\n            return (\n              <motion.div\n                key={f.id}\n                initial={fresh && !reduced ? { opacity: 0 } : false}\n                animate={{ opacity: 1 }}\n                transition={reduced ? { duration: 0 } : { duration: 0.15, ease: EASE }}\n                className=\"grid grid-cols-[64px_1fr_72px_76px] items-center gap-2 px-4 py-2.5 transition-colors duration-150 hover:bg-foreground/[0.02]\"\n              >\n                <span className=\"text-[10.5px] tabular-nums text-foreground/35\">{f.time}</span>\n                <span className=\"flex items-center gap-2\">\n                  <span\n                    className=\"h-3 w-[2px] rounded-full\"\n                    style={{ background: up ? \"var(--chart-up)\" : \"var(--chart-down)\" }}\n                    aria-hidden\n                  />\n                  <span className=\"text-[12.5px] text-foreground/80\">{f.symbol}</span>\n                  <span className=\"text-[9px] uppercase tracking-[0.1em] text-foreground/30\">{f.side}</span>\n                </span>\n                <span className=\"text-right text-[12px] tabular-nums text-foreground/55\">{f.size}</span>\n                <span\n                  className=\"text-right text-[12.5px] font-semibold tabular-nums\"\n                  style={{ color: up ? \"var(--chart-up)\" : \"var(--chart-down)\" }}\n                >\n                  {f.price}\n                </span>\n              </motion.div>\n            )\n          })}\n        </div>\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/new-items-pill.tsx"
+    }
+  ]
+}

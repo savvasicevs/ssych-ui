@@ -30,19 +30,33 @@ const COMB_TICKS = 24
 
 /**
  * Fund-holdings register in the Ink register: a coin, symbol beside its muted
- * name, tabular money columns, the YTD return in a green pill, and the fund
- * weight as an amber value trailed by a tick-comb bar.
+ * name, tabular money columns, the return in a green pill, and the weight as an
+ * amber value trailed by a tick-comb bar. The four column labels are props, so
+ * a book that is not a fund can name what its return and weight actually
+ * measure (return since entry, share of gross exposure) without a fork.
  */
 export function HoldingsTable({
   holdings = DEFAULT_HOLDINGS,
   title = "Top 10 holdings",
   maxWeight = 10,
+  valueLabel = "Market value",
+  priceLabel = "Current price",
+  returnLabel = "YTD returns",
+  weightLabel = "Percentage of fund",
   className,
 }: {
   holdings?: Holding[]
   title?: string
   /** Weight that fills the whole tick comb. */
   maxWeight?: number
+  /** Column header over `marketValue`. */
+  valueLabel?: string
+  /** Column header over `price`. */
+  priceLabel?: string
+  /** Column header over the return pill — name the window the number covers. */
+  returnLabel?: string
+  /** Column header over the weight comb — name the base the share is taken of. */
+  weightLabel?: string
   className?: string
 }) {
   const reduced = useReducedMotion()
@@ -52,8 +66,8 @@ export function HoldingsTable({
       style={{ background: "var(--card)", boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)" }}
     >
       <div className="grid grid-cols-[1.6fr_0.9fr_0.9fr_0.8fr_1.1fr] gap-2 border-b border-foreground/[0.04] bg-foreground/[0.02] px-4 py-2.5">
-        {[title, "Market value", "Current price", "YTD returns", "Percentage of fund"].map((h, i) => (
-          <span key={h} className={cn("text-[9px] uppercase tracking-[0.1em] text-foreground/30", i > 0 && "text-right")}>
+        {[title, valueLabel, priceLabel, returnLabel, weightLabel].map((h, i) => (
+          <span key={i} className={cn("text-[9px] uppercase tracking-[0.1em] text-foreground/30", i > 0 && "text-right")}>
             {h}
           </span>
         ))}

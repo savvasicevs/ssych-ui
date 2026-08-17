@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AnimatePresence, motion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
 
 export interface AvatarStackProps {
@@ -35,6 +35,7 @@ const initials = (n: string) =>
 
 /** Floating label above a coin or the overflow chip — never widens the row. */
 function Tooltip({ children }: { children: React.ReactNode }) {
+  const reduced = useReducedMotion()
   return (
     <motion.span
       className="pointer-events-none absolute -top-7 left-1/2 z-50 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[9.5px] text-foreground/85"
@@ -43,10 +44,10 @@ function Tooltip({ children }: { children: React.ReactNode }) {
         borderColor: "color-mix(in srgb, var(--foreground) 8%, transparent)",
         boxShadow: "0 6px 18px var(--card-shadow)",
       }}
-      initial={{ opacity: 0, y: 3, x: "-50%" }}
+      initial={{ opacity: 0, y: reduced ? 0 : 3, x: "-50%" }}
       animate={{ opacity: 1, y: 0, x: "-50%" }}
-      exit={{ opacity: 0, y: 3, x: "-50%" }}
-      transition={{ duration: 0.15 }}
+      exit={{ opacity: 0, y: reduced ? 0 : 3, x: "-50%" }}
+      transition={reduced ? { duration: 0 } : { duration: 0.15 }}
     >
       {children}
     </motion.span>
@@ -66,6 +67,7 @@ function Coin({
   lifted: boolean
   onHover: (v: boolean) => void
 }) {
+  const reduced = useReducedMotion()
   return (
     <motion.span
       className="relative inline-grid h-6 w-6 place-items-center rounded-full text-[9px] text-foreground/70"
@@ -74,8 +76,8 @@ function Coin({
         boxShadow: "0 0 0 2px var(--surface-soft)",
         zIndex: lifted ? 50 : z,
       }}
-      animate={{ y: lifted ? -5 : 0 }}
-      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      animate={{ y: lifted && !reduced ? -5 : 0 }}
+      transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 30 }}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
     >
@@ -96,6 +98,7 @@ function Coin({
  * Falls back to initial coins when an image is missing.
  */
 export function AvatarStack({ names, images = DEFAULT_IMAGES, max = 4, className }: AvatarStackProps) {
+  const reduced = useReducedMotion()
   const [hot, setHot] = useState<string | null>(null)
   const [peek, setPeek] = useState(false)
 
@@ -127,7 +130,7 @@ export function AvatarStack({ names, images = DEFAULT_IMAGES, max = 4, className
           className="relative ml-2 cursor-default text-[11px] text-foreground/40"
           onMouseEnter={() => setPeek(true)}
           onMouseLeave={() => setPeek(false)}
-          whileHover={{ y: -2 }}
+          whileHover={reduced ? undefined : { y: -2 }}
         >
           +{hidden.length}
           <AnimatePresence>{peek && <Tooltip>{hidden.join(" · ")}</Tooltip>}</AnimatePresence>

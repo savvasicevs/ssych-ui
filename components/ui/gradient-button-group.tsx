@@ -2,7 +2,7 @@
 
 
 import { type ReactNode } from "react"
-import { motion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -27,6 +27,8 @@ export function GradientButtonGroup({
   onValueChange?: (id: string) => void
   className?: string
 }) {
+  const reduced = useReducedMotion()
+
   return (
     <nav
       className={cn("inline-flex items-center gap-0.5 rounded-full p-0.5", className)}
@@ -60,7 +62,7 @@ export function GradientButtonGroup({
                   background: "linear-gradient(180deg, #2a2f3a 0%, #1d212a 100%)",
                   boxShadow: "inset 0 1px 0 color-mix(in srgb, var(--foreground) 12%, transparent)",
                 }}
-                transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 32 }}
               />
             )}
             <span className="relative z-10">{item.icon}</span>

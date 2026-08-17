@@ -142,8 +142,8 @@ export function CutoutCard({
         onMouseLeave={handleMouseLeave}
         transition={
           reduceMotion
-            ? { duration: 0.22, ease: [0.23, 1, 0.32, 1] }
-            : { duration: 0.36, ease: [0.23, 1, 0.32, 1] }
+            ? { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+            : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
         }
         {...props}
       >
@@ -335,8 +335,8 @@ export function CutoutCardAction({
       data-slot="cutout-card-action"
       transition={
         reduceMotion
-          ? { duration: 0.15, ease: [0.23, 1, 0.32, 1] }
-          : { duration: 0.24, ease: [0.23, 1, 0.32, 1] }
+          ? { duration: 0.15, ease: [0.22, 1, 0.36, 1] }
+          : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
       }
       {...props}
     />

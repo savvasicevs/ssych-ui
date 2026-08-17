@@ -1,5 +1,5 @@
-import { type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { type ReactNode } from "react"
+import { cn } from "@/lib/utils"
 
 /** Front-facing MacBook mockup — render anything (a screenshot, gradient, app) on the screen. */
 export function MacbookFrame({ children, className }: { children?: ReactNode; className?: string }) {
@@ -20,5 +20,5 @@ export function MacbookFrame({ children, className }: { children?: ReactNode; cl
         <span className="absolute left-1/2 top-0 h-[6px] w-[15%] -translate-x-1/2 rounded-b-[8px] bg-[var(--surface-soft)]" />
       </div>
     </div>
-  );
+  )
 }

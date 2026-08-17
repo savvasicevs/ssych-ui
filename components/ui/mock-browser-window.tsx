@@ -193,11 +193,14 @@ function AddressBar({
   variant = "chrome",
   align = "center",
 }: AddressBarProps) {
+  // No glass on these pills on purpose: they sit on the chrome header, which is a flat
+  // 3–4% fill over an opaque window. Nothing moves behind them, so the effect cost a
+  // compositor layer and bought nothing visible — §5 says glass has to be earned.
   const variantStyles = {
     chrome:
-      "bg-foreground/[0.04] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset] backdrop-blur-sm",
+      "bg-foreground/[0.04] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset]",
     safari:
-      "bg-foreground/[0.03] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset] backdrop-blur-sm",
+      "bg-foreground/[0.03] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset]",
   }
   // mobile: anchor to the right edge so the bar can't clip off-screen (sidebar sits on the
   // left, so this also sits it over the content area); desktop (sm+): centered.
@@ -209,7 +212,7 @@ function AddressBar({
   return (
     <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 justify-center ${posClass}`}>
       <div
-        className={`${variantStyles[variant]} px-4 py-1.5 text-xs text-foreground/50 min-w-[140px] sm:min-w-[220px] max-w-[78vw] sm:max-w-md flex items-center justify-center text-center transition-colors`}
+        className={`${variantStyles[variant]} px-4 py-1.5 text-[12px] text-foreground/50 min-w-[140px] sm:min-w-[220px] max-w-[78vw] sm:max-w-md flex items-center justify-center text-center transition-colors`}
       >
         <span className="truncate">{url}</span>
       </div>
@@ -232,7 +235,7 @@ function SidebarContent({
         <div
           key={`${item.label}-${index}`}
           className={`
-            flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors cursor-pointer
+            flex items-center gap-2 px-2 py-1.5 rounded text-[14px] transition-colors cursor-pointer
             ${
               item.active
                 ? "bg-foreground/[0.08] text-foreground border border-foreground/10"
@@ -245,7 +248,7 @@ function SidebarContent({
           )}
           <span className="flex-1 truncate">{item.label}</span>
           {item.badge && (
-            <div className="bg-foreground/10 text-foreground/70 text-xs px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
+            <div className="bg-foreground/10 text-foreground/70 text-[12px] px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
               {item.badge}
             </div>
           )}

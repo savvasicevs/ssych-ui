@@ -120,6 +120,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "new-items-pill",
+      "type": "registry:ui"
+    },
+    {
       "name": "inbox",
       "type": "registry:ui"
     },

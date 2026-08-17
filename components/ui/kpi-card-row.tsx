@@ -246,5 +246,3 @@ export function KpiCardRow({ items = DEFAULT_ITEMS, labels = DEFAULT_LABELS, cla
     </div>
   )
 }
-
-export default KpiCardRow

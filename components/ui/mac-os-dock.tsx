@@ -362,4 +362,3 @@ export function MacOsDock({
   )
 }
 
-export default MacOsDock

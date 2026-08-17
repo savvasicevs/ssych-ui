@@ -1,19 +1,19 @@
 "use client"
 
-import { useState, type ComponentType, type ReactNode } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { ChevronDown, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState, type ComponentType, type ReactNode } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { ChevronDown, Check } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // transitions.dev signature smooth-out easing (cubic-bezier(0.22, 1, 0.36, 1)).
-const EASE = [0.22, 1, 0.36, 1] as const;
+const EASE = [0.22, 1, 0.36, 1] as const
 
 export type AccordionItem = {
-  title: string;
-  body: string;
-  icon?: ComponentType<{ className?: string }>;
-  deliverables?: string[];
-};
+  title: string
+  body: string
+  icon?: ComponentType<{ className?: string }>
+  deliverables?: string[]
+}
 
 /**
  * Accordion (WAI-ARIA) — a vertical list of titles; the active row expands to
@@ -25,17 +25,18 @@ export function Accordion({
   stage,
   defaultOpen = 0,
 }: {
-  items?: AccordionItem[];
-  stage?: (i: number) => ReactNode;
-  defaultOpen?: number;
+  items?: AccordionItem[]
+  stage?: (i: number) => ReactNode
+  defaultOpen?: number
 }) {
-  const [active, setActive] = useState(defaultOpen);
+  const [active, setActive] = useState(defaultOpen)
+  const reduced = useReducedMotion()
 
   return (
     <div className="w-full">
       {items.map((it, i) => {
-        const on = active === i;
-        const Icon = it.icon;
+        const on = active === i
+        const Icon = it.icon
         return (
           <div key={i} className="border-t border-foreground/[0.08] first:border-t-0">
             <h3>
@@ -73,7 +74,7 @@ export function Accordion({
                   aria-hidden
                   className="inline-flex shrink-0"
                   animate={{ scaleY: on ? -1 : 1 }}
-                  transition={{ duration: 0.25, ease: EASE }}
+                  transition={reduced ? { duration: 0 } : { duration: 0.25, ease: EASE }}
                 >
                   <ChevronDown className={cn("h-5 w-5", on ? "text-foreground" : "text-foreground/40")} />
                 </motion.span>
@@ -90,15 +91,15 @@ export function Accordion({
                   initial={{ height: 0 }}
                   animate={{ height: "auto" }}
                   exit={{ height: 0 }}
-                  transition={{ duration: 0.28, ease: EASE }}
+                  transition={reduced ? { duration: 0 } : { duration: 0.28, ease: EASE }}
                   className="overflow-hidden"
                 >
                   {/* body rises out of a soft blur as the panel grows */}
                   <motion.div
-                    initial={{ opacity: 0, filter: "blur(2px)" }}
-                    animate={{ opacity: 1, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, filter: "blur(2px)" }}
-                    transition={{ duration: 0.28, ease: EASE }}
+                    initial={{ opacity: 0, filter: reduced ? "none" : "blur(2px)" }}
+                    animate={{ opacity: 1, filter: reduced ? "none" : "blur(0px)" }}
+                    exit={{ opacity: 0, filter: reduced ? "none" : "blur(2px)" }}
+                    transition={reduced ? { duration: 0 } : { duration: 0.28, ease: EASE }}
                     className="grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10"
                   >
                     {/* left — body + deliverables */}
@@ -125,8 +126,8 @@ export function Accordion({
               )}
             </AnimatePresence>
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
