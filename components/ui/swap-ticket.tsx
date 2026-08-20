@@ -112,6 +112,8 @@ function AmountCard({
   balance,
   onMax,
   onPickToken,
+  flush,
+  trailing,
 }: {
   side: "Pay" | "Receive"
   value: string
@@ -120,21 +122,32 @@ function AmountCard({
   balance?: string
   onMax?: () => void
   onPickToken: () => void
+  /** flush: no card around the amount — the host's rules carry the structure */
+  flush?: boolean
+  /** an extra control docked at the end of the label row (flush mode's home for
+   *  the settings gear, so it never needs a row of its own) */
+  trailing?: ReactNode
 }) {
   const n = parseFloat(value.replace(/,/g, "")) || 0 // display values carry locale commas
   const fiat = n * asset.price
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border p-3.5" style={{ borderColor: HAIRLINE, background: "var(--card)" }}>
+    <div
+      className={cn("flex flex-col gap-2", flush ? "px-3 py-3" : "rounded-2xl border p-3.5")}
+      style={flush ? undefined : { borderColor: HAIRLINE, background: "var(--card)" }}
+    >
       <div className="flex items-center justify-between text-[11px]" style={{ color: TEXT_MUTED }}>
         <span>You {side.toLowerCase()}</span>
-        {balance && (
-          <span className="flex items-center gap-1.5 tabular-nums">
-            Bal {balance}
-            <button type="button" onClick={onMax} className="rounded px-1 py-0.5 text-[10px] font-semibold" style={{ color: ACCENT }}>
-              Max
-            </button>
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {balance && (
+            <span className="flex items-center gap-1.5 tabular-nums">
+              Bal {balance}
+              <button type="button" onClick={onMax} className="rounded px-1 py-0.5 text-[10px] font-semibold" style={{ color: ACCENT }}>
+                Max
+              </button>
+            </span>
+          )}
+          {trailing}
+        </span>
       </div>
       <div className="flex items-center gap-2">
         <input
@@ -191,6 +204,14 @@ export interface SwapTicketProps {
    * panel beside the ticket that lists exactly the two tokens on screen.
    */
   onPairChange?: (pair: { pay: SwapToken; receive: SwapToken }) => void
+  /**
+   * flush: the ticket drops its own chrome so a terminal column can carry the
+   * structure instead. The heading row goes (the pane's tab already names it,
+   * and the gear moves down into the pay row's label line rather than holding a
+   * row of its own), the two amount cards lose their borders and ground for a
+   * single hairline seam, and nothing is inset from the column's edges.
+   */
+  flush?: boolean
   className?: string
 }
 
@@ -212,6 +233,7 @@ export function SwapTicket({
   slippage = "Auto · 0.5%",
   onSubmit,
   onPairChange,
+  flush = false,
   className,
 }: SwapTicketProps) {
   const reduced = useReducedMotion()
@@ -260,18 +282,29 @@ export function SwapTicket({
     setPicking(null)
   }
 
+  const settings = (
+    <button
+      type="button"
+      className={cn("grid place-items-center rounded-lg", flush ? "h-5 w-5" : "h-7 w-7")}
+      style={{ color: TEXT_MUTED }}
+      aria-label="Settings"
+    >
+      <Settings size={flush ? 13 : 15} />
+    </button>
+  )
+
   return (
     <div className={cn("relative flex w-[320px] flex-col", className)}>
-      <div className="mb-2 flex items-center justify-between px-1">
-        <span className="text-[14px] font-semibold" style={{ color: TEXT }}>
-          {title}
-        </span>
-        <button type="button" className="grid h-7 w-7 place-items-center rounded-lg" style={{ color: TEXT_MUTED }} aria-label="Settings">
-          <Settings size={15} />
-        </button>
-      </div>
+      {!flush && (
+        <div className="mb-2 flex items-center justify-between px-1">
+          <span className="text-[14px] font-semibold" style={{ color: TEXT }}>
+            {title}
+          </span>
+          {settings}
+        </div>
+      )}
 
-      <div className="relative flex flex-col gap-1">
+      <div className={cn("relative flex flex-col", flush ? "gap-0" : "gap-1")}>
         <motion.div
           key={payTok.symbol + "-pay"}
           layout
@@ -286,6 +319,8 @@ export function SwapTicket({
             balance={`${balanceOf(payTok)} ${payTok.symbol}`}
             onMax={() => setSell(String(payTok.balance))}
             onPickToken={() => setPicking("pay")}
+            flush={flush}
+            trailing={flush ? settings : undefined}
           />
         </motion.div>
         <button
@@ -302,13 +337,20 @@ export function SwapTicket({
           layout
           layoutId={`swap-card-${recvTok.symbol}`}
           transition={{ type: "spring", stiffness: 400, damping: 32 }}
+          /* flush mode has no card edges, so the seam between the two amounts is
+             a single hairline — one rule instead of two borders meeting */
+          className={flush ? "border-t" : undefined}
+          style={flush ? { borderColor: HAIRLINE } : undefined}
         >
-          <AmountCard side="Receive" value={buyAmt} asset={recvTok} onPickToken={() => setPicking("receive")} />
+          <AmountCard side="Receive" value={buyAmt} asset={recvTok} onPickToken={() => setPicking("receive")} flush={flush} />
         </motion.div>
       </div>
 
       {/* footer: rate + slippage */}
-      <div className="flex items-center justify-between px-1.5 py-2.5 text-[11px]" style={{ color: TEXT_MUTED }}>
+      <div
+        className={cn("flex items-center justify-between py-2.5 text-[11px]", flush ? "px-3" : "px-1.5")}
+        style={{ color: TEXT_MUTED }}
+      >
         <span className="tabular-nums">
           1 {payTok.symbol} = {rate.toLocaleString("en-US", { maximumFractionDigits: rate >= 100 ? 0 : 5 })} {recvTok.symbol}
         </span>
@@ -340,7 +382,10 @@ export function SwapTicket({
         whileHover={enabled && !reduced ? { scale: 1.02, y: -1 } : undefined}
         whileTap={enabled && !reduced ? { scale: 0.965, y: 0 } : undefined}
         transition={{ duration: 0.2, ease: EASE }}
-        className="group relative h-14 rounded-xl text-[15px] font-bold transition-[filter,opacity,background-color] duration-200 enabled:cursor-pointer enabled:hover:brightness-[1.07] enabled:active:brightness-[0.93] disabled:cursor-not-allowed"
+        className={cn(
+          "group relative h-14 rounded-xl text-[15px] font-bold transition-[filter,opacity,background-color] duration-200 enabled:cursor-pointer enabled:hover:brightness-[1.07] enabled:active:brightness-[0.93] disabled:cursor-not-allowed",
+          flush && "mx-3 mb-3",
+        )}
         style={{
           background: enabled ? (side === "buy" ? GREEN : RED) : RAISED,
           /* the ink that sits ON the fill, per fill. `var(--background)` was wrong
@@ -386,7 +431,10 @@ export function SwapTicket({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute -inset-1 z-20 flex flex-col rounded-xl border p-3"
+            className={cn(
+              "absolute z-20 flex flex-col p-3",
+              flush ? "inset-0" : "-inset-1 rounded-xl border",
+            )}
             style={{ borderColor: HAIRLINE, background: PANEL }}
             role="listbox"
             aria-label="Choose a token"
