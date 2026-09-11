@@ -12,6 +12,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "ascii-turntable",
+      "type": "registry:ui"
+    },
+    {
       "name": "browser-window",
       "type": "registry:ui"
     },
@@ -113,6 +117,18 @@
     },
     {
       "name": "holdings-table",
+      "type": "registry:ui"
+    },
+    {
+      "name": "trade-journal-table",
+      "type": "registry:ui"
+    },
+    {
+      "name": "fills-blotter",
+      "type": "registry:ui"
+    },
+    {
+      "name": "matrix-ticker-board",
       "type": "registry:ui"
     },
     {
