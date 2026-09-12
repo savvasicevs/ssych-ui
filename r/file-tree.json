@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "file-tree",
+  "type": "registry:ui",
+  "title": "File Tree",
+  "description": "A bundle read as a tree: folders fold open under the pointer or the arrow keys, one highlight glides between rows, and a quiet right-hand column says how much each file holds.",
+  "dependencies": [
+    "clsx",
+    "lucide-react",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/file-tree.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/file-tree.tsx",
+      "content": "import { useMemo, useState, type KeyboardEvent } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\nimport { ChevronRight, File, Folder, FolderOpen } from \"lucide-react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst SPRING = { type: \"spring\", stiffness: 400, damping: 32 } as const\nconst ACCENT: [number, number, number] = [72, 159, 250]\nconst accentRgba = (a: number) => `rgba(${ACCENT.join(\",\")},${a})`\nconst ROW = 32\n\nexport interface FileTreeNode {\n  /** what the row shows */\n  name: string\n  /** unique; selection and expansion are reported by it */\n  path: string\n  /** present on a folder, even an empty one */\n  children?: FileTreeNode[]\n  /** the quiet right-hand column: a line count, a size, a note */\n  meta?: string\n}\n\nconst countFiles = (node: FileTreeNode): number =>\n  (node.children ?? []).reduce((n, c) => n + (c.children ? countFiles(c) : 1), 0)\n\n/** Folders before files, both alphabetical, the way a repository listing reads.\n *  A folder with no meta of its own reports how many files it holds. */\nexport function treeFromPaths(files: { path: string; meta?: string }[]): FileTreeNode[] {\n  const root: FileTreeNode[] = []\n  for (const f of files) {\n    const parts = f.path.split(\"/\").filter(Boolean)\n    let level = root\n    let acc = \"\"\n    parts.forEach((part, i) => {\n      acc = acc ? `${acc}/${part}` : part\n      const leaf = i === parts.length - 1\n      let node = level.find((n) => n.path === acc)\n      if (!node) {\n        node = leaf ? { name: part, path: acc, meta: f.meta } : { name: part, path: acc, children: [] }\n        level.push(node)\n      }\n      if (!leaf) level = node.children ?? (node.children = [])\n    })\n  }\n  const finish = (nodes: FileTreeNode[]): FileTreeNode[] =>\n    nodes\n      .map((n) => (n.children ? { ...n, children: finish(n.children), meta: n.meta ?? `${countFiles(n)} files` } : n))\n      .sort((a, b) => Number(!!b.children) - Number(!!a.children) || a.name.localeCompare(b.name))\n  return finish(root)\n}\n\nconst DEFAULT_NODES: FileTreeNode[] = treeFromPaths([\n  { path: \"components/ui/market-watchlist.tsx\", meta: \"212 lines\" },\n  { path: \"components/ui/sparkline.tsx\", meta: \"64 lines\" },\n  { path: \"components/ui/amount.tsx\", meta: \"48 lines\" },\n  { path: \"components/lab/chart/axis.tsx\", meta: \"91 lines\" },\n  { path: \"components/lab/chart/scale.ts\", meta: \"37 lines\" },\n  { path: \"components/lab/StatTile.tsx\", meta: \"58 lines\" },\n  { path: \"lib/utils.ts\", meta: \"6 lines\" },\n  { path: \"lib/format.ts\", meta: \"29 lines\" },\n  { path: \"data/quotes.ts\", meta: \"140 lines\" },\n  { path: \"pages/WatchlistPage.tsx\", meta: \"173 lines\" },\n])\n\ntype Row = { node: FileTreeNode; depth: number; parent: string | null; index: number; count: number }\n\nfunction flatten(nodes: FileTreeNode[], open: ReadonlySet<string>, depth = 0, parent: string | null = null): Row[] {\n  return nodes.flatMap((node, i) => {\n    const row: Row = { node, depth, parent, index: i, count: nodes.length }\n    return node.children && open.has(node.path) ? [row, ...flatten(node.children, open, depth + 1, node.path)] : [row]\n  })\n}\n\n/** A bundle read as a tree. Folders fold open under the pointer or the arrow\n *  keys, their branch line growing down as the rows inside arrive, and closing\n *  folds them back up in place. One soft highlight glides between rows rather\n *  than each row lighting on its own; the chosen file carries an accent spine.\n *  The right-hand column is for what a listing usually hides: how much is in\n *  each file, how many files a folder holds. */\nexport function FileTree({\n  nodes = DEFAULT_NODES,\n  selected,\n  defaultSelected = null,\n  onSelect,\n  expanded,\n  defaultExpanded,\n  onExpandedChange,\n  label = \"Files\",\n  indent = 16,\n  className,\n}: {\n  nodes?: FileTreeNode[]\n  /** controlled: the selected path */\n  selected?: string | null\n  defaultSelected?: string | null\n  onSelect?: (path: string, node: FileTreeNode) => void\n  /** controlled: the open folders */\n  expanded?: string[]\n  /** open on arrival; the first folder when unset */\n  defaultExpanded?: string[]\n  onExpandedChange?: (paths: string[]) => void\n  /** the tree's accessible name */\n  label?: string\n  /** px per level */\n  indent?: number\n  className?: string\n}) {\n  const reduced = useReducedMotion()\n  const [ownSelected, setOwnSelected] = useState<string | null>(defaultSelected)\n  const [ownExpanded, setOwnExpanded] = useState<string[]>(\n    () => defaultExpanded ?? nodes.filter((n) => n.children).slice(0, 1).map((n) => n.path),\n  )\n  const [hot, setHot] = useState<string | null>(null)\n  const [focused, setFocused] = useState<string | null>(null)\n  const current = selected === undefined ? ownSelected : selected\n  const openList = expanded ?? ownExpanded\n  const open = useMemo(() => new Set(openList), [openList])\n  const rows = useMemo(() => flatten(nodes, open), [nodes, open])\n  /* roving tabindex: one row is reachable by Tab, and it stays a row that\n     exists after a fold closes over the one that had it */\n  const tabStop = rows.some((r) => r.node.path === focused) ? focused : (rows[0]?.node.path ?? null)\n\n  const setOpen = (next: string[]) => {\n    if (expanded === undefined) setOwnExpanded(next)\n    onExpandedChange?.(next)\n  }\n  const toggle = (path: string) => setOpen(open.has(path) ? openList.filter((p) => p !== path) : [...openList, path])\n  const choose = (row: Row) => {\n    if (selected === undefined) setOwnSelected(row.node.path)\n    onSelect?.(row.node.path, row.node)\n    if (row.node.children) toggle(row.node.path)\n  }\n  const focusRow = (path: string, root: HTMLElement | null) => {\n    setFocused(path)\n    root?.querySelector<HTMLButtonElement>(`[data-path=\"${CSS.escape(path)}\"]`)?.focus()\n  }\n\n  const onKey = (e: KeyboardEvent<HTMLButtonElement>, row: Row) => {\n    const root = e.currentTarget.closest(\"[role=tree]\") as HTMLElement | null\n    const i = rows.findIndex((r) => r.node.path === row.node.path)\n    const prev = rows[i - 1]\n    const next = rows[i + 1]\n    const folder = !!row.node.children\n    const isOpen = open.has(row.node.path)\n    const go = (r?: Row) => r && focusRow(r.node.path, root)\n    switch (e.key) {\n      case \"ArrowDown\": e.preventDefault(); go(next); break\n      case \"ArrowUp\": e.preventDefault(); go(prev); break\n      case \"Home\": e.preventDefault(); go(rows[0]); break\n      case \"End\": e.preventDefault(); go(rows[rows.length - 1]); break\n      case \"ArrowRight\":\n        e.preventDefault()\n        if (folder && !isOpen) toggle(row.node.path)\n        else if (folder && next?.parent === row.node.path) go(next)\n        break\n      case \"ArrowLeft\":\n        e.preventDefault()\n        if (folder && isOpen) toggle(row.node.path)\n        else if (row.parent) focusRow(row.parent, root)\n        break\n      case \"Enter\":\n      case \" \": e.preventDefault(); choose(row); break\n    }\n  }\n\n  return (\n    <div\n      role=\"tree\"\n      aria-label={label}\n      onPointerLeave={() => setHot(null)}\n      className={cn(\"w-full max-w-[360px] select-none text-[12.5px] text-foreground/70\", className)}\n    >\n      <AnimatePresence initial={false}>\n        {rows.map((row) => {\n          const { node, depth } = row\n          const folder = !!node.children\n          const isOpen = folder && open.has(node.path)\n          const isSelected = current === node.path\n          const lit = hot === node.path\n          return (\n            <motion.div\n              key={node.path}\n              initial={reduced ? false : { height: 0, opacity: 0 }}\n              animate={{ height: ROW, opacity: 1 }}\n              exit={reduced ? { height: 0, opacity: 0, transition: { duration: 0 } } : { height: 0, opacity: 0, transition: { duration: 0.15, ease: EASE } }}\n              transition={reduced ? { duration: 0 } : { duration: 0.22, ease: EASE, delay: Math.min(row.index * 0.02, 0.08) }}\n              className=\"relative overflow-hidden\"\n            >\n              {/* hover affordance: one soft highlight that glides between rows */}\n              {lit && (reduced ? (\n                <span className=\"absolute inset-0 rounded-md bg-foreground/[0.04]\" />\n              ) : (\n                <motion.span layoutId=\"file-tree-hot\" transition={SPRING} className=\"absolute inset-0 rounded-md bg-foreground/[0.04]\" />\n              ))}\n              {/* branch lines: one per ancestor, so nesting is read from the\n                  lines rather than counted from the indent */}\n              {Array.from({ length: depth }, (_, k) => (\n                <motion.span\n                  key={k}\n                  aria-hidden\n                  initial={reduced ? false : { scaleY: 0 }}\n                  animate={{ scaleY: 1 }}\n                  transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}\n                  className=\"absolute top-0 bottom-0 w-px origin-top bg-foreground/[0.06]\"\n                  style={{ left: 15 + k * indent }}\n                />\n              ))}\n              {isSelected && (\n                <span aria-hidden className=\"absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full\" style={{ background: accentRgba(0.9) }} />\n              )}\n              <button\n                type=\"button\"\n                role=\"treeitem\"\n                data-path={node.path}\n                aria-level={depth + 1}\n                aria-posinset={row.index + 1}\n                aria-setsize={row.count}\n                aria-selected={isSelected}\n                aria-expanded={folder ? isOpen : undefined}\n                tabIndex={tabStop === node.path ? 0 : -1}\n                onFocus={() => { setFocused(node.path); setHot(node.path) }}\n                onPointerEnter={() => setHot(node.path)}\n                onKeyDown={(e) => onKey(e, row)}\n                onClick={() => choose(row)}\n                className={cn(\n                  \"relative flex h-8 w-full items-center gap-1.5 rounded-md pr-2.5 text-left transition-colors duration-150\",\n                  isSelected ? \"text-foreground/90\" : \"hover:text-foreground/90\",\n                )}\n                style={{ paddingLeft: 8 + depth * indent, background: isSelected ? accentRgba(0.045) : undefined }}\n              >\n                <motion.span\n                  aria-hidden\n                  animate={{ rotate: isOpen ? 90 : 0 }}\n                  transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}\n                  className={cn(\"grid h-3.5 w-3.5 shrink-0 place-items-center text-foreground/35\", !folder && \"invisible\")}\n                >\n                  <ChevronRight className=\"h-3 w-3\" strokeWidth={2} />\n                </motion.span>\n                <span aria-hidden className={cn(\"shrink-0\", folder && isOpen ? \"text-foreground/70\" : \"text-foreground/40\")}>\n                  {folder ? (isOpen ? <FolderOpen className=\"h-3.5 w-3.5\" strokeWidth={1.75} /> : <Folder className=\"h-3.5 w-3.5\" strokeWidth={1.75} />) : <File className=\"h-3.5 w-3.5\" strokeWidth={1.75} />}\n                </span>\n                <span className={cn(\"min-w-0 flex-1 truncate\", folder && \"font-medium\")}>{node.name}</span>\n                {node.meta && <span className=\"shrink-0 pl-3 text-[11px] tabular-nums text-foreground/35\">{node.meta}</span>}\n              </button>\n            </motion.div>\n          )\n        })}\n      </AnimatePresence>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/file-tree.tsx"
+    }
+  ]
+}

@@ -72,6 +72,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "file-tree",
+      "type": "registry:ui"
+    },
+    {
       "name": "market-watchlist",
       "type": "registry:ui"
     },
