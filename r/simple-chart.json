@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "simple-chart",
+  "type": "registry:ui",
+  "title": "Simple Chart",
+  "description": "The compact asset-price card: one line, one number that scrubs under the pointer, and a signed-percent tag the line is de-trended to agree with.",
+  "dependencies": [
+    "clsx",
+    "lucide-react",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/simple-chart.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/simple-chart.tsx",
+      "content": "\"use client\"\n\nimport { useMemo, useRef, useState } from \"react\"\nimport { ChevronDown, ChevronUp } from \"lucide-react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst GREEN = \"var(--chart-up)\"\nconst RED = \"var(--chart-down)\"\n\nfunction mulberry32(seed: number) {\n  return () => {\n    seed |= 0\n    seed = (seed + 0x6d2b79f5) | 0\n    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)\n    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t\n    return ((t ^ (t >>> 14)) >>> 0) / 4294967296\n  }\n}\n\nconst W = 280\nconst H = 84\nconst N = 60\n\n/** the signed-percent pill: direction picks the arrow and the hue, zero is flat with no arrow */\nfunction ChangeTag({ value, dp = 1 }: { value: number; dp?: number }) {\n  const up = value >= 0\n  const hue = up ? GREEN : RED\n  return (\n    <span\n      className=\"inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[12px] font-semibold tabular-nums\"\n      style={{ color: hue, background: `color-mix(in srgb, ${hue} 13%, transparent)` }}\n    >\n      {value !== 0 && (up ? <ChevronUp className=\"h-3 w-3\" strokeWidth={2.5} /> : <ChevronDown className=\"h-3 w-3\" strokeWidth={2.5} />)}\n      <span>\n        {value > 0 ? \"+\" : value < 0 ? \"−\" : \"\"}\n        {Math.abs(value).toFixed(dp)}%\n      </span>\n    </span>\n  )\n}\n\n/**\n * The compact asset-price card: one line, one number. The headline price\n * scrubs as you move across the line and settles back to live on leave, and\n * the foot reads how far back the pointer is. The walk is de-trended onto the\n * two numbers the card prints, so (close − open) ÷ open is the percent in the\n * tag. One hue, the sign of the session.\n */\nexport function SimpleChart({\n  name = \"Ethereum\",\n  symbol = \"ETH\",\n  last = 3050,\n  change = 1.4,\n  className,\n}: {\n  name?: string\n  symbol?: string\n  /** the live price; the line ends here */\n  last?: number\n  /** the session move in percent; the line opens at last ÷ (1 + change) */\n  change?: number\n  className?: string\n}) {\n  const [hover, setHover] = useState<number | null>(null)\n  const svgRef = useRef<SVGSVGElement>(null)\n\n  const pts = useMemo(() => {\n    const rand = mulberry32(41)\n    const open = last / (1 + change / 100)\n    const steps: number[] = []\n    let v = 0\n    for (let i = 0; i < N; i++) {\n      steps.push(v)\n      v += (rand() - 0.5) * last * 0.006\n    }\n    const drift = steps[N - 1]\n    const vals = steps.map((s, i) => open + (s - (drift * i) / (N - 1)) + ((last - open) * i) / (N - 1))\n    const lo = Math.min(...vals)\n    const hi = Math.max(...vals)\n    return vals.map((val, i) => ({ x: (i / (N - 1)) * W, y: H - 8 - ((val - lo) / (hi - lo || 1)) * (H - 16), val }))\n  }, [last, change])\n\n  const path = pts.map((p, i) => `${i === 0 ? \"M\" : \"L\"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(\" \")\n  const shown = hover != null ? pts[hover].val : last\n  const hue = change >= 0 ? GREEN : RED\n\n  return (\n    <div\n      className={cn(\"w-[300px] rounded-xl border border-foreground/[0.04] p-4\", className)}\n      style={{ background: \"var(--card)\", boxShadow: \"inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)\" }}\n    >\n      <div className=\"flex items-start justify-between\">\n        <div className=\"flex flex-col\">\n          <span className=\"text-[12px] text-foreground/45\">\n            {name} · {symbol}\n          </span>\n          <span className=\"text-[22px] font-semibold tabular-nums leading-tight tracking-[-0.02em] text-foreground/90\">\n            ${shown.toLocaleString(\"en-US\", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n          </span>\n        </div>\n        <ChangeTag value={change} />\n      </div>\n      <svg\n        ref={svgRef}\n        viewBox={`0 0 ${W} ${H}`}\n        className=\"mt-2 h-[84px] w-full cursor-crosshair touch-none\"\n        role=\"img\"\n        aria-label={`${symbol} 24 hour price, ${change >= 0 ? \"up\" : \"down\"} ${Math.abs(change).toFixed(1)} percent`}\n        onPointerMove={(e) => {\n          const el = svgRef.current\n          if (!el) return\n          const r = el.getBoundingClientRect()\n          setHover(Math.max(0, Math.min(N - 1, Math.round(((e.clientX - r.left) / r.width) * (N - 1)))))\n        }}\n        onPointerLeave={() => setHover(null)}\n      >\n        <path d={path} fill=\"none\" stroke={hue} strokeWidth={1.8} vectorEffect=\"non-scaling-stroke\" />\n        {hover != null && (\n          <>\n            <line x1={pts[hover].x} y1={0} x2={pts[hover].x} y2={H} stroke=\"var(--foreground)\" strokeOpacity={0.22} strokeWidth={1} strokeDasharray=\"3 3\" vectorEffect=\"non-scaling-stroke\" />\n            <circle cx={pts[hover].x} cy={pts[hover].y} r={3} fill={hue} stroke=\"var(--card)\" strokeWidth={1.5} />\n          </>\n        )}\n      </svg>\n      {/* the foot answers when: 60 samples span 24h */}\n      <div className=\"mt-1 flex justify-between text-[10px] tabular-nums text-foreground/35\">\n        <span>24h ago</span>\n        <span>{hover != null ? `−${(((N - 1 - hover) / (N - 1)) * 24).toFixed(1)}h` : \"now\"}</span>\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/simple-chart.tsx"
+    }
+  ]
+}

@@ -108,7 +108,7 @@ export function AsciiTurntable({
   cell = 10,
   ramp = " .:-=+*#%@",
   sweep = 58,
-  fps = 24,
+  fps = 30,
   className = "",
   height = 420,
 }: AsciiTurntableProps) {
@@ -303,15 +303,9 @@ export function AsciiTurntable({
   return (
     <div
       ref={hostRef}
-      className={cn(
-        "relative w-full overflow-hidden rounded-xl border border-foreground/[0.04] text-foreground/[0.85]",
-        className,
-      )}
-      style={{
-        height,
-        background: "var(--card)",
-        boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)",
-      }}
+      /* no card: the glyph field sits straight on the page ground */
+      className={cn("relative w-full overflow-hidden text-foreground/[0.85]", className)}
+      style={{ height }}
     >
       <canvas ref={glRef} className="absolute inset-0 h-full w-full" />
       <canvas ref={asciiRef} className="absolute inset-0 h-full w-full" />

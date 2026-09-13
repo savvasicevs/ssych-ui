@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -87,11 +87,7 @@ export function MarketSnapshot({
         <div>
           <p className="text-[11px] font-medium text-muted-foreground">{name}</p>
           <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 tabular-nums">
-            <AnimatePresence mode="popLayout" initial={false}>
-              <motion.span key={price.toFixed(2)} className="text-[22px] font-semibold tracking-[-0.035em] text-foreground" initial={reduced ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
-                ${price.toFixed(2)}
-              </motion.span>
-            </AnimatePresence>
+            <span className="text-[22px] font-semibold tracking-[-0.035em] text-foreground">${price.toFixed(2)}</span>
             <span className="text-[11px] font-semibold" style={{ color: hue }}>{delta >= 0 ? "+" : ""}{delta.toFixed(2)} ({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)</span>
           </div>
         </div>

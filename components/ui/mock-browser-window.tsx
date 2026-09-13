@@ -1,10 +1,15 @@
 "use client"
 
 import type React from "react"
+import { useEffect, useRef, useState } from "react"
 import {
+  BookOpen,
   ChevronLeft,
   ChevronRight,
+  Lock,
   RotateCw,
+  Share,
+  Square,
   Star,
   Plus,
   EllipsisVertical,
@@ -59,6 +64,8 @@ interface BrowserWindowProps {
   sidebarWidthClassName?: string
   /** "right" biases the address bar toward the content area on mobile. */
   addressBarAlign?: "center" | "right"
+  /** Below this container width (px) the frame turns into a phone browser: status row, one address pill, a bottom toolbar. 0 disables it. */
+  mobileBreakpoint?: number
   sidebarItems?: Array<{
     icon?: React.ReactNode
     label: string
@@ -220,6 +227,72 @@ function AddressBar({
   )
 }
 
+/** Width of the frame itself, so the phone layout keys off the container, not the viewport. */
+function useContainerWidth(ref: React.RefObject<HTMLDivElement | null>) {
+  const [width, setWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return width
+}
+
+const phoneBtn = "flex h-8 w-8 items-center justify-center rounded-md text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/85"
+
+/** The phone chrome: a status row, one full-width address pill with the lock, and a bottom toolbar. */
+function PhoneChrome({ url = "https://example.com", children }: { url?: string; children?: React.ReactNode }) {
+  const host = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "")
+  return (
+    <>
+      <div className="flex h-7 items-center justify-between px-5 text-[11px] font-medium tabular-nums text-foreground/70">
+        <span>9:41</span>
+        {/* signal, wifi and battery as plain bars so no glyph font is needed */}
+        <span className="flex items-center gap-1.5" aria-hidden>
+          <span className="flex items-end gap-[2px]">
+            <span className="h-1.5 w-[3px] rounded-[1px] bg-foreground/70" />
+            <span className="h-2 w-[3px] rounded-[1px] bg-foreground/70" />
+            <span className="h-2.5 w-[3px] rounded-[1px] bg-foreground/70" />
+            <span className="h-3 w-[3px] rounded-[1px] bg-foreground/25" />
+          </span>
+          <span className="ml-1 flex h-[11px] w-[22px] items-center rounded-[3px] border border-foreground/40 p-[2px]">
+            <span className="h-full w-[70%] rounded-[1px] bg-foreground/70" />
+          </span>
+        </span>
+      </div>
+      <div className="flex items-center gap-2 px-3 pb-2">
+        <div className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-foreground/[0.06] bg-foreground/[0.04] px-3 text-[12px] text-foreground/60">
+          <Lock className="h-3 w-3 text-foreground/40" />
+          <span className="truncate">{host}</span>
+        </div>
+        <button type="button" aria-label="Reload" className={phoneBtn}>
+          <RotateCw className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="relative min-h-0 flex-1 border-t border-foreground/[0.06]">{children}</div>
+      <div className="flex h-12 items-center justify-around border-t border-foreground/[0.06] bg-foreground/[0.03] px-2">
+        <button type="button" aria-label="Back" className={phoneBtn}>
+          <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
+        </button>
+        <button type="button" aria-label="Forward" className={cn(phoneBtn, "text-foreground/25")}>
+          <ChevronRight className="h-5 w-5" strokeWidth={2.2} />
+        </button>
+        <button type="button" aria-label="Share" className={phoneBtn}>
+          <Share className="h-4 w-4" />
+        </button>
+        <button type="button" aria-label="Bookmarks" className={phoneBtn}>
+          <BookOpen className="h-4 w-4" />
+        </button>
+        <button type="button" aria-label="Tabs" className={phoneBtn}>
+          <Square className="h-4 w-4" />
+        </button>
+      </div>
+    </>
+  )
+}
+
 function SidebarContent({
   items = [
     { label: "Dashboard", active: true },
@@ -309,7 +382,13 @@ export function BrowserWindow({
   sidebarWidthClassName,
   addressBarAlign = "center",
   sidebarItems,
+  mobileBreakpoint = 480,
 }: BrowserWindowProps) {
+  const frameRef = useRef<HTMLDivElement>(null)
+  const width = useContainerWidth(frameRef)
+  /* the phone layout keys off the frame's own width, so a narrow column or a
+     resized preview turns the desktop chrome into a mobile browser */
+  const mobile = mobileBreakpoint > 0 && width !== null && width < mobileBreakpoint
 
   const sidebarSizes = {
     sm: "w-32",
@@ -341,13 +420,21 @@ export function BrowserWindow({
     return `${baseStyles} bg-foreground/[0.03]`
   }
 
-  return (
-    <div
-      className={`
+  const frameClass = `
         relative overflow-hidden rounded-2xl border shadow-[0_24px_70px_-24px_rgba(0,0,0,0.75)] light:shadow-[0_16px_44px_-26px_rgba(15,23,42,0.25)]
         h-full w-full ${themeClasses} ${className} flex flex-col
-      `}
-    >
+      `
+
+  if (mobile) {
+    return (
+      <div ref={frameRef} className={frameClass}>
+        <PhoneChrome url={url}>{children}</PhoneChrome>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={frameRef} className={frameClass}>
       <div className={getHeaderStyles()}>
         <div className="relative z-10 flex items-center gap-3">
           <WindowControls

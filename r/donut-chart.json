@@ -1,0 +1,66 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "donut-chart",
+  "type": "registry:ui",
+  "title": "Donut Chart",
+  "description": "Allocation as a ring rather than a pie: the stroke is a band around an open centre that the total sits in. Slices sort descending, ring and legend cross-highlight, and square caps keep the gaps between slices real.",
+  "dependencies": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/donut-chart.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/donut-chart.tsx",
+      "content": "\"use client\"\n\nimport { useState } from \"react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst SANS = \"inherit\"\nconst TEXT = \"var(--foreground)\"\nconst TEXT_MUTED = \"var(--muted-foreground)\"\n\nconst R = 56\n/** the band's weight — thick enough to read as a band, with room to grow into */\nconst THICK = 9\n/** what hover adds, radially; the arc keeps its own degrees either way */\nconst HOT = 3\n/** degrees taken out of a slice, half at each end, capped at half its own span */\nconst GAP_DEG = 4.5\n/** the tail's colour — the house neutral, so it reads as \"the rest\", not a hue */\nconst OTHER = \"color-mix(in srgb, var(--foreground) 22%, transparent)\"\n\nexport interface DonutDatum {\n  name: string\n  value: number\n  color: string\n  /** trailing figure on the legend row — the amount the share is a share of */\n  amount?: string\n}\n\nexport interface DonutChartProps {\n  data?: DonutDatum[]\n  /** centre figure when nothing is hovered */\n  total?: string\n  /** what the centre calls that figure */\n  label?: string\n  /** ring and legend side by side, or legend stacked under the ring for a rail */\n  layout?: \"row\" | \"stacked\"\n  /** the picked slice's name — dims every other slice, ring and legend alike */\n  selected?: string | null\n  /** given, the legend rows become toggles and the chart becomes the control */\n  onSelect?: (name: string) => void\n  className?: string\n}\n\n/* The top five positions of the sample book, then every remaining position\n   summed into one neutral band. `Other` is the arithmetic of the tail, never a\n   hand-typed figure. Brand hues take the var-with-fallback form so a host that\n   defines a coin token wins, and the raw value is only ever the fallback. */\nconst DEFAULT_SLICES: DonutDatum[] = [\n  { name: \"Bitcoin\", value: 27139.98, color: \"var(--coin-btc, #f7931a)\" },\n  { name: \"Ethereum\", value: 12505, color: \"var(--coin-eth, #627eea)\" },\n  { name: \"Solana\", value: 4144, color: \"var(--coin-sol, #9945ff)\" },\n  { name: \"Avalanche\", value: 3283.2, color: \"var(--coin-avax, #e84142)\" },\n  { name: \"Dogecoin\", value: 2997, color: \"var(--coin-doge, #c2a633)\" },\n  { name: \"Other · 11\", value: 13955.9, color: OTHER },\n]\n\nconst usdAbbr = (n: number) => {\n  const abs = Math.abs(n)\n  if (abs >= 1e12) return `$${(n / 1e12).toFixed(2)}T`\n  if (abs >= 1e9) return `$${(n / 1e9).toFixed(2)}B`\n  if (abs >= 1e6) return `$${(n / 1e6).toFixed(2)}M`\n  if (abs >= 1e4) return `$${(n / 1e3).toFixed(1)}K`\n  return `$${n.toLocaleString(\"en-US\", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`\n}\n\nconst DEFAULT_TOTAL = DEFAULT_SLICES.reduce((s, d) => s + d.value, 0)\n\n/**\n * Allocation as a ring rather than a pie: the stroke is a band around an open\n * centre that the total sits in. Slices sort descending, ring and legend\n * cross-highlight together, and the centre answers with whatever you point at.\n * Square caps keep the gaps real, so a slice thickens radially and never laps\n * its neighbour.\n */\nexport function DonutChart({\n  data = DEFAULT_SLICES,\n  total = usdAbbr(DEFAULT_TOTAL),\n  label = \"Total\",\n  layout = \"row\",\n  selected = null,\n  onSelect,\n  className,\n}: DonutChartProps) {\n  const [hot, setHot] = useState<string | null>(null)\n  const sorted = [...data].sort((a, b) => b.value - a.value)\n  const sum = sorted.reduce((s, d) => s + d.value, 0)\n\n  /* one focus at a time: the pointer wins while it is over the chart, otherwise\n     the picked slice is what the ring and the centre answer about */\n  const focus = hot ?? selected\n\n  let acc = 0\n  const segs = sorted.map((d) => {\n    const frac = d.value / sum\n    const span = frac * 360\n    /* the gap never eats more than half the slice, so a dust tier still draws\n       its own fraction of the circle, just inset less */\n    const gap = Math.min(GAP_DEG, span * 0.5)\n    const a0 = acc * 360 + gap / 2\n    const a1 = (acc + frac) * 360 - gap / 2\n    acc += frac\n    return { ...d, a0, a1: Math.max(a1, a0 + 0.5), frac }\n  })\n\n  const arc = (a0: number, a1: number) => {\n    const rad = (a: number) => ((a - 90) * Math.PI) / 180\n    const x0 = 70 + R * Math.cos(rad(a0))\n    const y0 = 70 + R * Math.sin(rad(a0))\n    const x1 = 70 + R * Math.cos(rad(a1))\n    const y1 = 70 + R * Math.sin(rad(a1))\n    return `M${x0.toFixed(2)},${y0.toFixed(2)} A${R},${R} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)},${y1.toFixed(2)}`\n  }\n\n  const centred = focus ? segs.find((s) => s.name === focus) : undefined\n\n  const ring = (\n    <div className=\"relative\">\n      <svg\n        width=\"140\"\n        height=\"140\"\n        viewBox=\"0 0 140 140\"\n        role=\"img\"\n        aria-label={segs.map((s) => `${s.name} ${(s.frac * 100).toFixed(1)}%`).join(\", \")}\n      >\n        {segs.map((s) => (\n          <g key={s.name}>\n            {/* the hit area, invisible and wider than the band: a 9px arc with\n                real gaps is a thin thing to ask a pointer to find */}\n            <path\n              aria-hidden\n              d={arc(s.a0, s.a1)}\n              fill=\"none\"\n              stroke=\"transparent\"\n              strokeWidth={THICK + 12}\n              onMouseEnter={() => setHot(s.name)}\n              onMouseLeave={() => setHot(null)}\n              onClick={onSelect ? () => onSelect(s.name) : undefined}\n              className={onSelect ? \"cursor-pointer\" : undefined}\n            />\n            <path\n              aria-hidden\n              pointerEvents=\"none\"\n              d={arc(s.a0, s.a1)}\n              fill=\"none\"\n              stroke={s.color}\n              /* butt, never round: a round cap runs past the angle the slice\n                 ends on, so a thickened slice would lap its neighbour */\n              strokeLinecap=\"butt\"\n              strokeWidth={focus === s.name ? THICK + HOT : THICK}\n              opacity={focus && focus !== s.name ? 0.3 : 1}\n              className=\"transition-all duration-200\"\n            />\n          </g>\n        ))}\n      </svg>\n      <div className=\"pointer-events-none absolute inset-0 grid place-items-center\">\n        <div className=\"flex flex-col items-center\">\n          <span className=\"text-[10px]\" style={{ color: TEXT_MUTED }}>\n            {centred ? centred.name : label}\n          </span>\n          <span className=\"text-[17px] font-semibold tabular-nums\" style={{ color: TEXT }}>\n            {centred ? usdAbbr(centred.value) : total}\n          </span>\n        </div>\n      </div>\n    </div>\n  )\n\n  const legend = (\n    <div className={layout === \"stacked\" ? \"flex w-full flex-col gap-0.5\" : \"flex flex-col gap-1.5\"}>\n      {segs.map((s) => {\n        const on = selected === s.name\n        return (\n          <button\n            key={s.name}\n            type=\"button\"\n            onClick={onSelect ? () => onSelect(s.name) : undefined}\n            aria-pressed={onSelect ? on : undefined}\n            onMouseEnter={() => setHot(s.name)}\n            onMouseLeave={() => setHot(null)}\n            onFocus={() => setHot(s.name)}\n            onBlur={() => setHot(null)}\n            /* selection is a fill, never a border swap, so the column cannot\n               reflow by a pixel when the scope changes */\n            className={\n              layout === \"stacked\"\n                ? `flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150 ${onSelect ? \"hover:bg-foreground/[0.03]\" : \"\"} ${on ? \"bg-foreground/[0.05]\" : \"\"}`\n                : \"flex items-center gap-2 text-left\"\n            }\n            style={{\n              opacity: focus && focus !== s.name ? 0.4 : 1,\n              transitionTimingFunction: `cubic-bezier(${EASE.join(\",\")})`,\n            }}\n          >\n            {/* a tall pill, not a dot: a legend mark has to carry its colour far\n                enough to be matched to an arc */}\n            <span className=\"h-[14px] w-[5px] shrink-0 rounded-[2px]\" style={{ background: s.color }} />\n            <span\n              className={layout === \"stacked\" ? \"min-w-0 flex-1 truncate text-[12px]\" : \"w-24 truncate text-[12px]\"}\n              style={{ color: TEXT }}\n            >\n              {s.name}\n            </span>\n            <span className=\"text-[11px] tabular-nums\" style={{ color: TEXT_MUTED }}>\n              {(s.frac * 100).toFixed(1)}%\n            </span>\n            {s.amount && (\n              <span className=\"w-[86px] text-right text-[10.5px] tabular-nums\" style={{ color: TEXT_MUTED }}>\n                {s.amount}\n              </span>\n            )}\n          </button>\n        )\n      })}\n    </div>\n  )\n\n  return (\n    <div\n      className={cn(layout === \"stacked\" ? \"flex w-full flex-col items-center gap-4\" : \"flex items-center gap-6\", className)}\n      style={{ fontFamily: SANS }}\n    >\n      {ring}\n      {legend}\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/donut-chart.tsx"
+    }
+  ]
+}

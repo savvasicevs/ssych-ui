@@ -128,32 +128,27 @@ export function RangeNavigator({
     return ((clientX - r.left) / r.width) * (len - 1)
   }
 
-  // Drag is tracked on the window so the pointer can leave the mini-map mid-pull.
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      const d = drag.current
-      if (!d) return
-      const delta = Math.round(pxToIdx(e.clientX) - d.startIdx)
-      if (d.mode === "move") {
-        const width = d.e - d.s
-        const start = clamp(d.s + delta, 0, len - 1 - width)
-        setWin({ start, end: start + width })
-      } else if (d.mode === "left") {
-        setWin({ start: clamp(d.s + delta, 0, d.e - minWindow), end: d.e })
-      } else {
-        setWin({ start: d.s, end: clamp(d.e + delta, d.s + minWindow, len - 1) })
-      }
+  // The mini-map captures the pointer on press, so the pull keeps tracking when the
+  // pointer leaves it, and it works in any document (an iframe never forwards its
+  // pointer events to the parent window, which is where a window listener sits).
+  const onNavMove = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (!d) return
+    const delta = Math.round(pxToIdx(e.clientX) - d.startIdx)
+    if (d.mode === "move") {
+      const width = d.e - d.s
+      const start = clamp(d.s + delta, 0, len - 1 - width)
+      setWin({ start, end: start + width })
+    } else if (d.mode === "left") {
+      setWin({ start: clamp(d.s + delta, 0, d.e - minWindow), end: d.e })
+    } else {
+      setWin({ start: d.s, end: clamp(d.e + delta, d.s + minWindow, len - 1) })
     }
-    const onUp = () => {
-      drag.current = null
-    }
-    window.addEventListener("pointermove", onMove)
-    window.addEventListener("pointerup", onUp)
-    return () => {
-      window.removeEventListener("pointermove", onMove)
-      window.removeEventListener("pointerup", onUp)
-    }
-  }, [len, minWindow])
+  }
+  const endDrag = (e: React.PointerEvent) => {
+    drag.current = null
+    if (navRef.current?.hasPointerCapture(e.pointerId)) navRef.current.releasePointerCapture(e.pointerId)
+  }
 
   useEffect(() => {
     onWindowChange?.(win)
@@ -162,6 +157,8 @@ export function RangeNavigator({
 
   const startDrag = (mode: "move" | "left" | "right") => (e: React.PointerEvent) => {
     e.preventDefault()
+    e.stopPropagation()
+    navRef.current?.setPointerCapture(e.pointerId)
     drag.current = { mode, startIdx: pxToIdx(e.clientX), s: win.start, e: win.end }
   }
 
@@ -269,7 +266,7 @@ export function RangeNavigator({
           animate={{ opacity: 1 }}
           transition={{ duration: reduced ? 0 : 0.2 }}
         />
-        <path d={detail.line} fill="none" stroke={color} strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+        <path d={detail.line} fill="none" stroke={color} strokeWidth={1} vectorEffect="non-scaling-stroke" />
 
         {/* hover crosshair + readout card */}
         {hv && (
@@ -314,12 +311,15 @@ export function RangeNavigator({
         height={NAV_H}
         viewBox={`0 0 ${W} ${NAV_H}`}
         className="mt-1 block touch-none select-none"
+        onPointerMove={onNavMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <path
           d={nav.line}
           fill="none"
           stroke="color-mix(in srgb, var(--foreground) 30%, transparent)"
-          strokeWidth={1}
+          strokeWidth={0.75}
           vectorEffect="non-scaling-stroke"
         />
         {/* everything outside the window dims back */}

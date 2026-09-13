@@ -40,10 +40,6 @@
       "type": "registry:ui"
     },
     {
-      "name": "gradient-button-group",
-      "type": "registry:ui"
-    },
-    {
       "name": "accordion",
       "type": "registry:ui"
     },
@@ -64,14 +60,6 @@
       "type": "registry:ui"
     },
     {
-      "name": "coverflow-rail",
-      "type": "registry:ui"
-    },
-    {
-      "name": "profile-card",
-      "type": "registry:ui"
-    },
-    {
       "name": "file-tree",
       "type": "registry:ui"
     },
@@ -81,6 +69,30 @@
     },
     {
       "name": "sma-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "dotted-area-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "health-gauge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "market-heatmap",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sankey-flow",
+      "type": "registry:ui"
+    },
+    {
+      "name": "donut-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "balance-header",
       "type": "registry:ui"
     },
     {
@@ -132,6 +144,38 @@
       "type": "registry:ui"
     },
     {
+      "name": "candlestick",
+      "type": "registry:ui"
+    },
+    {
+      "name": "equity-drawdown",
+      "type": "registry:ui"
+    },
+    {
+      "name": "balance-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "price-scrubber",
+      "type": "registry:ui"
+    },
+    {
+      "name": "comb-rows",
+      "type": "registry:ui"
+    },
+    {
+      "name": "ticker-tape",
+      "type": "registry:ui"
+    },
+    {
+      "name": "trade-tape",
+      "type": "registry:ui"
+    },
+    {
+      "name": "simple-chart",
+      "type": "registry:ui"
+    },
+    {
       "name": "matrix-ticker-board",
       "type": "registry:ui"
     },
@@ -157,6 +201,10 @@
     },
     {
       "name": "alert-stack",
+      "type": "registry:ui"
+    },
+    {
+      "name": "assets-balance-card",
       "type": "registry:ui"
     },
     {

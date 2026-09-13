@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "market-heatmap",
+  "type": "registry:ui",
+  "title": "Market Heatmap",
+  "description": "The market as one block of ground: tiles sized by market cap on a hand-rolled squarified treemap, tinted on a diverging scale by the day's move. Hovering a tile parks a read-out beside it with price, change and cap; clicking pins it.",
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {
+    "preview": "https://ssych.com/component-videos/market-heatmap.mp4"
+  },
+  "files": [
+    {
+      "path": "components/ui/market-heatmap.tsx",
+      "content": "\"use client\"\n\nimport { useLayoutEffect, useMemo, useRef, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-2)\"\nconst RED = \"var(--chart-down)\"\nconst SANS = \"inherit\"\nconst SURFACE = \"var(--card)\"\nconst HAIRLINE = \"var(--border)\"\nconst TEXT = \"var(--foreground)\"\nconst TEXT_MUTED = \"var(--muted-foreground)\"\n\nexport interface HeatmapCo {\n  sym: string\n  name: string\n  /** market cap in trillions — drives tile area */\n  cap: number\n  /** percent change on the day — drives tile hue */\n  chg: number\n  price: number\n}\n\nexport interface MarketHeatmapProps {\n  /** one tile per company, any length; areas rescale to fill the box */\n  data?: HeatmapCo[]\n  /** heading above the map */\n  title?: string\n  className?: string\n}\n\nconst DEFAULT_DATA: HeatmapCo[] = [\n  { sym: \"AAPL\", name: \"Apple\", cap: 3.4, chg: 0.8, price: 228.5 },\n  { sym: \"MSFT\", name: \"Microsoft\", cap: 3.1, chg: 1.2, price: 441.2 },\n  { sym: \"NVDA\", name: \"NVIDIA\", cap: 2.9, chg: 3.1, price: 179.8 },\n  { sym: \"GOOGL\", name: \"Alphabet\", cap: 2.1, chg: -0.6, price: 182.4 },\n  { sym: \"AMZN\", name: \"Amazon\", cap: 1.9, chg: 1.5, price: 201.3 },\n  { sym: \"META\", name: \"Meta\", cap: 1.3, chg: -1.2, price: 512.7 },\n  { sym: \"AVGO\", name: \"Broadcom\", cap: 0.8, chg: 2.2, price: 168.1 },\n  { sym: \"TSLA\", name: \"Tesla\", cap: 0.78, chg: -2.4, price: 244.9 },\n  { sym: \"JPM\", name: \"JPMorgan\", cap: 0.62, chg: 0.3, price: 214.6 },\n  { sym: \"V\", name: \"Visa\", cap: 0.55, chg: 0.1, price: 289.0 },\n  { sym: \"WMT\", name: \"Walmart\", cap: 0.5, chg: -0.4, price: 69.4 },\n  { sym: \"XOM\", name: \"Exxon\", cap: 0.48, chg: -1.1, price: 118.2 },\n  { sym: \"UNH\", name: \"UnitedHealth\", cap: 0.45, chg: 0.9, price: 528.3 },\n  { sym: \"MA\", name: \"Mastercard\", cap: 0.42, chg: 0.2, price: 471.5 },\n  { sym: \"HD\", name: \"Home Depot\", cap: 0.38, chg: -0.7, price: 361.8 },\n  { sym: \"PG\", name: \"P&G\", cap: 0.35, chg: 0.5, price: 167.9 },\n]\n\nconst W = 460\nconst H = 280\n\ntype Tile = { x: number; y: number; w: number; h: number; co: HeatmapCo }\n\nfunction worst(row: number[], side: number, area: number) {\n  const max = Math.max(...row)\n  const min = Math.min(...row)\n  const s2 = area * area\n  const l2 = side * side\n  return Math.max((l2 * max) / s2, s2 / (l2 * min))\n}\n\n/** squarified treemap — areas already scaled to fill w*h */\nfunction squarify(cos: HeatmapCo[]): Tile[] {\n  const total = cos.reduce((s, c) => s + c.cap, 0)\n  const scale = (W * H) / total\n  const items = cos.map((c) => ({ area: c.cap * scale, co: c }))\n  const out: Tile[] = []\n  let rx = 0\n  let ry = 0\n  let rw = W\n  let rh = H\n  let idx = 0\n  while (idx < items.length) {\n    const side = Math.min(rw, rh)\n    const row = [items[idx].area]\n    const rowCos = [items[idx].co]\n    let rowArea = items[idx].area\n    let k = idx + 1\n    while (k < items.length) {\n      const nxt = rowArea + items[k].area\n      if (worst([...row, items[k].area], side, nxt) > worst(row, side, rowArea)) break\n      row.push(items[k].area)\n      rowCos.push(items[k].co)\n      rowArea = nxt\n      k++\n    }\n    if (rw >= rh) {\n      const colW = rowArea / rh\n      let cy = ry\n      row.forEach((a, j) => {\n        const th = a / colW\n        out.push({ x: rx, y: cy, w: colW, h: th, co: rowCos[j] })\n        cy += th\n      })\n      rx += colW\n      rw -= colW\n    } else {\n      const rowH = rowArea / rw\n      let cxx = rx\n      row.forEach((a, j) => {\n        const tw = a / rowH\n        out.push({ x: cxx, y: ry, w: tw, h: rowH, co: rowCos[j] })\n        cxx += tw\n      })\n      ry += rowH\n      rh -= rowH\n    }\n    idx = k\n  }\n  return out\n}\n\n/** diverging: one hue per direction, magnitude as the mix percentage */\nconst tileFill = (chg: number) =>\n  `color-mix(in srgb, ${chg >= 0 ? GREEN : RED} ${Math.round(Math.min(Math.abs(chg) / 3, 1) * 48 + 9)}%, var(--card))`\n\nconst TIP_W = 140\nconst TIP_GAP = 8\n\n/* Park the readout clear of the tile it describes — the small tiles were being\n   covered by their own tooltip. Try above, then below, then either side, and\n   clamp to the box so nothing overflows. */\nfunction place(t: Tile, h: number) {\n  const cx = Math.max(0, Math.min(W - TIP_W, t.x + t.w / 2 - TIP_W / 2))\n  const cy = Math.max(0, Math.min(H - h, t.y + t.h / 2 - h / 2))\n  const above = t.y - TIP_GAP - h\n  if (above >= 0) return { left: cx, top: above }\n  const below = t.y + t.h + TIP_GAP\n  if (below + h <= H) return { left: cx, top: below }\n  const right = t.x + t.w + TIP_GAP\n  if (right + TIP_W <= W) return { left: right, top: cy }\n  const left = t.x - TIP_GAP - TIP_W\n  if (left >= 0) return { left, top: cy }\n  return { left: t.x < W / 2 ? W - TIP_W : 0, top: t.y < H / 2 ? H - h : 0 }\n}\n\n/**\n * The market as one block of ground: tiles sized by market cap and tinted on a\n * diverging scale by the day's move, so scale and direction read at once.\n * Hovering a tile lifts it out of the field and parks a read-out beside it with\n * price, change and cap; clicking pins that read-out in place.\n */\nexport function MarketHeatmap({ data = DEFAULT_DATA, title = \"Market map · today\", className }: MarketHeatmapProps) {\n  const reduced = useReducedMotion()\n  const [hover, setHover] = useState<string | null>(null)\n  const [pin, setPin] = useState<string | null>(null)\n  const hot = pin ?? hover\n  const tiles = useMemo(() => squarify([...data].sort((a, b) => b.cap - a.cap)), [data])\n  const hotTile = tiles.find((t) => t.co.sym === hot)\n\n  /* the readout is a fixed block, but measure it so the above/below flip is\n     decided on its real height at any type scale */\n  const tipRef = useRef<HTMLDivElement>(null)\n  const [tipH, setTipH] = useState(62)\n  useLayoutEffect(() => {\n    const el = tipRef.current\n    if (el) setTipH(el.offsetHeight)\n  }, [hot])\n  const tip = hotTile ? place(hotTile, tipH) : null\n\n  return (\n    <div className={cn(\"w-[460px] max-w-full\", className)} style={{ fontFamily: SANS }}>\n      <div className=\"mb-2 flex items-baseline justify-between px-0.5\">\n        <span className=\"text-[13px] font-medium\" style={{ color: TEXT }}>\n          {title}\n        </span>\n        <span className=\"text-[10px]\" style={{ color: TEXT_MUTED }}>\n          sized by market cap\n        </span>\n      </div>\n\n      <div className=\"relative\">\n        <svg\n          width={W}\n          height={H}\n          viewBox={`0 0 ${W} ${H}`}\n          className=\"block overflow-visible rounded-lg\"\n          onMouseLeave={() => setHover(null)}\n          role=\"img\"\n          aria-label={`${title}, ${tiles.length} companies sized by market cap`}\n        >\n          {tiles.map((t, i) => {\n            const on = hot === t.co.sym\n            const pinned = pin === t.co.sym\n            const dim = hot !== null && !on\n            const big = t.w > 52 && t.h > 30\n            return (\n              <motion.g\n                key={t.co.sym}\n                onMouseEnter={() => {\n                  if (!pin) setHover(t.co.sym)\n                }}\n                onClick={() => setPin((p) => (p === t.co.sym ? null : t.co.sym))}\n                style={{ cursor: \"pointer\" }}\n                initial={{ opacity: reduced ? 1 : 0 }}\n                animate={{ opacity: dim ? 0.5 : 1 }}\n                transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: i * 0.02 }}\n              >\n                <rect\n                  x={t.x + 0.5}\n                  y={t.y + 0.5}\n                  width={Math.max(0, t.w - 1)}\n                  height={Math.max(0, t.h - 1)}\n                  rx={2}\n                  fill={tileFill(t.co.chg)}\n                  stroke={on ? (t.co.chg >= 0 ? GREEN : RED) : \"color-mix(in srgb, var(--foreground) 6%, transparent)\"}\n                  strokeWidth={pinned ? 2 : on ? 1.5 : 1}\n                  strokeDasharray={pinned ? \"3 2\" : undefined}\n                />\n                {big && (\n                  <>\n                    <text x={t.x + 6} y={t.y + 16} fontSize={11} fontWeight={700} fill={TEXT}>\n                      {t.co.sym}\n                    </text>\n                    <text\n                      x={t.x + 6}\n                      y={t.y + 28}\n                      fontSize={9}\n                      fontWeight={600}\n                      fill={t.co.chg >= 0 ? GREEN : RED}\n                      className=\"tabular-nums\"\n                    >\n                      {t.co.chg >= 0 ? \"+\" : \"−\"}\n                      {Math.abs(t.co.chg).toFixed(1)}%\n                    </text>\n                  </>\n                )}\n                {!big && t.w > 26 && (\n                  <text\n                    x={t.x + t.w / 2}\n                    y={t.y + t.h / 2 + 3}\n                    textAnchor=\"middle\"\n                    fontSize={8.5}\n                    fontWeight={600}\n                    fill=\"color-mix(in srgb, var(--foreground) 70%, transparent)\"\n                  >\n                    {t.co.sym}\n                  </text>\n                )}\n              </motion.g>\n            )\n          })}\n        </svg>\n\n        {/* never over the tile it describes, never outside the box */}\n        {hotTile && tip && (\n          <div\n            ref={tipRef}\n            className=\"pointer-events-none absolute z-10 rounded-lg border px-2.5 py-1.5\"\n            role=\"status\"\n            style={{\n              background: SURFACE,\n              borderColor: HAIRLINE,\n              width: `${TIP_W}px`,\n              left: `${tip.left}px`,\n              top: `${tip.top}px`,\n            }}\n          >\n            <div className=\"flex items-baseline justify-between\">\n              <span className=\"text-[11px] font-semibold\" style={{ color: TEXT }}>\n                {hotTile.co.sym}\n              </span>\n              <span\n                className=\"text-[11px] font-semibold tabular-nums\"\n                style={{ color: hotTile.co.chg >= 0 ? GREEN : RED }}\n              >\n                {hotTile.co.chg >= 0 ? \"+\" : \"−\"}\n                {Math.abs(hotTile.co.chg).toFixed(2)}%\n              </span>\n            </div>\n            <div className=\"mt-0.5 text-[9.5px]\" style={{ color: TEXT_MUTED }}>\n              {hotTile.co.name}\n            </div>\n            <div className=\"mt-1 flex justify-between text-[9.5px] tabular-nums\" style={{ color: TEXT_MUTED }}>\n              <span>${hotTile.co.price.toFixed(2)}</span>\n              <span>${hotTile.co.cap.toFixed(2)}T</span>\n            </div>\n          </div>\n        )}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/market-heatmap.tsx"
+    }
+  ]
+}

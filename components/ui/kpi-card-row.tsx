@@ -6,7 +6,7 @@ import { Activity, Target, Timer } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-/** KPI Card Row — a dashboard stat band as live components: tinted icon chip,
+/** KPI Card Row — a dashboard stat band as live components: neutral icon,
  *  count-up value, signed delta, and a full-bleed area chart that runs
  *  edge-to-edge (no end dot — the line is flush with the card) and reads out the
  *  real amount at any point on hover. The chart is memoized so the count-up
@@ -27,7 +27,7 @@ export type KpiItem = {
   delta?: string
   /** false tints the delta amber instead of green (a fall that isn't good news) */
   up?: boolean
-  /** line + area + icon tint; any CSS color, defaults to the chart ramp */
+  /** line + area tint; any CSS color, defaults to the chart ramp */
   color?: string
   /** leading glyph — any node, sized ~14px */
   icon?: ReactNode
@@ -210,7 +210,7 @@ function KpiCard({ item, labels, delay }: { item: KpiItem; labels: string[]; del
       <div className="px-3.5 pt-4">
         <div className="flex items-center gap-1.5">
           {item.icon && (
-            <span aria-hidden className="flex" style={{ color }}>
+            <span aria-hidden className="flex text-foreground/60">
               {item.icon}
             </span>
           )}

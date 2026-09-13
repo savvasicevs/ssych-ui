@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 import { ArrowUpDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -14,27 +14,24 @@ const TEXT_MUTED = "var(--muted-foreground)"
 /** Number pop-in — each character blurs, pops and slides into place, staggered
  * left→right. Keyed by position + glyph, so only the digits that actually
  * changed re-flip: a keystroke pops one digit, a denomination swap cascades the
- * whole value. tabular-nums keeps the columns from breathing. */
+ * whole value. The old glyph leaves at once rather than animating out, so two
+ * values never share the row mid-swap. tabular-nums keeps the columns still. */
 function Digits({ text }: { text: string }) {
   const reduced = useReducedMotion()
   return (
     <span className="inline-flex tabular-nums">
-      <AnimatePresence mode="popLayout">
-        {text.split("").map((ch, i) => (
-          <motion.span
-            key={`${i}-${ch}`}
-            layout
-            initial={reduced ? false : { opacity: 0, y: 7, scale: 0.5, filter: "blur(4px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -7, scale: 0.5, filter: "blur(4px)" }}
-            transition={reduced ? { duration: 0 } : { duration: 0.34, ease: EASE, delay: 0.02 * i }}
-            className="inline-block"
-            style={{ whiteSpace: "pre" }}
-          >
-            {ch}
-          </motion.span>
-        ))}
-      </AnimatePresence>
+      {text.split("").map((ch, i) => (
+        <motion.span
+          key={`${i}-${ch}`}
+          initial={reduced ? false : { opacity: 0, y: 7, scale: 0.5, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+          transition={reduced ? { duration: 0 } : { duration: 0.34, ease: EASE, delay: 0.02 * i }}
+          className="inline-block"
+          style={{ whiteSpace: "pre" }}
+        >
+          {ch}
+        </motion.span>
+      ))}
     </span>
   )
 }

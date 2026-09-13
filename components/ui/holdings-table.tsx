@@ -67,7 +67,7 @@ export function HoldingsTable({
     >
       <div className="grid grid-cols-[1.6fr_0.9fr_0.9fr_0.8fr_1.1fr] gap-2 border-b border-foreground/[0.04] bg-foreground/[0.02] px-4 py-2.5">
         {[title, valueLabel, priceLabel, returnLabel, weightLabel].map((h, i) => (
-          <span key={i} className={cn("text-[9px] uppercase tracking-[0.1em] text-foreground/30", i > 0 && "text-right")}>
+          <span key={i} className={cn("whitespace-nowrap text-[10.5px] text-foreground/45", i > 0 && "text-right")}>
             {h}
           </span>
         ))}
