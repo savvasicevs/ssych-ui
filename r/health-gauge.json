@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Health Gauge",
   "description": "A bounded single-metric dial: a 270° arc on one flat track, a value arc that draws in behind an end marker, and a centre number that counts up to it. Clicking the dial cycles the metric and the arc redraws.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Inbox",
   "description": "Notification inbox — unread dots dissolve on read, mark-all clears the column.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "motion",

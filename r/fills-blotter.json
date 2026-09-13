@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Fills Blotter",
   "description": "A streaming order-fills table: new fills slide in at the top as working, then resolve in place to filled or rejected; hover a row for venue, order id and fee; pausable.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

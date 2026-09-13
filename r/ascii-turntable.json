@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "ASCII Turntable",
   "description": "An extruded solid that turns with the cursor and is redrawn as characters on a grid. The lighting is graded for the ramp, so the face lands mid-scale instead of saturating to one glyph.",
+  "categories": [
+    "showcase"
+  ],
   "dependencies": [
     "clsx",
     "tailwind-merge",

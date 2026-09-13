@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Request Log",
   "description": "API log rows with status pills that unfold their response body inline.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "motion",

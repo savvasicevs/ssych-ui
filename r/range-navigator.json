@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Range Navigator",
   "description": "Focus + context price history — a detail chart over a mini-map you drag to pan and pull to zoom, with a hover crosshair reading price and date.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

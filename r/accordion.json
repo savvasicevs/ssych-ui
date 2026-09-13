@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Accordion",
   "description": "Expanding accordion rows — each reveals its body, a checklist, and a visual.",
+  "categories": [
+    "layout"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

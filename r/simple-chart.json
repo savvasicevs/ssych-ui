@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Simple Chart",
   "description": "The compact asset-price card: one line, one number that scrubs under the pointer, and a signed-percent tag the line is de-trended to agree with.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

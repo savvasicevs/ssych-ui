@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Index Card",
   "description": "Markets sidebar card — one big price over a full-bleed scrubbable line, a tab underline that walks between indices, and the one-paragraph read below.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

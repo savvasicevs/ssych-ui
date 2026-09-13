@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Balance Chart",
   "description": "Wallet-value area chart: trend picks the colour, the high and low float at their true points, scrubbing greys everything ahead of the cursor, and timeframe pills reseed the walk.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Segmented Control",
   "description": "Hairline pill whose thumb glides between options with a shared-layout spring.",
+  "categories": [
+    "controls"
+  ],
   "dependencies": [
     "clsx",
     "motion",

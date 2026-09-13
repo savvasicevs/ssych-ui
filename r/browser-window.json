@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Browser Window",
   "description": "Chrome / Safari mock window frame for screenshots and embeds; below 480px of its own width it becomes a phone browser with a status row, one address pill and a bottom toolbar.",
+  "categories": [
+    "layout"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

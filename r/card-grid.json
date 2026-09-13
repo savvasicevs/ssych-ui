@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Card Grid",
   "description": "Responsive grid of project cards with hover-reveal actions and a shared details modal.",
+  "categories": [
+    "cards"
+  ],
   "dependencies": [
     "clsx",
     "motion",

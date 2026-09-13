@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Crypto/Fiat",
   "description": "Dual-denomination amount field. Type in fiat or units, the toggle carries the value through the rate, and the headline steps down a size tier as it grows.",
+  "categories": [
+    "controls"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

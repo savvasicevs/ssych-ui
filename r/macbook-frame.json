@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "MacBook Frame",
   "description": "Front-facing MacBook mockup — drop a screenshot, gradient, or live UI on the screen.",
+  "categories": [
+    "layout"
+  ],
   "dependencies": [
     "clsx",
     "tailwind-merge"

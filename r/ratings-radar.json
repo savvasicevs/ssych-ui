@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Ratings Radar",
   "description": "Analyst-ratings pentagon with hairline rings and one green wedge toward the dominant rating.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

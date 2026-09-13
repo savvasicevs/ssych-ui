@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "New Items Pill",
   "description": "A live tape that pins the row you are reading — arrivals stop pushing the list down and count into a pill until you tap back to the top.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

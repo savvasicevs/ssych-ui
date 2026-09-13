@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Comb Rows",
   "description": "A comparison as rulers of ticks: the cursor tick stands taller at the value and the subject row carries the accent; hover hands it to another row.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

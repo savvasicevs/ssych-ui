@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Dotted Area Chart",
   "description": "A price line standing on a field of dots that fades toward the floor. Scrubbing splits the chart at the cursor, lighting the stretch already passed and dropping the rest back, with a read-out carrying the bar's price and its move from the open.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

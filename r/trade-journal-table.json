@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Trade Journal Table",
   "description": "A trade log where the open position is lit from its spine and every closed one settles into a win or loss pill; heads sort, the range thumb slides, net P&L carries its fee formula.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

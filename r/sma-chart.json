@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "SMA Chart",
   "description": "Moving-average chart — price line with fast/slow SMA overlays, crosshair scrubbing with a three-series tooltip, and a signed change chip.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

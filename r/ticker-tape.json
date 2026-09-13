@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Ticker Tape",
   "description": "A finance tape gliding through a hairline rail on a seamless loop; hovering holds it still, moves read green up and red down.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "motion",

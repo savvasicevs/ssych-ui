@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Historical EPS",
   "description": "Forecast-vs-reported quarterly bars — dashed forecasts, a derived Beat-by tip, and a surprise tooltip.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

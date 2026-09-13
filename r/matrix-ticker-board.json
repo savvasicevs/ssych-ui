@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Matrix Ticker Board",
   "description": "A retro dot-matrix price wall on canvas: 5×7 dot glyphs, and on each quote update only the changed characters dissolve out dot by dot and bloom back.",
+  "categories": [
+    "showcase"
+  ],
   "dependencies": [
     "clsx",
     "motion",

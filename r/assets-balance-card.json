@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Assets Balance Card",
   "description": "Deep-ground balance hero: rolling odometer digits, an ambient signal line, scrub readout, and a drag handle that pulls the chart taller.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

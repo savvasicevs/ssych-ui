@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Trade Tape",
   "description": "Live time and sales: prints stream in side-coloured and sized by a magnitude bar, block trades tint the row, and hovering pauses the tape.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "motion",

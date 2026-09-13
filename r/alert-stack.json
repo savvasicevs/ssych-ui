@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Alert Stack",
   "description": "Collapsed notification deck that fans open on hover; each dismiss re-settles the pile.",
+  "categories": [
+    "showcase"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

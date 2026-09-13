@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Holdings Table",
   "description": "Fund-holdings register with YTD pills and tick-comb weight bars.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "motion",

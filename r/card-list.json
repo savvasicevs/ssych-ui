@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Card List",
   "description": "Vertical list of horizontal project cards with media, copy, and a shared details modal.",
+  "categories": [
+    "cards"
+  ],
   "dependencies": [
     "clsx",
     "motion",

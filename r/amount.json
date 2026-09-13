@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Amount",
   "description": "Money-formatting family — Fiat, Crypto and Percent agree on symbol placement, precision, abbreviation and sign colouring.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "tailwind-merge"

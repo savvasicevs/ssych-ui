@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Price Scrubber",
   "description": "Scrub chart with a magnet crosshair, price and time badges on the axes, a hero number that recolours off the reference price, a wash under the pointer and timeframe pills.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

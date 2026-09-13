@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Donut Chart",
   "description": "Allocation as a ring rather than a pie: the stroke is a band around an open centre that the total sits in. Slices sort descending, ring and legend cross-highlight, and square caps keep the gaps between slices real.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "tailwind-merge"

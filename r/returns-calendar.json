@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Returns Calendar",
   "description": "Monthly-returns heat grid: years by months diverging up/down by magnitude, a compounded year column, a gliding tooltip that dims everything unrelated, a year replay on hover, and click-to-span compounding by months or whole years.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

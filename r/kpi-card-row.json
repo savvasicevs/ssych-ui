@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "KPI Card Row",
   "description": "Dashboard stat band — count-up headlines with signed deltas over full-bleed area charts you can hover to read any sample with its date.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

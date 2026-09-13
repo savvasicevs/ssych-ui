@@ -4,6 +4,10 @@
   "type": "registry:ui",
   "title": "Market Watchlist",
   "description": "Sortable quote register — trend sparklines, signed day changes, accent spine on the selected row.",
+  "categories": [
+    "charts",
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

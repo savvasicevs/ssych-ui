@@ -1,6 +1,6 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
-  "name": "ssych-ui",
+  "name": "ssych",
   "homepage": "https://ssych.com/library",
   "items": [
     {

@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Analyst Radar",
   "description": "Two-series factor radar — subject filled against a dashed peer outline, a hovered spoke reading both values, and a legend that mutes a series.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

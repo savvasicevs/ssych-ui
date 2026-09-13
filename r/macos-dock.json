@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "macOS Dock",
   "description": "macOS-style magnifying dock — cursor-driven icon springs, click bounce, floor reflections, running-app dots, and a ⌘K command menu.",
+  "categories": [
+    "layout"
+  ],
   "dependencies": [
     "clsx",
     "motion",

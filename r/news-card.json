@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "News Card",
   "description": "Auto-cycling news module with an ink headline and dot pagination.",
+  "categories": [
+    "showcase"
+  ],
   "dependencies": [
     "clsx",
     "motion",

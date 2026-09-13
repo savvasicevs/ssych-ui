@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Balance Header",
   "description": "A wallet's headline number with its cents stepped back so the eye lands on the dollars, the move carried in a tinted pill beneath, and a privacy toggle that masks every figure to dots.",
+  "categories": [
+    "data"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

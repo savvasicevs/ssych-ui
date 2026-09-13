@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Heat Calendar",
   "description": "Weeks of activity as a sequential single-hue grid with month labels, a gliding date-and-count tooltip, a ripple on hover, click-to-span totals and a legend that filters by level.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

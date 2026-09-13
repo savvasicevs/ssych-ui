@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Sankey Flow",
   "description": "A fund-flow diagram where income pools in one hub and fans out into uses, node and ribbon thickness standing for amount. Flow is conserved through the middle, so every outbound strand carries its source's hue across.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

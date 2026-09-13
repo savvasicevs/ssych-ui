@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Equity & Drawdown",
   "description": "A cumulative equity curve over a synced underwater drawdown panel; one crosshair reads equity, drawdown and days below the high-water mark.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

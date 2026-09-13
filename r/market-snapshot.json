@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Market Snapshot",
   "description": "Price snapshot card — animated headline price, period-sliced line chart with crosshair scrubbing, and a gliding period switcher.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

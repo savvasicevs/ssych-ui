@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Onboarding Checklist",
   "description": "Setup checklist — the check draws in and the progress bar keeps a derivable score.",
+  "categories": [
+    "flows"
+  ],
   "dependencies": [
     "clsx",
     "motion",

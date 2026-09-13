@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Card Stack",
   "description": "Draggable stacked-card carousel — swipe or drag the top card, click to expand into a details modal with a floating dock.",
+  "categories": [
+    "cards"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

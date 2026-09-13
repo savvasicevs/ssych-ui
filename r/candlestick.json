@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Candlestick",
   "description": "Candles over a volume histogram with a magnet crosshair, a price badge on the right axis, a live OHLC legend and a switch to a plain close line.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Sidebar",
   "description": "Collapsible accordion sidebar with icon'd sections, an active rail, and socials.",
+  "categories": [
+    "layout"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

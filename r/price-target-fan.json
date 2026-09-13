@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Price Target Fan",
   "description": "Analyst targets: history draws to now, dashed projections fan to High / Mean / Low, the nearest projection owns the pointer and the hot one draws solid, with a scrub card and a live ring on the now dot.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

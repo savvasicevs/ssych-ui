@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Market Heatmap",
   "description": "The market as one block of ground: tiles sized by market cap on a hand-rolled squarified treemap, tinted on a diverging scale by the day's move. Hovering a tile parks a read-out beside it with price, change and cap; clicking pins it.",
+  "categories": [
+    "charts"
+  ],
   "dependencies": [
     "clsx",
     "motion",

@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Project Index",
   "description": "Bare project rows where the cover only exists while you hover, floating beside the cursor.",
+  "categories": [
+    "showcase"
+  ],
   "dependencies": [
     "clsx",
     "motion",

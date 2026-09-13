@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Preferences Card",
   "description": "Settings rows with icon tiles, one-line hints, and a chevron that walks in on hover.",
+  "categories": [
+    "flows"
+  ],
   "dependencies": [
     "clsx",
     "lucide-react",

@@ -4,6 +4,9 @@
   "type": "registry:ui",
   "title": "Empty State",
   "description": "A dotted field, a hairline icon chip, one line of ink and one quiet action.",
+  "categories": [
+    "flows"
+  ],
   "dependencies": [
     "clsx",
     "tailwind-merge"
