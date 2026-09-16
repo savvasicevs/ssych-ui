@@ -226,7 +226,7 @@ export function FillsBlotter({
   return (
     <div
       className={cn("w-full max-w-[640px] overflow-hidden rounded-2xl border border-foreground/[0.06]", className)}
-      style={{ background: "var(--card)", boxShadow: "0 16px 36px color-mix(in srgb, var(--foreground) 6%, transparent)" }}
+      style={{ background: "var(--card)" }}
     >
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <div className="flex items-baseline gap-2.5">

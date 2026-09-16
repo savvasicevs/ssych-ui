@@ -66,6 +66,10 @@ interface BrowserWindowProps {
   addressBarAlign?: "center" | "right"
   /** Below this container width (px) the frame turns into a phone browser: status row, one address pill, a bottom toolbar. 0 disables it. */
   mobileBreakpoint?: number
+  /** The rules under the header and beside the sidebar. Off lets the chrome, sidebar and page read as one surface. */
+  dividers?: boolean
+  /** The URL pill in the header (and its row on the phone layout). Off leaves the window controls alone in the bar. */
+  showAddressBar?: boolean
   sidebarItems?: Array<{
     icon?: React.ReactNode
     label: string
@@ -243,7 +247,7 @@ function useContainerWidth(ref: React.RefObject<HTMLDivElement | null>) {
 const phoneBtn = "flex h-8 w-8 items-center justify-center rounded-md text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/85"
 
 /** The phone chrome: a status row, one full-width address pill with the lock, and a bottom toolbar. */
-function PhoneChrome({ url = "https://example.com", children }: { url?: string; children?: React.ReactNode }) {
+function PhoneChrome({ url = "https://example.com", children, dividers = true, showAddressBar = true }: { url?: string; children?: React.ReactNode; dividers?: boolean; showAddressBar?: boolean }) {
   const host = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "")
   return (
     <>
@@ -262,7 +266,7 @@ function PhoneChrome({ url = "https://example.com", children }: { url?: string; 
           </span>
         </span>
       </div>
-      <div className="flex items-center gap-2 px-3 pb-2">
+      {showAddressBar && <div className="flex items-center gap-2 px-3 pb-2">
         <div className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-foreground/[0.06] bg-foreground/[0.04] px-3 text-[12px] text-foreground/60">
           <Lock className="h-3 w-3 text-foreground/40" />
           <span className="truncate">{host}</span>
@@ -270,9 +274,9 @@ function PhoneChrome({ url = "https://example.com", children }: { url?: string; 
         <button type="button" aria-label="Reload" className={phoneBtn}>
           <RotateCw className="h-4 w-4" />
         </button>
-      </div>
-      <div className="relative min-h-0 flex-1 border-t border-foreground/[0.06]">{children}</div>
-      <div className="flex h-12 items-center justify-around border-t border-foreground/[0.06] bg-foreground/[0.03] px-2">
+      </div>}
+      <div className={`relative min-h-0 flex-1 ${dividers ? "border-t border-foreground/[0.06]" : ""}`}>{children}</div>
+      <div className={`flex h-12 items-center justify-around ${dividers ? "border-t border-foreground/[0.06] " : ""}bg-foreground/[0.03] px-2`}>
         <button type="button" aria-label="Back" className={phoneBtn}>
           <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
         </button>
@@ -383,6 +387,8 @@ export function BrowserWindow({
   addressBarAlign = "center",
   sidebarItems,
   mobileBreakpoint = 480,
+  dividers = true,
+  showAddressBar = true,
 }: BrowserWindowProps) {
   const frameRef = useRef<HTMLDivElement>(null)
   const width = useContainerWidth(frameRef)
@@ -406,8 +412,7 @@ export function BrowserWindow({
         : "bg-[var(--surface)] border-foreground/10"
 
   const getHeaderStyles = () => {
-    const baseStyles =
-      "relative h-11 border-b border-foreground/10 flex items-center px-4"
+    const baseStyles = `relative h-11 ${dividers ? "border-b border-foreground/10 " : ""}flex items-center px-4`
 
     if (variant === "chrome") {
       return `${baseStyles} bg-foreground/[0.02] overflow-hidden`
@@ -428,7 +433,7 @@ export function BrowserWindow({
   if (mobile) {
     return (
       <div ref={frameRef} className={frameClass}>
-        <PhoneChrome url={url}>{children}</PhoneChrome>
+        <PhoneChrome url={url} dividers={dividers} showAddressBar={showAddressBar}>{children}</PhoneChrome>
       </div>
     )
   }
@@ -444,7 +449,7 @@ export function BrowserWindow({
           {headerStyle === "full" && showNavButtons && <NavButtons />}
         </div>
 
-        {headerStyle === "full" && (
+        {headerStyle === "full" && showAddressBar && (
           <AddressBar
             url={url}
             variant={variant === "generic" ? "chrome" : variant}
@@ -460,7 +465,7 @@ export function BrowserWindow({
       </div>
 
       {showSidebar && sidebarPosition === "top" && (
-        <div className="border-b border-foreground/[0.06] bg-foreground/[0.03] h-16">
+        <div className={`${dividers ? "border-b border-foreground/[0.06] " : ""}bg-foreground/[0.03] h-16`}>
           <SidebarContent
             items={sidebarItems}
             variant="navigation"
@@ -473,7 +478,7 @@ export function BrowserWindow({
         {/* Left Sidebar */}
         {showSidebar && sidebarPosition === "left" && (
           <div
-            className={`border-r border-foreground/[0.06] bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
+            className={`${dividers ? "border-r border-foreground/[0.06] " : ""}bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
           >
             {sidebar ?? <SidebarContent items={sidebarItems} />}
           </div>
@@ -487,7 +492,7 @@ export function BrowserWindow({
         {/* Right Sidebar */}
         {showSidebar && sidebarPosition === "right" && (
           <div
-            className={`border-l border-foreground/[0.06] bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
+            className={`${dividers ? "border-l border-foreground/[0.06] " : ""}bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
           >
             {sidebar ?? <SidebarContent items={sidebarItems} />}
           </div>
@@ -496,7 +501,7 @@ export function BrowserWindow({
 
       {/* Bottom Sidebar */}
       {showSidebar && sidebarPosition === "bottom" && (
-        <div className="border-t border-foreground/[0.06] bg-foreground/[0.03] h-16">
+        <div className={`${dividers ? "border-t border-foreground/[0.06] " : ""}bg-foreground/[0.03] h-16`}>
           <SidebarContent
             items={sidebarItems}
             variant="navigation"
