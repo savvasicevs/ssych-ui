@@ -136,7 +136,7 @@ export function HistoricalEps({
                   width={barW}
                   height={Math.max(2, fH)}
                   rx={2.5}
-                  fill="color-mix(in srgb, var(--chart-1) 7%, transparent)"
+                  fill="var(--chart-1)" fillOpacity={0.07}
                   stroke={FORECAST}
                   strokeOpacity={0.35}
                   strokeWidth={1}

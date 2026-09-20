@@ -46,6 +46,24 @@ function mulberry32(seed: number) {
 const W = 640
 const H = 240
 const N = 90
+/** the timeframe pill: a quick glide with a small landing overshoot */
+const SETTLE = "cubic-bezier(0.34, 1.16, 0.5, 1)"
+/** the scrub ring's grow, springy and short */
+const TIP_EASE = "cubic-bezier(0.28, 1.4, 0.36, 1)"
+
+/** Catmull-Rom through the samples, written as cubic Béziers, so the line reads as one smooth stroke */
+function smoothPath(pts: { x: number; y: number }[]) {
+  if (pts.length < 2) return ""
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[i + 2] ?? p2
+    d += ` C${(p1.x + (p2.x - p0.x) / 6).toFixed(2)},${(p1.y + (p2.y - p0.y) / 6).toFixed(2)} ${(p2.x - (p3.x - p1.x) / 6).toFixed(2)},${(p2.y - (p3.y - p1.y) / 6).toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
+  }
+  return d
+}
 
 /**
  * The wallet-value area chart. Trend picks the line colour, the fill fades to
@@ -82,14 +100,25 @@ export function BalanceChart({
       v += (rand() - 0.42) * base * 0.006 + drift * base * 0.0008
       vals.push(v)
     }
-    /* pinned: the last point is the base, so the headline and the plot agree */
+    /* two passes of a 7-sample mean: the walk keeps its shape but loses the tick-level jitter */
+    for (let pass = 0; pass < 2; pass++) {
+      const src = vals.slice()
+      for (let i = 0; i < N; i++) {
+        const lo = Math.max(0, i - 3)
+        const hi = Math.min(N - 1, i + 3)
+        let sum = 0
+        for (let j = lo; j <= hi; j++) sum += src[j]
+        vals[i] = sum / (hi - lo + 1)
+      }
+    }
+    /* pinned after smoothing: the last point is the base, so the headline and the plot agree */
     const k = vals[N - 1] ? base / vals[N - 1] : 1
     for (let i = 0; i < N; i++) vals[i] *= k
     const lo = Math.min(...vals)
     const hi = Math.max(...vals)
     const nx = (i: number) => (i / (N - 1)) * W
     const ny = (val: number) => H - 14 - ((val - lo) / (hi - lo || 1)) * (H - 44)
-    const d = vals.map((p, i) => `${i === 0 ? "M" : "L"}${nx(i).toFixed(1)},${ny(p).toFixed(1)}`).join(" ")
+    const d = smoothPath(vals.map((p, i) => ({ x: nx(i), y: ny(p) })))
     return {
       pts: vals.map((val, i) => ({ x: nx(i), y: ny(val), val })),
       path: d,
@@ -149,15 +178,29 @@ export function BalanceChart({
           <path d={path} fill="none" stroke="var(--foreground)" strokeOpacity={hovered ? 0.3 : 0} strokeWidth={2} vectorEffect="non-scaling-stroke" />
           <g clipPath={`url(#${uid}-past)`}>
             <motion.path key={`a-${tf}`} d={area} fill={`url(#${uid}-fill)`} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.5, ease: EASE, delay: 0.3 }} />
-            <motion.path key={`l-${tf}`} d={path} fill="none" stroke={hue} strokeWidth={2} initial={{ pathLength: reduced ? 1 : 0 }} animate={{ pathLength: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }} />
+            <motion.path key={`l-${tf}`} d={path} fill="none" stroke={hue} strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: reduced ? 1 : 0 }} animate={{ pathLength: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }} />
           </g>
-          {hovered && (
-            <g pointerEvents="none">
-              <line x1={hovered.x} y1={0} x2={hovered.x} y2={H} stroke="var(--foreground)" strokeOpacity={0.16} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-              <circle cx={hovered.x} cy={hovered.y} r={3.5} fill={hue} stroke="var(--card)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-            </g>
-          )}
         </svg>
+
+        {/* the guide and the ring: HTML over the stretched plot, so they keep their shape. The ring
+            rests on the latest balance and rides the line while you scrub. */}
+        <i
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 w-px -ml-[0.5px] transition-opacity duration-[140ms]"
+          style={{ left: `${((hovered ?? pts[N - 1]).x / W) * 100}%`, background: hue, opacity: hovered ? 0.28 : 0 }}
+        />
+        <i
+          aria-hidden
+          className="pointer-events-none absolute -ml-[4.5px] -mt-[4.5px] h-[9px] w-[9px] rounded-full"
+          style={{
+            left: `${((hovered ?? pts[N - 1]).x / W) * 100}%`,
+            top: `${((hovered ?? pts[N - 1]).y / H) * 100}%`,
+            background: "var(--background)",
+            boxShadow: `0 0 0 2px ${hue}`,
+            scale: hovered ? 1.18 : 1,
+            transition: reduced ? "none" : `scale 0.16s ${TIP_EASE}`,
+          }}
+        />
 
         {/* floating extremes: the y axis this chart does not draw */}
         <span className="pointer-events-none absolute text-[11px] font-medium tabular-nums text-foreground/45" style={{ ...edge(pts[iMax].x), top: `${(pts[iMax].y / H) * 100}%`, marginTop: -18 }}>
@@ -205,7 +248,17 @@ export function BalanceChart({
         ))}
       </div>
 
-      <div className="mt-3 flex justify-center gap-1">
+      {/* one pill slides between the timeframes */}
+      <div className="relative mx-auto mt-3 flex w-full max-w-[360px] gap-1" role="group" aria-label="Timeframe">
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.07]"
+          style={{
+            width: `calc((100% - ${(TIMEFRAMES.length - 1) * 4}px) / ${TIMEFRAMES.length})`,
+            transform: `translateX(calc(${TIMEFRAMES.indexOf(tf)} * (100% + 4px)))`,
+            transition: reduced ? "none" : `transform 0.38s ${SETTLE}`,
+          }}
+        />
         {TIMEFRAMES.map((t) => {
           const on = tf === t
           return (
@@ -215,8 +268,8 @@ export function BalanceChart({
               aria-pressed={on}
               onClick={() => setTf(t)}
               className={cn(
-                "h-8 rounded-full px-3.5 text-[12px] font-semibold tabular-nums transition-colors duration-150",
-                on ? "bg-foreground/[0.08] text-foreground/90" : "text-foreground/45 hover:text-foreground/70",
+                "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium tracking-[0.01em] tabular-nums transition-[color,transform] duration-200 active:scale-[0.94]",
+                on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90",
               )}
             >
               {t}

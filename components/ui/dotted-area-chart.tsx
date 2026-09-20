@@ -111,8 +111,10 @@ export function DottedAreaChart({ symbol = "BTC / USD", prices = DEFAULT_PRICES,
             </pattern>
             {/* dots thin out toward the floor so the fill never reads as a block */}
             <linearGradient id={`fade-${uid}`} x1="0" y1="0" x2="0" y2="1">
+              {/* oxlint-disable shadcn/no-raw-colors -- mask stops: a mask reads luminance, so these stay white in both themes */}
               <stop offset="0%" stopColor="#fff" stopOpacity="0.42" />
               <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+              {/* oxlint-enable shadcn/no-raw-colors */}
             </linearGradient>
             <mask id={`mask-${uid}`}>
               <rect x="0" y="0" width={W} height={H} fill={`url(#fade-${uid})`} />
@@ -186,7 +188,7 @@ export function DottedAreaChart({ symbol = "BTC / USD", prices = DEFAULT_PRICES,
                 y1={PAD.t}
                 x2={x(hover)}
                 y2={H - PAD.b}
-                stroke="color-mix(in srgb, var(--foreground) 16%, transparent)"
+                stroke="var(--color-foreground)" strokeOpacity={0.16}
                 strokeWidth={1}
               />
               <circle cx={x(hover)} cy={y(at)} r={3.2} fill={accentRgba(1)} stroke={SURFACE} strokeWidth={1.5} />

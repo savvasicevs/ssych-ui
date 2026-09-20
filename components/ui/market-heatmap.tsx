@@ -237,7 +237,7 @@ export function MarketHeatmap({ data = DEFAULT_DATA, title = "Market map · toda
                     textAnchor="middle"
                     fontSize={8.5}
                     fontWeight={600}
-                    fill="color-mix(in srgb, var(--foreground) 70%, transparent)"
+                    fill="var(--color-foreground)" fillOpacity={0.7}
                   >
                     {t.co.sym}
                   </text>

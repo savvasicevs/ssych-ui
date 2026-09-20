@@ -146,7 +146,7 @@ function KpiSpark({
         />
         {hi !== null && (
           <g>
-            <line x1={x(hi)} y1={2} x2={x(hi)} y2={H} stroke="color-mix(in srgb, var(--foreground) 16%, transparent)" strokeWidth="1" />
+            <line x1={x(hi)} y1={2} x2={x(hi)} y2={H} stroke="var(--color-foreground)" strokeOpacity={0.16} strokeWidth="1" />
             <circle cx={x(hi)} cy={y(data[hi])} r="2.75" fill={color} stroke="var(--surface, var(--card))" strokeWidth="1.5" />
           </g>
         )}

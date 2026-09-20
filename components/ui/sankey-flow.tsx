@@ -274,11 +274,11 @@ export function SankeyFlow({
               height={mid.h + 6}
               rx={4}
               fill="none"
-              stroke="color-mix(in srgb, var(--foreground) 45%, transparent)"
+              stroke="var(--color-foreground)" strokeOpacity={0.45}
               strokeWidth={1}
             />
           )}
-          <rect x={midX} y={mid.top} width={NODE_W} height={mid.h} rx={2} fill="color-mix(in srgb, var(--foreground) 26%, transparent)" />
+          <rect x={midX} y={mid.top} width={NODE_W} height={mid.h} rx={2} fill="var(--color-foreground)" fillOpacity={0.26} />
           {bands.map((b) => (
             <rect
               key={b.id}
@@ -302,7 +302,7 @@ export function SankeyFlow({
             height={mid.h - 1}
             rx={2}
             fill="none"
-            stroke="color-mix(in srgb, var(--foreground) 24%, transparent)"
+            stroke="var(--color-foreground)" strokeOpacity={0.24}
             strokeWidth={1}
           />
           <text x={midX + NODE_W / 2} y={mid.top - 5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill={TEXT}>
@@ -334,7 +334,7 @@ export function SankeyFlow({
                 y={n.mid + 9}
                 textAnchor={side === "l" ? "end" : "start"}
                 fontSize={9}
-                fill="color-mix(in srgb, var(--foreground) 40%, transparent)"
+                fill="var(--color-foreground)" fillOpacity={0.4}
                 className="tabular-nums"
               >
                 ${n.value.toLocaleString()}

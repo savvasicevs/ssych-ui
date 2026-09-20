@@ -107,8 +107,8 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
         {/* right-edge price ticks */}
         {[max, max - (max - min) * 0.25, max - (max - min) * 0.5, max - (max - min) * 0.75, min].map((v, i) => (
           <g key={i}>
-            <line x1={0} y1={y(v)} x2={W - PAD.r} y2={y(v)} stroke="color-mix(in srgb, var(--foreground) 4%, transparent)" />
-            <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={8.5} fill="color-mix(in srgb, var(--foreground) 30%, transparent)" style={{ fontFamily: SANS }}>
+            <line x1={0} y1={y(v)} x2={W - PAD.r} y2={y(v)} stroke="var(--color-foreground)" strokeOpacity={0.04} />
+            <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={8.5} fill="var(--color-foreground)" fillOpacity={0.3} style={{ fontFamily: SANS }}>
               {v.toFixed(2)}
             </text>
           </g>
@@ -137,7 +137,7 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
         <motion.path
           d={path(price)}
           fill="none"
-          stroke="color-mix(in srgb, var(--foreground) 80%, transparent)"
+          stroke="var(--color-foreground)" strokeOpacity={0.8}
           strokeWidth={1.2}
           initial={{ pathLength: reduced ? 1 : 0 }}
           animate={{ pathLength: 1 }}
@@ -146,7 +146,7 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
         {/* crosshair + series dots */}
         {hover != null && (
           <g pointerEvents="none">
-            <line x1={x(hover)} y1={8} x2={x(hover)} y2={H - 8} stroke="color-mix(in srgb, var(--foreground) 16%, transparent)" strokeWidth={1} />
+            <line x1={x(hover)} y1={8} x2={x(hover)} y2={H - 8} stroke="var(--color-foreground)" strokeOpacity={0.16} strokeWidth={1} />
             <circle cx={x(hover)} cy={y(price[hover])} r={2.8} fill="var(--foreground)" stroke={SURFACE} strokeWidth={1.4} />
             <circle cx={x(hover)} cy={y(fast[hover])} r={2.4} fill={accentRgba(1)} stroke={SURFACE} strokeWidth={1.2} />
             <circle cx={x(hover)} cy={y(slow[hover])} r={2.4} fill={AMBER} stroke={SURFACE} strokeWidth={1.2} />

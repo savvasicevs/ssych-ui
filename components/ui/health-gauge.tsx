@@ -153,10 +153,10 @@ export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaug
           <text x={CX} y={CY + 18} textAnchor="middle" fontSize={11} fontWeight={600} fill={zone.color}>
             {zone.label}
           </text>
-          <text {...tickPos(0)} fontSize={9} fill="color-mix(in srgb, var(--foreground) 30%, transparent)" textAnchor="middle">
+          <text {...tickPos(0)} fontSize={9} fill="var(--color-foreground)" fillOpacity={0.3} textAnchor="middle">
             0
           </text>
-          <text {...tickPos(100)} fontSize={9} fill="color-mix(in srgb, var(--foreground) 30%, transparent)" textAnchor="middle">
+          <text {...tickPos(100)} fontSize={9} fill="var(--color-foreground)" fillOpacity={0.3} textAnchor="middle">
             100
           </text>
         </motion.svg>

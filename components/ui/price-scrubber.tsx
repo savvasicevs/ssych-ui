@@ -209,6 +209,7 @@ export function PriceScrubber({
               <defs>
                 <linearGradient id={`${uid}-ramp`} gradientUnits="userSpaceOnUse" x1={crossX - SPOT} y1="0" x2={crossX + SPOT} y2="0">
                   {SPOT_STOPS.map(([offset, o]) => (
+                    // oxlint-disable-next-line shadcn/no-raw-colors -- mask stop: a mask reads luminance, so it stays white in both themes
                     <stop key={offset} offset={`${offset * 100}%`} stopColor="white" stopOpacity={o} />
                   ))}
                 </linearGradient>

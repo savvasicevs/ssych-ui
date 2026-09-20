@@ -240,7 +240,7 @@ export function IndexCard({
                   x2={crossX}
                   y1={4}
                   y2={H}
-                  stroke="color-mix(in srgb, var(--foreground) 18%, transparent)"
+                  stroke="var(--color-foreground)" strokeOpacity={0.18}
                   strokeWidth={1}
                 />
                 <circle cx={crossX} cy={py(data[hover])} r={3} fill={hue} stroke={CARD} strokeWidth={1.5} />

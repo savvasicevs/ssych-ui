@@ -241,7 +241,7 @@ export function RangeNavigator({
                   y1={ty}
                   x2={W - PAD.r}
                   y2={ty}
-                  stroke="color-mix(in srgb, var(--foreground) 4%, transparent)"
+                  stroke="var(--color-foreground)" strokeOpacity={0.04}
                   strokeDasharray="2 5"
                 />
               )}
@@ -249,7 +249,7 @@ export function RangeNavigator({
                 x={W - PAD.r + 8}
                 y={ty + (f === 0 ? 4 : f === 1 ? 0 : 3)}
                 fontSize={8.5}
-                fill="color-mix(in srgb, var(--foreground) 28%, transparent)"
+                fill="var(--color-foreground)" fillOpacity={0.28}
                 className="tabular-nums"
               >
                 {money(detail.max - f * (detail.max - detail.min), detail.axisPrecision)}
@@ -276,7 +276,7 @@ export function RangeNavigator({
               y1={PAD.t}
               x2={hv.x}
               y2={MAIN_H - PAD.b}
-              stroke="color-mix(in srgb, var(--foreground) 22%, transparent)"
+              stroke="var(--color-foreground)" strokeOpacity={0.22}
               strokeDasharray="3 3"
             />
             <circle cx={hv.x} cy={hv.y} r={3.5} fill={color} stroke={CARD} strokeWidth={1.5} />
@@ -318,7 +318,7 @@ export function RangeNavigator({
         <path
           d={nav.line}
           fill="none"
-          stroke="color-mix(in srgb, var(--foreground) 30%, transparent)"
+          stroke="var(--color-foreground)" strokeOpacity={0.3}
           strokeWidth={0.75}
           vectorEffect="non-scaling-stroke"
         />
@@ -328,14 +328,14 @@ export function RangeNavigator({
           y={0}
           width={Math.max(0, wx0 - PAD.l)}
           height={NAV_H}
-          fill="color-mix(in srgb, var(--background) 62%, transparent)"
+          fill="var(--color-background)" fillOpacity={0.62}
         />
         <rect
           x={wx1}
           y={0}
           width={Math.max(0, W - PAD.r - wx1)}
           height={NAV_H}
-          fill="color-mix(in srgb, var(--background) 62%, transparent)"
+          fill="var(--color-background)" fillOpacity={0.62}
         />
         {/* the window itself — grab anywhere inside to pan */}
         <rect
