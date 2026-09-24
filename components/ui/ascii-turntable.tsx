@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
 
 import { cn } from "@/lib/utils"
@@ -115,6 +115,7 @@ export function AsciiTurntable({
   const glRef = useRef<HTMLCanvasElement>(null)
   const asciiRef = useRef<HTMLCanvasElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
+  const [noGl, setNoGl] = useState(false)
 
   useEffect(() => {
     const host = hostRef.current!
@@ -132,12 +133,21 @@ export function AsciiTurntable({
        modern colour syntax, so alpha rides on globalAlpha instead. */
     const ink = getComputedStyle(host).color || "rgb(232,234,238)"
 
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: true, // drawImage off a webgl canvas needs the buffer kept
-    })
+    /* No WebGL, no turntable. A device with it off or blocklisted (some privacy browsers, old
+       GPUs, too many live contexts on one page) makes the constructor THROW, and uncaught that
+       took the whole preview down with it (Sentry, 2026-09-20). Say so quietly instead. */
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true,
+        preserveDrawingBuffer: true, // drawImage off a webgl canvas needs the buffer kept
+      })
+    } catch {
+      setNoGl(true)
+      return
+    }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -309,6 +319,11 @@ export function AsciiTurntable({
     >
       <canvas ref={glRef} className="absolute inset-0 h-full w-full" />
       <canvas ref={asciiRef} className="absolute inset-0 h-full w-full" />
+      {noGl && (
+        <p className="absolute inset-0 flex items-center justify-center text-[13px] text-current opacity-50">
+          3D preview needs WebGL
+        </p>
+      )}
     </div>
   )
 }
