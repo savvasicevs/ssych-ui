@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
+import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js"
 
 import { cn } from "@/lib/utils"
 
@@ -28,8 +29,12 @@ import { cn } from "@/lib/utils"
 export type TurntableShape = "ring" | "bars" | "token"
 
 export interface AsciiTurntableProps {
-  /** which solid to turn. custom art goes through `contours`. */
+  /** which solid to turn. custom art goes through `path` or `contours`. */
   shape?: TurntableShape
+  /** any single-path SVG mark (`d`, commands M L H V C S Q T A Z) becomes the solid; wins over `shape` */
+  path?: string
+  /** the path's viewBox, e.g. "0 0 114.714 99.0732" */
+  viewBox?: string
   /** normalised outer/hole polygons, roughly -1..1, from any traced svg */
   contours?: { outer: [number, number][]; holes?: [number, number][][] }[]
   /** character cell in css px. smaller keeps more of the form, costs more paint. */
@@ -96,6 +101,22 @@ const TOKEN = () => {
   return [s]
 }
 
+/** an SVG path as extruded shapes: three's SVGLoader flattens the commands and sorts holes by
+ *  winding, then the art is centred and scaled to the built-in token's reach (about ±1.4), y up */
+function pathShapes(d: string, viewBox: string): THREE.Shape[] {
+  const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}"><path d="${d.replace(/"/g, "")}"/></svg>`
+  const shapes = new SVGLoader().parse(svg).paths.flatMap((p) => p.toShapes())
+  const s = 2.8 / Math.max(w, h)
+  const m = new THREE.Matrix3().set(s, 0, -(x0 + w / 2) * s, 0, -s, (y0 + h / 2) * s, 0, 0, 1)
+  const map = (pts: THREE.Vector2[]) => pts.map((p) => p.clone().applyMatrix3(m))
+  return shapes.map((sh) => {
+    const out = new THREE.Shape(map(sh.getPoints(12)))
+    sh.holes.forEach((hole) => out.holes.push(new THREE.Path(map(hole.getPoints(12)))))
+    return out
+  })
+}
+
 const BUILTIN: Record<TurntableShape, () => THREE.Shape[]> = {
   ring: RING,
   bars: BARS,
@@ -104,6 +125,8 @@ const BUILTIN: Record<TurntableShape, () => THREE.Shape[]> = {
 
 export function AsciiTurntable({
   shape = "token",
+  path,
+  viewBox = "0 0 24 24",
   contours,
   cell = 10,
   ramp = " .:-=+*#%@",
@@ -172,7 +195,9 @@ export function AsciiTurntable({
       roughness: 0.52,
     })
 
-    const shapes: THREE.Shape[] = contours
+    const shapes: THREE.Shape[] = path
+      ? pathShapes(path, viewBox)
+      : contours
       ? contours.map((c) => {
           const holes = c.holes ?? []
           const sh = new THREE.Shape(c.outer.map((p) => new THREE.Vector2(p[0], p[1])))
@@ -308,7 +333,7 @@ export function AsciiTurntable({
       mat.dispose()
       renderer.dispose()
     }
-  }, [shape, contours, cell, ramp, sweep, fps])
+  }, [shape, path, viewBox, contours, cell, ramp, sweep, fps])
 
   return (
     <div

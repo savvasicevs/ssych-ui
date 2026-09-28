@@ -16,6 +16,38 @@
       "type": "registry:ui"
     },
     {
+      "name": "metal-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "stone-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "gold-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "holo-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "glass-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "neon-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "lightning-badge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "ascii-badge",
+      "type": "registry:ui"
+    },
+    {
       "name": "browser-window",
       "type": "registry:ui"
     },
