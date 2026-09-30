@@ -1,9 +1,24 @@
 "use client"
 
-import { useEffect, useState, type ComponentType } from "react"
+import { useEffect, useId, useState, type ComponentType } from "react"
 import { motion, AnimatePresence, useReducedMotion } from "motion/react"
 import { ChevronDown, PanelLeft, Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+/* Sidebar, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · the panel's corner is 8px, not 16px, on the desktop rail and on the mobile frame
+   · the icon controls (collapse, expand, close, menu, socials) are fully round, not 6 and 8px
+   Only the corners. The section rows keep their 8px, the mark in the collapsed rail its 6px,
+   and every size, ink and line value is the original's.
+   Motion pass (2026-09-30): sections open through grid rows 0fr to 1fr in 250ms with the
+   chevron turning alongside (no height animation); the active rail slides between links;
+   the rail and the panel swap with a cross-fade instead of animating width; the drawer
+   slides 12px with a 2px blur, 250ms in and 150ms out; icon buttons press to 0.97. */
+
+const SMOOTH = [0.22, 1, 0.36, 1] as const
+const EASE = [0.16, 1, 0.3, 1] as const
+const PRESS = "transition-[color,background-color,transform,translate,scale,rotate] duration-150 ease-out active:scale-[0.97] motion-reduce:active:scale-100"
 
 type IconCmp = ComponentType<{ className?: string }>
 
@@ -59,10 +74,13 @@ function NavSection({
   section,
   active,
   onSelect,
+  railId,
 }: {
   section: SidebarSection
   active: string
   onSelect: (label: string) => void
+  /** shared layoutId, so the active rail slides from link to link */
+  railId: string
 }) {
   const [open, setOpen] = useState(true)
   const reduced = useReducedMotion()
@@ -73,26 +91,41 @@ function NavSection({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="group/sec flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-foreground/[0.03]"
+        className="group/sec flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-foreground/[0.03]"
       >
-        <Icon className="h-[18px] w-[18px] shrink-0 text-foreground/55 transition-colors group-hover/sec:text-foreground/80" />
+        <Icon className="h-[18px] w-[18px] shrink-0 text-foreground/55 transition-colors duration-150 group-hover/sec:text-foreground/80" />
         <span className="flex-1 text-[13px] font-medium tracking-tight text-foreground/85">{section.label}</span>
         <ChevronDown
-          className={cn("h-3.5 w-3.5 text-foreground/35 transition-transform duration-200", open ? "rotate-0" : "-rotate-90")}
+          className={cn(
+            "h-3.5 w-3.5 text-foreground/35 transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+            open ? "rotate-0" : "-rotate-90",
+          )}
         />
       </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden"
-          >
+      {/* grid rows 0fr to 1fr: the body grows without measuring or animating height; the
+          links stay mounted, so closed they are inert and hidden from a screen reader */}
+      <div
+        className="grid transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+        style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
+        inert={!open}
+        aria-hidden={!open}
+      >
+        <div
+          className="min-h-0 overflow-hidden transition-[opacity,filter] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-[opacity]"
+          style={{ opacity: open ? 1 : 0, filter: open || reduced ? "none" : "blur(2px)" }}
+        >
             <ul className="ml-[15px] mt-0.5 border-l border-foreground/[0.07] pb-1">
               {section.items.map((it) => {
                 const on = it.label === active
+                // the active rail: one element that slides between links in 250ms
+                const rail = on ? (
+                  <motion.span
+                    aria-hidden
+                    layoutId={reduced ? undefined : railId}
+                    transition={{ duration: 0.25, ease: SMOOTH }}
+                    className="absolute bottom-1.5 left-[-1px] top-1.5 w-[2px] rounded-full bg-foreground"
+                  />
+                ) : null
                 return (
                   <li key={it.label}>
                     {it.href ? (
@@ -101,12 +134,11 @@ function NavSection({
                         aria-current={on ? "page" : undefined}
                         onClick={() => onSelect(it.label)}
                         className={cn(
-                          "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors",
-                          on
-                            ? "text-foreground before:absolute before:left-[-1px] before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-foreground before:content-['']"
-                            : "text-foreground/50 hover:text-foreground/80"
+                          "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors duration-150",
+                          on ? "text-foreground" : "text-foreground/50 hover:text-foreground/80"
                         )}
                       >
+                        {rail}
                         {it.label}
                       </a>
                     ) : (
@@ -114,12 +146,11 @@ function NavSection({
                         type="button"
                         onClick={() => onSelect(it.label)}
                         className={cn(
-                          "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors",
-                          on
-                            ? "text-foreground before:absolute before:left-[-1px] before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-foreground before:content-['']"
-                            : "text-foreground/50 hover:text-foreground/80"
+                          "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors duration-150",
+                          on ? "text-foreground" : "text-foreground/50 hover:text-foreground/80"
                         )}
                       >
+                        {rail}
                         {it.label}
                       </button>
                     )}
@@ -127,9 +158,8 @@ function NavSection({
                 )
               })}
             </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </div>
     </div>
   )
 }
@@ -148,6 +178,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [active, setActive] = useState(activeLabel ?? sections[0]?.items[0]?.label ?? "")
   const reduced = useReducedMotion()
+  const railId = `${useId().replace(/:/g, "")}-rail`
   useEffect(() => {
     if (activeLabel) setActive(activeLabel)
   }, [activeLabel])
@@ -166,7 +197,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
           type="button"
           onClick={onClose ?? (() => setCollapsed(true))}
           aria-label={onClose ? "Close navigation" : "Collapse sidebar"}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.05] hover:text-foreground/80"
+          className={cn("flex h-7 w-7 items-center justify-center rounded-full text-foreground/40 hover:bg-foreground/[0.05] hover:text-foreground/80", PRESS)}
         >
           {onClose ? <X className="h-[18px] w-[18px]" /> : <PanelLeft className="h-[18px] w-[18px]" />}
         </button>
@@ -174,7 +205,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
 
       <nav className="mt-6 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {sections.map((s) => (
-          <NavSection key={s.label} section={s} active={active} onSelect={(l) => select(l, !!onClose)} />
+          <NavSection key={s.label} section={s} active={active} railId={railId} onSelect={(l) => select(l, !!onClose)} />
         ))}
       </nav>
 
@@ -186,7 +217,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
             target="_blank"
             rel="noreferrer"
             aria-label={label}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+            className={cn("flex h-8 w-8 items-center justify-center rounded-full text-foreground/40 hover:bg-foreground/[0.05] hover:text-foreground", PRESS)}
           >
             <Icon className="h-[18px] w-[18px]" />
           </a>
@@ -198,13 +229,13 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
   // Mobile: a hamburger button that reveals the nav as a slide-in drawer.
   if (isMobile) {
     return (
-      <div className="relative flex h-[560px] w-full flex-col overflow-hidden rounded-2xl border border-foreground/[0.06] bg-[var(--surface-soft)]">
+      <div className="relative flex h-[560px] w-full flex-col overflow-hidden rounded-lg border border-foreground/[0.06] bg-[var(--surface-soft)]">
         <div className="flex items-center gap-3 border-b border-foreground/[0.05] px-3 py-3">
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
             aria-label="Open navigation"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-foreground/[0.08] text-foreground/70 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+            className={cn("flex h-9 w-9 items-center justify-center rounded-full border border-foreground/[0.08] text-foreground/70 hover:bg-foreground/[0.05] hover:text-foreground", PRESS)}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -221,8 +252,8 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
               <motion.div
                 key="backdrop"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                animate={{ opacity: 1, transition: { duration: 0.25, ease: EASE } }}
+                exit={{ opacity: 0, transition: { duration: 0.15, ease: EASE } }}
                 onClick={() => setDrawerOpen(false)}
                 /* blur: the page content the drawer slid over — it stays legible enough
                    to keep your place, but far enough back to read as dismissed. */
@@ -230,10 +261,13 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
               />
               <motion.aside
                 key="drawer"
-                initial={reduced ? { opacity: 0 } : { x: "-100%" }}
-                animate={reduced ? { opacity: 1 } : { x: 0 }}
-                exit={reduced ? { opacity: 0 } : { x: "-100%" }}
-                transition={reduced ? { duration: 0 } : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12, filter: "blur(2px)" }}
+                animate={{ opacity: 1, x: 0, filter: "blur(0px)", transition: { duration: 0.25, ease: EASE } }}
+                exit={
+                  reduced
+                    ? { opacity: 0, transition: { duration: 0.15 } }
+                    : { opacity: 0, x: -8, filter: "blur(2px)", transition: { duration: 0.15, ease: EASE } }
+                }
                 className="absolute inset-y-0 left-0 z-50 border-r border-foreground/[0.06] bg-[var(--surface-soft)]"
               >
                 {panel(() => setDrawerOpen(false))}
@@ -247,11 +281,18 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
 
   // Desktop: collapsible accordion sidebar (264 ↔ 68).
   return (
-    <motion.aside
-      animate={{ width: collapsed ? 68 : 264 }}
-      transition={reduced ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      className="h-[560px] shrink-0 overflow-hidden rounded-2xl border border-foreground/[0.06] bg-[var(--surface-soft)]"
+    <aside
+      style={{ width: collapsed ? 68 : 264 }}
+      className="h-[560px] shrink-0 overflow-hidden rounded-lg border border-foreground/[0.06] bg-[var(--surface-soft)]"
     >
+      {/* the width snaps and the content cross-fades in over 250ms (no width animation) */}
+      <motion.div
+        key={collapsed ? "rail" : "panel"}
+        className="h-full"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, x: -8, filter: "blur(2px)" }}
+        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.25, ease: SMOOTH }}
+      >
       {collapsed ? (
         <div className="flex h-full w-[68px] flex-col items-center px-3 py-5">
           <div className="h-6 w-6 rounded-md bg-gradient-to-br from-[#5aaaff] to-[#2e7cd4]" />
@@ -259,7 +300,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
             type="button"
             onClick={() => setCollapsed(false)}
             aria-label="Expand sidebar"
-            className="mt-5 flex h-8 w-8 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+            className={cn("mt-5 flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/[0.05] hover:text-foreground", PRESS)}
           >
             <PanelLeft className="h-[18px] w-[18px]" />
           </button>
@@ -277,6 +318,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
       ) : (
         panel()
       )}
-    </motion.aside>
+      </motion.div>
+    </aside>
   )
 }

@@ -9,8 +9,11 @@ import { cn } from "@/lib/utils"
    side, the face triangulated and bent onto a dome, a back behind it), roughened: every vertex
    moves along its normal by layered noise, a broad swell and a finer chip, and the normals are
    rebuilt from the faces so the roll and the face stay one surface. The surface itself is the
-   lab's stone: cellular facets so the rock is broken into small planes, fissures that are lines
-   rather than blotches, a whisper of grain, and rare bright mineral speckle. Lit by a key that
+   rock, broken (user calls, 2026-09-29): fractured at three sizes, big faces, the smaller
+   faces they break into, and chips, all flat planes that meet at hard edges. Over that the
+   grain of the crystals it is made of and a slow band across the piece. No fissures, no
+   bright flecks and no drawn outline. The mesh itself is chipped along its edge, and
+   that edge is a flat chamfer, one hard step, where the metal's is a roll. Lit by a key that
    follows the cursor with a fixed cool fill and a rim, matte, with a filmic curve at the end.
 
    Motion: an 8s idle sway. Anywhere over the component's root (a padded stage) the badge leans
@@ -44,18 +47,69 @@ export type StoneBadgeProps = {
   label?: string
   /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills) */
   pose?: readonly [number, number] | readonly [number, number, number]
-  /** which rock: the noise seed behind the swell, the fissures and the facets */
+  /** which rock it is cut from: "granite" (the default), "slate" or "sandstone". Every prop
+   *  below starts from the rock's own value and overrides it when set. */
+  rock?: StoneRock
+  /** the noise seed behind the swell and the facets */
   seed?: number
   /** how far the surface swells and chips, 0 (the smooth badge) to about 1.5 */
   rough?: number
-  /** the stone's base colour, linear rgb 0..1; the default is a dark charcoal */
+  /** the stone's base colour, linear rgb 0..1; the default is the rock's own */
   tint?: readonly [number, number, number]
+  /** chips knocked out of the mesh along its edge and face, 0 (none) to about 2 */
+  chip?: number
+  /** how many pieces the rock breaks into: 0.5 is a few big faces, 2 is rubble */
+  pieces?: number
+  /** how far each face tilts away from its neighbours, 0 (smooth) to about 3 */
+  fracture?: number
+  /** how much the big faces break again into smaller ones and chips, 0 to 2 */
+  breaks?: number
+  /** the shadow held in the breaks between faces, 0 to 2 */
+  seams?: number
+  /** the crystal grain over the surface, 0 (none) to about 3 */
+  grain?: number
+  /** the size of that grain: 0.5 is coarse, 2 is fine */
+  grainSize?: number
+  /** how far the faces and crystals differ in tone, 0 (one grey) to 2 */
+  tone?: number
+  /** the slow band of tone across the piece, as in bedded rock, 0 to 2 */
+  band?: number
+  /** brightness, 0.5 to 2 */
+  exposure?: number
   className?: string
 }
 
-/** the stone's look, from the lab's stone-renderer: albedo (linear), exposure, fissure depth,
- *  facet strength, speckle amount */
-const STONE = { tint: [0.024, 0.0245, 0.028] as const, exposure: 1.15, crack: 0.55, facet: 0.3, speckle: 0.012 }
+/** the live settings, in the order the shader reads them. They are uniforms, so changing one
+ *  redraws the badge and rebuilds nothing. */
+type Look = readonly [pieces: number, fracture: number, breaks: number, seams: number, grain: number, grainSize: number, tone: number, band: number, exposure: number]
+
+export type StoneRock = "granite" | "slate" | "sandstone"
+
+type Rock = {
+  seed: number
+  rough: number
+  chip: number
+  tint: readonly [number, number, number]
+  pieces: number
+  fracture: number
+  breaks: number
+  seams: number
+  grain: number
+  grainSize: number
+  tone: number
+  band: number
+  exposure: number
+}
+
+/** The three rocks (user pick, 2026-09-29, from six tried side by side).
+ *   granite    medium faces, coarse strong grain, wide tone spread
+ *   slate      flat, strongly banded, fine grain, few breaks, a smooth edge
+ *   sandstone  warm, soft fracture, fine heavy grain, banded */
+export const STONE_ROCKS: Record<StoneRock, Rock> = {
+  granite: { seed: 11, rough: 0.8, chip: 0.15, tint: [0.05, 0.0505, 0.054], pieces: 1, fracture: 1.1, breaks: 0.8, seams: 0.7, grain: 2.2, grainSize: 0.6, tone: 1.8, band: 0.3, exposure: 1.5 },
+  slate: { seed: 5, rough: 0.3, chip: 0, tint: [0.05, 0.0505, 0.054], pieces: 0.5, fracture: 0.7, breaks: 0.4, seams: 1.2, grain: 0.8, grainSize: 2, tone: 0.6, band: 2, exposure: 1.2 },
+  sandstone: { seed: 8, rough: 1, chip: 0.1, tint: [0.085, 0.066, 0.046], pieces: 0.9, fracture: 0.8, breaks: 1, seams: 0.5, grain: 2.6, grainSize: 1.8, tone: 1, band: 1.4, exposure: 1.5 },
+}
 
 
 const MAX = 16 // degrees of tilt, reached RANGE px from the badge's centre
@@ -68,7 +122,7 @@ const RAD = Math.PI / 180
 
 /* ── flip: click, tap or swipe to turn the badge about its vertical axis ─────────────────
    A click or tap is a flick of a coin: two whole turns that start at full speed, ease out
-   slowly (quint), carry OVER_DEG past the front and settle back, with a few sparks thrown off
+   slowly (quint), carry OVER_DEG past the front and settle back
    at the pointer. A swipe follows the finger, then carries on at its speed and settles on a
    whole turn with a spring. A vertical swipe, or one the browser takes for a scroll
    (pointercancel), settles without a turn. The owner steps it every frame while busy(). */
@@ -139,7 +193,7 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
     lastX = e.clientX
     lastTime = now
   }
-  const up = (e: PointerEvent) => {
+  const up = () => {
     if (!dragging) return
     dragging = false
     const turn = Math.round(angle / 360) * 360
@@ -150,7 +204,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       springing = true
     } else if (travel < TAP) {
       turnOnce()
-      sparkBurst(e.clientX, e.clientY)
     } else {
       // a swipe: carry on at its speed, settle on a whole turn in that direction
       velocity = dragVelocity
@@ -209,43 +262,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       hit.removeEventListener("pointerup", up)
       hit.removeEventListener("pointercancel", cancel)
     },
-  }
-}
-
-/* sparks: what the metal throws off when it is flicked. Two white-hot hairline chips, one
-   short and one far, that arc out, fall under gravity and fade at the end of their flight.
-   Fixed to the viewport so no parent can clip them; the burst removes itself. */
-const HOT = "#fffdf2"
-const WARM = "#ffd98a"
-function sparkBurst(x: number, y: number) {
-  if (typeof Element.prototype.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-  const root = document.createElement("div")
-  root.setAttribute("aria-hidden", "true")
-  Object.assign(root.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: "0", height: "0", pointerEvents: "none", zIndex: "2147483647" })
-  document.body.appendChild(root)
-  const near = 34 + Math.random() * 16
-  const far = near + 22 + Math.random() * 22
-  let left = 2
-  for (const reach of [near, far]) {
-    const deg = -90 + (Math.random() - 0.5) * 150 // biased upward and outward, the way sparks leave a strike
-    const a = (deg * Math.PI) / 180
-    const drop = reach * 0.25
-    const frames: Keyframe[] = []
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10
-      const s = 1 - (1 - t) ** 2 // decelerating travel
-      frames.push({
-        transform: `translate(${Math.cos(a) * reach * s}px, ${Math.sin(a) * reach * s + drop * t * t}px) rotate(${deg}deg)`,
-        opacity: t < 0.65 ? 1 : (1 - (t - 0.65) / 0.35) ** 1.6,
-        offset: t,
-      })
-    }
-    const el = document.createElement("span")
-    Object.assign(el.style, { position: "absolute", left: "-2px", top: "-0.5px", width: "4px", height: "1px", background: HOT, boxShadow: `0 0 2px ${WARM}` })
-    root.appendChild(el)
-    el.animate(frames, { duration: 300 + reach * 3.5, easing: "linear", fill: "forwards" }).onfinish = () => {
-      if (--left === 0) root.remove()
-    }
   }
 }
 
@@ -952,9 +968,10 @@ type Mesh = { vertices: Float32Array; indices: Uint32Array }
 const BADGE = {
   R: 1.1, // sphere radius in mark widths
   THICKNESS: 0.085, // front to back at the rim
-  ROUND: 0.014, // how far in from the outline the surface rolls over: a slight round, so edges stay crisp
-  ROUND_DEPTH: 0.01, // how far back the roll takes it before the straight side
-  BEVEL_STEPS: 5,
+  ROUND: 0.014, // how far in from the outline the cut starts (wider and the inset crosses itself at a sharp tip)
+  ROUND_DEPTH: 0.016, // how far back the cut takes it before the straight side
+  BEVEL_STEPS: 1, // one step: a flat chamfer with a hard edge either side, as stone is cut
+
   EDGE_BAND: 0.05, // how far in from the outline the shader's light outline reaches
   EDGE: 0.01, // longest outline edge, longest edge inside the face, and inside the face near an outline (detail 1)
   FACE_EDGE: 0.03,
@@ -1401,16 +1418,18 @@ function fbm(x: number, y: number, z: number, seed: number, octaves = 3) {
   }
   return sum / norm
 }
-function roughen(mesh: Mesh, seed: number, rough: number): Mesh {
-  if (rough <= 0) return mesh
+function roughen(mesh: Mesh, seed: number, rough: number, chips: number): Mesh {
+  if (rough <= 0 && chips <= 0) return mesh
   const v = new Float32Array(mesh.vertices)
   const n = v.length / STRIDE
   for (let i = 0; i < n; i++) {
     const o = i * STRIDE
     const x = v[o], y = v[o + 1], z = v[o + 2]
-    const swell = (fbm(x * 3.5 + 7, y * 3.5 + 3, z * 3.5, seed) - 0.5) * 0.06
-    const chip = (fbm(x * 12, y * 12, z * 12 + 5, seed + 31) - 0.5) * 0.014
-    const d = rough * (swell + chip)
+    // a broad swell, and chips knocked out of it in steps: the noise is cut into four
+    // levels, so the surface drops by a plane at a time and the outline breaks with it
+    const swell = (fbm(x * 3.5 + 7, y * 3.5 + 3, z * 3.5, seed) - 0.5) * 0.03
+    const chip = (Math.floor(fbm(x * 9, y * 9, z * 9 + 5, seed + 31) * 4) / 4 - 0.4) * 0.022
+    const d = rough * swell + chips * chip
     v[o] += v[o + 3] * d
     v[o + 1] += v[o + 4] * d
     v[o + 2] += v[o + 5] * d
@@ -1449,12 +1468,12 @@ function roughen(mesh: Mesh, seed: number, rough: number): Mesh {
 
 /** meshes by detail, viewBox and path, so a mark on the page twice is built once */
 const MESHES = new Map<string, Mesh>()
-function meshFor(d: string, viewBox: string, detail: number, seed: number, rough: number) {
-  const key = `${detail}:${seed}:${rough}:${viewBox}:${d}`
+function meshFor(d: string, viewBox: string, detail: number, seed: number, rough: number, chips: number) {
+  const key = `${detail}:${seed}:${rough}:${chips}:${viewBox}:${d}`
   let mesh = MESHES.get(key)
   if (!mesh) {
     const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
-    mesh = roughen(buildMesh(d, x0, y0, w, h, detail), seed, rough)
+    mesh = roughen(buildMesh(d, x0, y0, w, h, detail), seed, rough, chips)
     MESHES.set(key, mesh)
   }
   return mesh
@@ -1469,8 +1488,10 @@ struct Scene {
   model: mat4x4f,
   eye: vec4f,    // camera position
   light: vec4f,  // xyz: toward the key light (it follows the cursor), w: its strength
-  params: vec4f, // x fissure depth, y facet strength, z speckle, w noise seed
+  params: vec4f, // x pieces, y fracture, z breaks, w noise seed
   tint: vec4f,   // xyz base albedo (linear), w exposure
+  grain: vec4f,  // x grain amount, y grain size, z tone spread, w band
+  more: vec4f,   // x seam shadow
 }
 @group(0) @binding(0) var<uniform> scene: Scene;
 
@@ -1579,63 +1600,60 @@ fn cells(p: vec3f) -> Cell {
   return Cell(id, f2 - f1);
 }
 
-// two zero-sets, and a slow field saying where the stone is allowed to be broken at all, so
-// it keeps clean faces as well as split ones
-fn fissures(p: vec3f) -> f32 {
-  let c1 = pow(1.0 - abs(snoise(p * 3.2 + 11.0)), 26.0);
-  let c2 = pow(1.0 - abs(snoise(p * 6.4 - 7.0)), 30.0);
-  let w = smoothstep(0.15, 0.7, 0.5 + 0.8 * snoise(p * 1.6 - 2.0));
-  return min(1.0, c1 * 0.95 + c2 * 0.6) * w;
-}
-
-// grain is a whisper: loud grain is lava, carved stone has broad faces
-fn rockH(p: vec3f) -> f32 {
-  let h = 0.010 * snoise(p * 7.0) + 0.004 * snoise(p * 16.0);
-  return h - scene.params.x * 0.035 * fissures(p);
+// the grain's height: fine, and finer still on top of it
+fn grainH(p: vec3f) -> f32 {
+  let q = p * scene.grain.y;
+  return (0.0035 * snoise(q * 34.0) + 0.002 * snoise(q * 78.0)) * scene.grain.x / scene.grain.y;
 }
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4f {
-  // the badge is one mark wide and the fissures were drawn for a solid about two across; a
-  // gentler scale keeps broad faces, about half a dozen fissures over the mark
   let p = in.object * 1.35 + vec3f(scene.params.w);
   var n = normalize(in.normal);
 
-  // 1. fissure + grain relief, four-tap tetrahedral gradient
-  let e = 0.0016;
+  // 1. fracture, at three sizes. Rock breaks into big faces, the big faces into smaller
+  // ones, and those into chips: each size keeps its own planes and they meet without
+  // blending, so the surface is broken apart, not moulded.
+  let ps = p * scene.params.x;
+  let big = cells(ps * 2.6);
+  let mid = cells(ps * 6.5 + 3.1);
+  let small = cells(ps * 15.0 + 7.7);
+  let br = scene.params.z;
+  n = normalize(n
+    + scene.params.y * 0.30 * normalize(hash33(big.id) * 2.0 - 1.0)
+    + scene.params.y * br * 0.16 * normalize(hash33(mid.id + 11.0) * 2.0 - 1.0)
+    + scene.params.y * br * 0.08 * normalize(hash33(small.id + 23.0) * 2.0 - 1.0));
+
+  // 2. grain: the crystals rock is made of, far finer than any face. Four-tap gradient of a
+  // high noise, laid along the surface.
+  let ge = 0.002;
   let k = vec2f(1.0, -1.0);
-  let grad = (k.xyy * rockH(p + k.xyy * e)
-            + k.yyx * rockH(p + k.yyx * e)
-            + k.yxy * rockH(p + k.yxy * e)
-            + k.xxx * rockH(p + k.xxx * e)) / (4.0 * e);
-  let gt = grad - n * dot(grad, n);
-  n = normalize(n - gt);
+  let grad = (k.xyy * grainH(p + k.xyy * ge)
+            + k.yyx * grainH(p + k.yyx * ge)
+            + k.yxy * grainH(p + k.yxy * ge)
+            + k.xxx * grainH(p + k.xxx * ge)) / (4.0 * ge);
+  n = normalize(n - (grad - n * dot(grad, n)));
 
-  // 2. facets: each cell keeps its own plane, so the rock is broken, not moulded
-  let cell = cells(p * 3.6);
-  let facet = normalize(hash33(cell.id) * 2.0 - 1.0);
-  n = normalize(n + scene.params.y * 0.30 * facet);
+  // the breaks between faces hold shadow: the big ones most, the chips hardly at all
+  let seam = min(0.9, scene.more.x * ((1.0 - smoothstep(0.0, 0.03, big.edge)) * 0.30
+           + (1.0 - smoothstep(0.0, 0.035, mid.edge)) * 0.16 * min(br, 1.0)
+           + (1.0 - smoothstep(0.0, 0.05, small.edge)) * 0.07 * min(br, 1.0)));
 
-  let fis = fissures(p);
-  // the seam between two facets holds shadow, like every chipped edge does
-  let seam = 1.0 - smoothstep(0.0, 0.07, cell.edge);
-  // and the mark's own outline is a chipped edge too
-  let chip = 1.0 - smoothstep(0.0, 0.6, clamp(in.edge, 0.0, 1.0));
-
-  // 3. albedo: broad mottling, a finer tone break, fissure dirt, seam and edge shadow, speckle
+  // 3. albedo: a tone per face at each size, a slow band across the whole piece like the
+  // bed the rock was laid down in, and the crystals, each its own dull tone
   var albedo = scene.tint.xyz;
-  albedo = albedo * (0.80 + 0.40 * (0.5 + 0.5 * snoise(p * 2.1)));
-  albedo = albedo * (0.88 + 0.24 * (0.5 + 0.5 * snoise(p * 9.0)));
-  albedo = albedo * (1.0 - 0.62 * fis);
-  albedo = albedo * (1.0 - 0.30 * seam);
-  albedo = albedo * (1.0 - 0.22 * chip);
-  let grit = hash33(floor(p * 240.0)).x;
-  albedo = albedo + vec3f(smoothstep(0.93, 1.0, grit) * scene.params.z);
+  let tone = scene.grain.z;
+  albedo = albedo * max(0.2, 1.0 + tone * 0.30 * (hash33(big.id + 3.7).x - 0.7));
+  albedo = albedo * max(0.2, 1.0 + tone * min(br, 1.0) * 0.24 * (hash33(mid.id + 5.1).x - 0.5));
+  albedo = albedo * max(0.2, 1.0 + scene.grain.w * 0.32 * (0.5 * snoise(vec3f(p.x * 0.6, p.y * 3.4 + p.x * 0.8, p.z * 0.6))));
+  let crystal = hash33(floor(p * 170.0 * scene.grain.y));
+  albedo = albedo * max(0.2, 1.0 + tone * min(scene.grain.x, 2.0) * 0.28 * (crystal.x - 0.5));
+  albedo = albedo * (1.0 - seam);
 
   // 4. light: the key follows the cursor, a cool fill and a rim are fixed. Matte, with a
   // specular that only ever glints off a facet edge.
   let v = normalize(scene.eye.xyz - in.world);
-  let rough = clamp(0.92 + 0.06 * fis, 0.0, 1.0);
+  let rough = 0.9;
   var lit = vec3f(0.0);
   var lights = array<vec4f, 3>(vec4f(scene.light.xyz, 2.6 * scene.light.w), vec4f(2.6, -0.6, 1.6, 0.5), vec4f(2.4, 1.1, -2.9, 0.8));
   var tints = array<vec3f, 3>(vec3f(1.0, 0.97, 0.93), vec3f(0.62, 0.70, 0.84), vec3f(0.85, 0.88, 0.96));
@@ -1828,10 +1846,10 @@ function translation(x: number, y: number, z: number): M4 {
 type Renderer = { draw: (m: Motion) => void; dispose: () => void }
 
 /** the badge on `canvas`: the mesh, its buffers and targets on the shared device. `onLost` runs if the device goes away */
-async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, seed: number, rough: number, tint: readonly [number, number, number], onLost: () => void): Promise<Renderer> {
+async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, seed: number, rough: number, chips: number, tint: readonly [number, number, number], look: () => Look, onLost: () => void): Promise<Renderer> {
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
   const aspect = h / w
-  const mesh = meshFor(d, viewBox, detail, seed, rough)
+  const mesh = meshFor(d, viewBox, detail, seed, rough, chips)
   const entry = acquireGpu(gpu)
   let g: Shared
   try {
@@ -1860,7 +1878,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   const vertices = upload(mesh.vertices, BUFFER.VERTEX)
   const indices = upload(mesh.indices, BUFFER.INDEX)
   const count = mesh.indices.length
-  const uniforms = new Float32Array(48) // the Scene struct: two mat4x4f and four vec4f
+  const uniforms = new Float32Array(56) // the Scene struct: two mat4x4f and six vec4f
   void aspect
   const sceneBuffer = device.createBuffer({ size: uniforms.byteLength, usage: BUFFER.UNIFORM | BUFFER.COPY_DST })
   const sceneGroup = device.createBindGroup({ layout: g.badge.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: sceneBuffer } }] })
@@ -1868,7 +1886,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   const swayLength = Math.hypot(0.22, 1)
   uniforms.set(mul(perspective(2 * Math.atan(CANVAS_PAD / 2 / CAMERA), 1, 0.1, 20), translation(0, 0, -CAMERA)), 0)
   uniforms.set([0, 0, CAMERA, 1], 32)
-  uniforms.set([tint[0], tint[1], tint[2], STONE.exposure], 44)
+  uniforms.set([tint[0], tint[1], tint[2], 1], 44)
 
   /* the offscreen targets, remade when the canvas's pixel size changes: 4x MSAA colour and
      depth, resolved into a texture the present pass samples */
@@ -1909,7 +1927,11 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
       const ll = Math.hypot(m.lx, m.ly, m.lz) || 1
       uniforms.set(model, 16)
       uniforms.set([m.lx / ll, m.ly / ll, m.lz / ll, 1], 36)
-      uniforms.set([STONE.crack, STONE.facet, STONE.speckle, seed], 40)
+      const [pieces, fracture, breaks, seams, grain, grainSize, tone, band, exposure] = look()
+      uniforms.set([pieces, fracture, breaks, seed], 40)
+      uniforms[47] = exposure
+      uniforms.set([grain, grainSize, tone, band], 48)
+      uniforms.set([seams, 0, 0, 0], 52)
       device.queue.writeBuffer(sceneBuffer, 0, uniforms)
       const encoder = device.createCommandEncoder()
       const scene = encoder.beginRenderPass({
@@ -1960,7 +1982,27 @@ const DEFAULT_MARK = {
   d: "M354.084 0C374.63 8.50833 392.5 23.8578 403.922 44.9326C418.809 72.4024 419.569 103.739 408.683 130.599C372.855 219 258.635 211.309 206.626 211.71C145.919 212.178 96.2825 259.131 91.5504 318.731C95.9969 371.278 140.054 412.539 193.751 412.539C250.399 412.539 296.322 366.615 296.322 309.967C296.322 285.118 287.485 262.333 272.784 244.583C323.926 247.005 407.022 268.509 437.287 366.686C413.233 460.456 328.149 529.763 226.877 529.764C175.525 529.764 128.335 511.943 91.1539 482.149C67.7037 480.784 45.3008 488.644 28.0719 502.979C-6.1077 470.701 -9.49672 415.736 20.2223 379.638C12.3178 355.271 9.66566 330.28 9.66566 304.795C9.6658 186.402 110.21 87.5845 226.877 87.584C253.145 87.584 278.167 88.1909 302.354 75.083C331.715 59.1705 349.967 30.7466 354.084 0Z",
 }
 
-export function StoneBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Stone badge", pose, seed = 7, rough = 1, tint = STONE.tint, className }: StoneBadgeProps) {
+export function StoneBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Stone badge", pose, rock = "granite", className, ...set }: StoneBadgeProps) {
+  // the rock's own values, each replaced by the prop when one is given
+  const base = STONE_ROCKS[rock]
+  const seed = set.seed ?? base.seed
+  const rough = set.rough ?? base.rough
+  const chip = set.chip ?? base.chip
+  const tint = set.tint ?? base.tint
+  const pieces = set.pieces ?? base.pieces
+  const fracture = set.fracture ?? base.fracture
+  const breaks = set.breaks ?? base.breaks
+  const seams = set.seams ?? base.seams
+  const grain = set.grain ?? base.grain
+  const grainSize = set.grainSize ?? base.grainSize
+  const tone = set.tone ?? base.tone
+  const band = set.band ?? base.band
+  const exposure = set.exposure ?? base.exposure
+  // the live settings ride in a ref: the renderer reads them each frame, and a change asks for one
+  const lookRef = useRef<Look>([pieces, fracture, breaks, seams, grain, grainSize, tone, band, exposure])
+  lookRef.current = [pieces, fracture, breaks, seams, grain, grainSize, tone, band, exposure]
+  // a tint written inline is a new array every render; its numbers are what count
+  const tintKey = tint.join(",")
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
 
@@ -2039,7 +2081,7 @@ export function StoneBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, s
         near = e.isIntersecting
         if (near && gpu && canvas && !started) {
           started = true
-          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, seed, rough, tint, () => fail(new Error("device lost")))
+          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, seed, rough, chip, tintKey.split(",").map(Number) as [number, number, number], () => lookRef.current, () => fail(new Error("device lost")))
             .then((r) => {
               if (cancelled) r.dispose()
               else {
@@ -2067,7 +2109,11 @@ export function StoneBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, s
       gpuRenderer?.dispose()
       canvas?.remove()
     }
-  }, [renderer, path, viewBox, size, sway, still, flippable, poseKey, seed, rough, tint])
+  }, [renderer, path, viewBox, size, sway, still, flippable, poseKey, seed, rough, chip, tintKey])
+
+  useEffect(() => {
+    driverRef.current?.redraw()
+  }, [pieces, fracture, breaks, seams, grain, grainSize, tone, band, exposure])
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Enter" && e.key !== " ") return

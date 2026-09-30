@@ -1,12 +1,24 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* News Card, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · no card: no outline, no inner shadow, no surface. The story sits on the page
+   · the title is sentence case at normal spacing (it was letter-spaced)
+   · the story dots moved up beside the title, so the block is one column with nothing
+     hanging under it; each dot has a larger press area and names its story
+   · pointing at the story, or focusing a dot, holds the cycle so it can be read
+   · every figure is tabular, so the times line up from story to story
+   · the swap is 0.2s (it was 0.35s) and the dot change 200ms (it was 300ms)
+   · the block names itself to a screen reader; the story is a status that only speaks
+     when the reader changed it, not on every automatic turn
+   Props are the same. */
+
 const EASE = [0.16, 1, 0.3, 1] as const
-const SURFACE = "var(--card)"
 
 export interface NewsItem {
   time: string
@@ -21,9 +33,8 @@ const DEFAULT_ITEMS: NewsItem[] = [
 ]
 
 /**
- * Auto-cycling news module: timestamp whisper, a bold ink headline, the source
- * below, dot pagination. A dot click jumps and resets the clock; reduced
- * motion stops the auto-cycle.
+ * Turning news: the time, one headline in strong ink, its source. Stories turn on their
+ * own; pointing at the story holds it, a dot jumps to a story and restarts the clock.
  */
 export function NewsCard({
   items = DEFAULT_ITEMS,
@@ -39,63 +50,89 @@ export function NewsCard({
 }) {
   const reduced = useReducedMotion()
   const [i, setI] = useState(0)
-  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const [held, setHeld] = useState(false)
+  /** bumped by a jump, so the clock starts again from that story */
+  const [turn, setTurn] = useState(0)
+
+  const count = items.length
+  const turning = !reduced && !held && count > 1
 
   useEffect(() => {
-    if (reduced) return
-    timer.current = setInterval(() => setI((n) => (n + 1) % items.length), cycleMs)
-    return () => clearInterval(timer.current)
-  }, [reduced, items.length, cycleMs])
+    if (!turning) return
+    const t = setInterval(() => setI((n) => (n + 1) % count), cycleMs)
+    return () => clearInterval(t)
+  }, [turning, count, cycleMs, turn])
 
   const jump = (n: number) => {
     setI(n)
-    if (timer.current) {
-      clearInterval(timer.current)
-      if (!reduced) timer.current = setInterval(() => setI((m) => (m + 1) % items.length), cycleMs)
-    }
+    setTurn((t) => t + 1)
   }
 
-  const item = items[i]
+  const at = Math.min(i, Math.max(0, count - 1))
+  const item = items[at]
 
   return (
-    <div className={cn("w-full max-w-[380px]", className)}>
-      <div className="text-[10px] tracking-[0.1em] text-foreground/40">{title}</div>
-      <div
-        className="mt-3 rounded-lg border border-foreground/[0.04] px-5 py-5"
-        style={{ background: SURFACE, boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)" }}
-      >
-        <div className="relative min-h-[108px]">
+    <div
+      className={cn("w-full max-w-[380px] tabular-nums", className)}
+      role="group"
+      aria-label={`${title}, story ${count ? at + 1 : 0} of ${count}`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[11.5px] font-medium text-foreground/45">{title}</span>
+        <span className="-mr-1 flex items-center" onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
+          {items.map((it, n) => (
+            <button
+              key={n}
+              type="button"
+              aria-label={`Story ${n + 1} of ${count}: ${it.headline}`}
+              aria-current={n === at}
+              onClick={() => jump(n)}
+              className="group grid h-5 place-items-center px-[3px] outline-none"
+            >
+              {/* the dot grows by a layout transform, never a width tween; the others slide aside with it */}
+              <motion.span
+                layout={!reduced}
+                transition={{ layout: { duration: 0.2, ease: EASE } }}
+                style={{ borderRadius: 999 }}
+                className={cn(
+                  "block h-1.5 transition-colors duration-200 motion-reduce:transition-none",
+                  n === at
+                    ? "w-5 bg-foreground/90"
+                    : "w-1.5 bg-foreground/25 group-hover:bg-foreground/45 group-focus-visible:bg-foreground/45",
+                )}
+              />
+            </button>
+          ))}
+        </span>
+      </div>
+
+      {item ? (
+        <div
+          role="status"
+          aria-live={turning ? "off" : "polite"}
+          className="relative mt-3 min-h-[108px]"
+          onPointerEnter={() => setHeld(true)}
+          onPointerLeave={() => setHeld(false)}
+        >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={i}
-              initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }}
+              key={at}
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 6, filter: "blur(2px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={
+                reduced
+                  ? { opacity: 0, transition: { duration: 0.12 } }
+                  : { opacity: 0, y: -4, filter: "blur(2px)", transition: { duration: 0.15, ease: EASE } }
+              }
+              transition={{ duration: 0.2, ease: EASE }}
             >
               <div className="text-[10px] text-foreground/35">{item.time}</div>
               <p className="mt-2 text-[14.5px] font-semibold leading-snug text-foreground/90">{item.headline}</p>
-              <div className="mt-3 text-[10px] text-foreground/35">{item.source}</div>
+              <div className="mt-3 text-[10px] text-foreground/45">{item.source}</div>
             </motion.div>
           </AnimatePresence>
         </div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-center gap-1.5">
-        {items.map((_, n) => (
-          <button
-            key={n}
-            type="button"
-            aria-label={`Story ${n + 1}`}
-            aria-current={n === i}
-            onClick={() => jump(n)}
-            className={cn(
-              "h-1.5 rounded-full transition-all duration-300",
-              n === i ? "w-5 bg-foreground" : "w-1.5 bg-foreground/25 hover:bg-foreground/45",
-            )}
-          />
-        ))}
-      </div>
+      ) : null}
     </div>
   )
 }

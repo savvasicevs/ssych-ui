@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils"
    The same badge as Metal Badge: the mark flattened, rolled over a slight round into a straight
    side, the face bent onto a dome, a back behind it, lit by one light that follows the cursor.
    What changes is the last pass. The lit surface is rendered offscreen as before, then read
-   back per cell: each cell's brightness picks a character from a ramp (" .:-=+*#%@" by
-   default), drawn from a glyph atlas the component paints once with the page's monospace
+   back per cell: each cell's brightness picks a character from a ramp (" .,:;-~=+*oxX#%@" by
+   default, sixteen steps in 5px cells), drawn from a glyph atlas the component paints once with the page's monospace
    font. Turn the badge and the characters change with the light, because they are the light.
 
    Motion: an 8s idle sway. Anywhere over the component's root (a padded stage) the badge leans
@@ -89,7 +89,7 @@ const RAD = Math.PI / 180
 
 /* ── flip: click, tap or swipe to turn the badge about its vertical axis ─────────────────
    A click or tap is a flick of a coin: two whole turns that start at full speed, ease out
-   slowly (quint), carry OVER_DEG past the front and settle back, with a few sparks thrown off
+   slowly (quint), carry OVER_DEG past the front and settle back
    at the pointer. A swipe follows the finger, then carries on at its speed and settles on a
    whole turn with a spring. A vertical swipe, or one the browser takes for a scroll
    (pointercancel), settles without a turn. The owner steps it every frame while busy(). */
@@ -160,7 +160,7 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
     lastX = e.clientX
     lastTime = now
   }
-  const up = (e: PointerEvent) => {
+  const up = () => {
     if (!dragging) return
     dragging = false
     const turn = Math.round(angle / 360) * 360
@@ -171,7 +171,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       springing = true
     } else if (travel < TAP) {
       turnOnce()
-      sparkBurst(e.clientX, e.clientY)
     } else {
       // a swipe: carry on at its speed, settle on a whole turn in that direction
       velocity = dragVelocity
@@ -230,43 +229,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       hit.removeEventListener("pointerup", up)
       hit.removeEventListener("pointercancel", cancel)
     },
-  }
-}
-
-/* sparks: what the metal throws off when it is flicked. Two white-hot hairline chips, one
-   short and one far, that arc out, fall under gravity and fade at the end of their flight.
-   Fixed to the viewport so no parent can clip them; the burst removes itself. */
-const HOT = "#fffdf2"
-const WARM = "#ffd98a"
-function sparkBurst(x: number, y: number) {
-  if (typeof Element.prototype.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-  const root = document.createElement("div")
-  root.setAttribute("aria-hidden", "true")
-  Object.assign(root.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: "0", height: "0", pointerEvents: "none", zIndex: "2147483647" })
-  document.body.appendChild(root)
-  const near = 34 + Math.random() * 16
-  const far = near + 22 + Math.random() * 22
-  let left = 2
-  for (const reach of [near, far]) {
-    const deg = -90 + (Math.random() - 0.5) * 150 // biased upward and outward, the way sparks leave a strike
-    const a = (deg * Math.PI) / 180
-    const drop = reach * 0.25
-    const frames: Keyframe[] = []
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10
-      const s = 1 - (1 - t) ** 2 // decelerating travel
-      frames.push({
-        transform: `translate(${Math.cos(a) * reach * s}px, ${Math.sin(a) * reach * s + drop * t * t}px) rotate(${deg}deg)`,
-        opacity: t < 0.65 ? 1 : (1 - (t - 0.65) / 0.35) ** 1.6,
-        offset: t,
-      })
-    }
-    const el = document.createElement("span")
-    Object.assign(el.style, { position: "absolute", left: "-2px", top: "-0.5px", width: "4px", height: "1px", background: HOT, boxShadow: `0 0 2px ${WARM}` })
-    root.appendChild(el)
-    el.animate(frames, { duration: 300 + reach * 3.5, easing: "linear", fill: "forwards" }).onfinish = () => {
-      if (--left === 0) root.remove()
-    }
   }
 }
 
@@ -1892,7 +1854,7 @@ const DEFAULT_MARK = {
   d: "M354.084 0C374.63 8.50833 392.5 23.8578 403.922 44.9326C418.809 72.4024 419.569 103.739 408.683 130.599C372.855 219 258.635 211.309 206.626 211.71C145.919 212.178 96.2825 259.131 91.5504 318.731C95.9969 371.278 140.054 412.539 193.751 412.539C250.399 412.539 296.322 366.615 296.322 309.967C296.322 285.118 287.485 262.333 272.784 244.583C323.926 247.005 407.022 268.509 437.287 366.686C413.233 460.456 328.149 529.763 226.877 529.764C175.525 529.764 128.335 511.943 91.1539 482.149C67.7037 480.784 45.3008 488.644 28.0719 502.979C-6.1077 470.701 -9.49672 415.736 20.2223 379.638C12.3178 355.271 9.66566 330.28 9.66566 304.795C9.6658 186.402 110.21 87.5845 226.877 87.584C253.145 87.584 278.167 88.1909 302.354 75.083C331.715 59.1705 349.967 30.7466 354.084 0Z",
 }
 
-export function AsciiBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "ASCII badge", pose, ramp = " .:-=+*#%@", cell = 7, className }: AsciiBadgeProps) {
+export function AsciiBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "ASCII badge", pose, ramp = " .,:;-~=+*oxX#%@", cell = 5, className }: AsciiBadgeProps) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
   const strokeBase = `translate(${x0 + STROKE.tx * w} ${y0 + STROKE.ty * h}) rotate(${STROKE.rotate}) scale(${STROKE.sx * w} ${STROKE.sy * h})`

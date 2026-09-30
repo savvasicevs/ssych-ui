@@ -1,12 +1,26 @@
 "use client"
 
+import { useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Holdings Table, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · no card, outline, inner shadow or header band: rows sit on the page and part by one
+     hairline above each; the coin is a fill, not a ring
+   · amber is gone. The weight and its comb are ink, and the comb of the row being pointed
+     at takes the one accent
+   · the return is signed and coloured by direction: green for a gain, red for a loss. It
+     was always green in a green pill, whatever the sign
+   · pointing at a row, or tabbing to it, dims the others and reads it out in the line
+     under the table; at rest that line carries the count and the summed weight
+   · it is a real table to a screen reader: rows, column heads and cells are named */
+
 const EASE = [0.16, 1, 0.3, 1] as const
-const AMBER = "var(--chart-amber)"
 const GREEN = "var(--chart-up)"
+const RED = "var(--chart-down)"
+const ACCENT = "var(--chart-1)"
 
 export interface Holding {
   symbol: string
@@ -27,12 +41,16 @@ const DEFAULT_HOLDINGS: Holding[] = [
 ]
 
 const COMB_TICKS = 24
+const COLS = "grid-cols-[1.6fr_0.9fr_0.9fr_0.8fr_1.1fr]"
+
+const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`
+const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
 
 /**
- * Fund-holdings register in the Ink register: a coin, symbol beside its muted
- * name, tabular money columns, the return in a green pill, and the weight as an
- * amber value trailed by a tick-comb bar. The four column labels are props, so
- * a book that is not a fund can name what its return and weight actually
+ * Fund-holdings register in the Ink register: a coin, symbol beside its muted name,
+ * tabular money columns, the signed return, and the weight trailed by a tick-comb bar.
+ * Pointing at a row dims the rest and hands its comb the accent. The four column labels
+ * are props, so a book that is not a fund can name what its return and weight actually
  * measure (return since entry, share of gross exposure) without a fork.
  */
 export function HoldingsTable({
@@ -53,76 +71,113 @@ export function HoldingsTable({
   valueLabel?: string
   /** Column header over `price`. */
   priceLabel?: string
-  /** Column header over the return pill — name the window the number covers. */
+  /** Column header over the return: name the window the number covers. */
   returnLabel?: string
-  /** Column header over the weight comb — name the base the share is taken of. */
+  /** Column header over the weight comb: name the base the share is taken of. */
   weightLabel?: string
   className?: string
 }) {
   const reduced = useReducedMotion()
+  const [hot, setHot] = useState<string | null>(null)
+  /* the weight of everything listed, summed from the rows */
+  const total = holdings.reduce((s, h) => s + h.weight, 0)
+  const shown = holdings.find((h) => h.symbol === hot)
+
   return (
-    <div
-      className={cn("w-full max-w-[640px] overflow-hidden rounded-xl border border-foreground/[0.04]", className)}
-      style={{ background: "var(--card)", boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)" }}
-    >
-      <div className="grid grid-cols-[1.6fr_0.9fr_0.9fr_0.8fr_1.1fr] gap-2 border-b border-foreground/[0.04] bg-foreground/[0.02] px-4 py-2.5">
+    <div className={cn("w-full max-w-[640px] tabular-nums", className)} role="table" aria-label={`${title}, ${holdings.length} holdings, ${total.toFixed(2)}% in all`}>
+      <div role="row" className={cn("grid gap-2 px-3 pb-2", COLS)}>
         {[title, valueLabel, priceLabel, returnLabel, weightLabel].map((h, i) => (
-          <span key={i} className={cn("whitespace-nowrap text-[10.5px] text-foreground/45", i > 0 && "text-right")}>
+          <span
+            key={i}
+            role="columnheader"
+            className={cn("whitespace-nowrap", i === 0 ? "text-[13px] font-medium text-foreground/90" : "self-end text-right text-[10.5px] text-foreground/45")}
+          >
             {h}
           </span>
         ))}
       </div>
 
-      <div className="divide-y divide-foreground/[0.03]">
+      <div role="rowgroup" onPointerLeave={() => setHot(null)}>
         {holdings.map((h, i) => {
           const cursor = Math.round((h.weight / maxWeight) * COMB_TICKS)
+          const on = hot === h.symbol
+          const dim = hot !== null && !on
           return (
-            <motion.div
+            /* the outer row owns the dim so it never fights the entrance inside */
+            <div
               key={h.symbol}
-              className="grid grid-cols-[1.6fr_0.9fr_0.9fr_0.8fr_1.1fr] items-center gap-2 px-4 py-2.5 transition-colors duration-150 hover:bg-foreground/[0.015]"
-              initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: i * 0.05 }}
+              role="row"
+              tabIndex={0}
+              onPointerEnter={() => setHot(h.symbol)}
+              onFocus={() => setHot(h.symbol)}
+              onBlur={() => setHot(null)}
+              className="border-t border-foreground/[0.05] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06]"
+              style={{ opacity: dim ? 0.45 : 1 }}
             >
-              <span className="flex items-center gap-2.5">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-foreground/[0.08] bg-foreground/[0.04] text-[8.5px] font-semibold text-foreground/70">
-                  {h.symbol.slice(0, 2)}
+              <motion.div
+                className={cn("grid items-center gap-2 px-3 py-2.5", COLS)}
+                initial={reduced ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
+              >
+                <span role="cell" className="flex min-w-0 items-center gap-2.5">
+                  <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-foreground/[0.06] text-[8.5px] font-semibold text-foreground/70">
+                    {h.symbol.slice(0, 2)}
+                  </span>
+                  <span className="truncate">
+                    <span className="text-[12px] font-semibold text-foreground/90">{h.symbol}</span>
+                    <span className="ml-2 text-[10.5px] text-foreground/35">{h.name}</span>
+                  </span>
                 </span>
-                <span className="truncate">
-                  <span className="text-[11.5px] font-semibold text-foreground/85">{h.symbol}</span>
-                  <span className="ml-2 text-[10.5px] text-foreground/35">{h.name}</span>
+                <span role="cell" className="text-right text-[11px] text-foreground/70">
+                  {h.marketValue}
                 </span>
-              </span>
-              <span className="text-right text-[11px] tabular-nums text-foreground/55">{h.marketValue}</span>
-              <span className="text-right text-[11px] tabular-nums text-foreground/55">{h.price}</span>
-              <span className="text-right">
-                <span
-                  className="inline-block rounded-md px-2 py-0.5 text-[10px] tabular-nums"
-                  style={{ color: GREEN, background: "rgba(52,194,138,0.1)" }}
-                >
-                  {h.ytd.toFixed(2)}%
+                <span role="cell" className="text-right text-[11px] text-foreground/70">
+                  {h.price}
                 </span>
-              </span>
-              <span className="flex items-center justify-end gap-2.5">
-                <span className="text-[11px] tabular-nums" style={{ color: AMBER }}>
-                  {h.weight.toFixed(2)}%
+                <span role="cell" className="text-right text-[11px] font-medium" style={{ color: h.ytd >= 0 ? GREEN : RED }}>
+                  {signed(h.ytd)}
                 </span>
-                <span className="flex h-3 items-center gap-[2px]">
-                  {Array.from({ length: COMB_TICKS }, (_, t) => (
-                    <span
-                      key={t}
-                      className="w-px rounded-full"
-                      style={{
-                        height: t < cursor ? 9 : 5,
-                        background: t < cursor ? "rgba(232,180,90,0.6)" : "color-mix(in srgb, var(--foreground) 12%, transparent)",
-                      }}
-                    />
-                  ))}
+                <span role="cell" className="flex items-center justify-end gap-2.5">
+                  <span className="text-[11px] text-foreground/90">{h.weight.toFixed(2)}%</span>
+                  <span aria-hidden className="flex h-3 items-center gap-[2px]">
+                    {Array.from({ length: COMB_TICKS }, (_, t) => (
+                      <span
+                        key={t}
+                        className="w-px rounded-full"
+                        style={{
+                          height: t < cursor ? 9 : 5,
+                          background: t < cursor ? (on ? ACCENT : ink(55)) : ink(12),
+                          transition: "background 150ms",
+                        }}
+                      />
+                    ))}
+                  </span>
                 </span>
-              </span>
-            </motion.div>
+              </motion.div>
+            </div>
           )
         })}
+      </div>
+
+      <div role="status" className="border-t border-foreground/[0.05] px-3 pt-2 text-[10.5px] text-foreground/45">
+        {/* the readout swaps in place, 4px and a 2px blur over 150ms, so moving row to row never jumps */}
+        <motion.span
+          key={shown?.symbol ?? ""}
+          className="inline-block"
+          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.15, ease: EASE }}
+        >
+        {shown ? (
+          <>
+            <span className="font-medium text-foreground/90">{shown.symbol}</span> {shown.name} · {shown.weight.toFixed(2)}% of {maxWeight}% on the comb ·{" "}
+            <span style={{ color: shown.ytd >= 0 ? GREEN : RED }}>{signed(shown.ytd)}</span>
+          </>
+        ) : (
+          `${holdings.length} holdings · ${total.toFixed(2)}% in all`
+        )}
+        </motion.span>
       </div>
     </div>
   )

@@ -5,8 +5,23 @@ import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Simple Chart, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · no card: the 26px rounded ground is gone, it sits on the page. Pulling still moves the
+     whole block down and the ring of dots gathers in the room it leaves
+   · one large size, 26px, for the price. The cents step back by ink, not by a second size
+   · every figure is tabular, set once on the root
+   · the line is 1.8px and draws in once on mount; the scrub mark is a plain dot, not a
+     ring cut out of a card colour
+   · nothing moves for longer than 400ms and nothing overshoots: the settle is 360ms and
+     the window fill 250ms, both on the house ease (they were 480ms and 380ms)
+   · the price and the move are a status readout, so scrubbing is read out in place
+   Props are unchanged. */
+
 const UP = "var(--chart-up)"
 const DOWN = "var(--chart-down)"
+const EASE = [0.16, 1, 0.3, 1] as const
+const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)"
 
 function mulberry32(seed: number) {
   return () => {
@@ -19,19 +34,16 @@ function mulberry32(seed: number) {
 }
 
 const N = 60
-/** the plot is drawn in a 100 × 40 box stretched to the card; the stroke stays 2.1px */
+/** the plot is drawn in a 100 × 40 box stretched to the block; the stroke stays 1.8px */
 const VB_W = 100
 const VB_H = 40
 const PAD_Y = 6
 const PULL_AT = 64 // px of pull that commits a refresh
 const PULL_MAX = 96 // the rubber band's ceiling
-const PULL_HOLD = 56 // where the sheet waits while the refresh runs
+const PULL_HOLD = 56 // where the block waits while the refresh runs
 const HOLD_MS = 1000
+const SETTLE_MS = 360
 const DOTS = 6
-/** the tab pill and the sheet's settle share one curve: a quick glide with a small landing overshoot */
-const SETTLE = "cubic-bezier(0.34, 1.16, 0.5, 1)"
-/** the scrub dot's grow, springy and short */
-const TIP_EASE = "cubic-bezier(0.28, 1.4, 0.36, 1)"
 
 const WINDOWS = [
   { key: "1H", label: "past hour", minutes: 60, share: 0.2 },
@@ -66,14 +78,13 @@ const clock = (m: number) => {
 type Phase = "idle" | "pull" | "work" | "settle"
 
 /**
- * The compact asset-price card: one number over one smooth line. Scrubbing the
- * line moves a ring along it with a faint guide, and the number, the move and
- * the time all read that point; leaving settles them back to live. The window
- * tabs (1H, 4H, 1D) slide one pill between them. Pull the card down to refresh:
- * a ring of dots gathers as the sheet stretches, spins while it holds, and the
- * sheet settles back on the new price. Every walk is de-trended onto the two
- * numbers the card prints, so the move is (value − open) and the percent is
- * that over open.
+ * The compact asset price: one number over one smooth line. Scrubbing the line moves a
+ * dot along it with a faint guide, and the number, the move and the time all read that
+ * point; leaving settles them back to live. The window tabs (1H, 4H, 1D) slide one fill
+ * between them. Pull the block down to refresh: a ring of dots gathers as it stretches,
+ * spins while it holds, and the block settles back on the new price. Every walk is
+ * de-trended onto the two numbers it prints, so the move is (value − open) and the
+ * percent is that over open.
  */
 export function SimpleChart({
   name = "Ethereum",
@@ -104,7 +115,7 @@ export function SimpleChart({
     return () => pending.forEach(clearTimeout)
   }, [])
 
-  const winIndex = WINDOWS.findIndex((w) => w.key === win)
+  const winIndex = WINDOWS.findIndex((o) => o.key === win)
   const w = WINDOWS[winIndex]
 
   // the live price after each refresh: one small, seeded step per pull
@@ -143,7 +154,7 @@ export function SimpleChart({
   const at = hover ?? N - 1
   const point = series.pts[at]
   const move = point.val - series.open
-  const pct = (move / series.open) * 100
+  const pct = (move / (series.open || 1)) * 100
   const lineHue = live >= series.open ? UP : DOWN
   const when = hover == null ? w.label : clock(NOW_MIN - (1 - hover / (N - 1)) * w.minutes)
   const [whole, cents] = money(point.val).split(".")
@@ -157,7 +168,7 @@ export function SimpleChart({
   const settle = () => {
     setPhase("settle")
     setPull(0)
-    timers.current.push(window.setTimeout(() => setPhase("idle"), 480))
+    timers.current.push(window.setTimeout(() => setPhase("idle"), SETTLE_MS))
   }
   const refresh = () => {
     if (phase === "work") return
@@ -172,7 +183,7 @@ export function SimpleChart({
     )
   }
 
-  // pull: a vertical drag on the sheet. Pointer capture, not window listeners, so it holds in any document.
+  // pull: a vertical drag on the block. Pointer capture, not window listeners, so it holds in any document.
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (phase === "work" || (e.target as HTMLElement).closest("button")) return
     if (e.pointerType === "mouse" && e.button !== 0) return
@@ -213,8 +224,8 @@ export function SimpleChart({
   const progress = phase === "work" ? 1 : Math.min(1, pull / PULL_AT)
 
   return (
-    <div className={cn("relative w-full max-w-[320px] overflow-hidden rounded-[26px]", className)} style={{ background: "var(--card)" }}>
-      {/* the refresh ring, behind the sheet: it gathers with the pull and spins while the sheet holds */}
+    <div className={cn("relative w-full max-w-[320px] overflow-hidden tabular-nums", className)}>
+      {/* the refresh ring: it gathers with the pull in the room the block leaves, and spins while the block holds */}
       <div
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-[30px] z-[1] -ml-[30px] -mt-[30px] grid h-[60px] w-[60px] place-items-center"
@@ -232,7 +243,7 @@ export function SimpleChart({
                 <span
                   key={k}
                   className="absolute left-1/2 top-1/2 -ml-[2px] -mt-[2px] h-1 w-1 rounded-full"
-                  style={{ background: "color-mix(in srgb, var(--foreground) 34%, transparent)", translate: `${(Math.cos(a) * 9).toFixed(2)}px ${(Math.sin(a) * 9).toFixed(2)}px` }}
+                  style={{ background: "color-mix(in srgb, var(--foreground) 35%, transparent)", translate: `${(Math.cos(a) * 9).toFixed(2)}px ${(Math.sin(a) * 9).toFixed(2)}px` }}
                 />
               )
             })}
@@ -240,7 +251,7 @@ export function SimpleChart({
         </span>
       </div>
 
-      {/* the sheet: drag it down to refresh, or focus it and press Enter */}
+      {/* the block: drag it down to refresh, or focus it and press Enter */}
       <div
         tabIndex={0}
         role="group"
@@ -250,58 +261,86 @@ export function SimpleChart({
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onKeyDown={onKey}
-        className="relative z-[2] select-none rounded-[26px] px-3 pb-3 pt-[22px] outline-none touch-pan-x focus-visible:shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--foreground)_45%,transparent)]"
+        className="relative z-[2] select-none rounded-lg px-2 pb-2 pt-3 outline-none touch-pan-x focus-visible:bg-foreground/[0.03]"
         style={{
-          background: "var(--card)",
           transform: `translateY(${pull.toFixed(1)}px)`,
-          transition: phase === "pull" || reduced ? "none" : `transform 0.48s ${SETTLE}`,
+          transition: phase === "pull" || reduced ? "none" : `transform ${SETTLE_MS}ms ${EASE_CSS}`,
         }}
       >
-        <p className="m-0 text-[33px] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground">
-          <span className="mr-[2px]">$</span>
-          {whole}
-          <span className="text-[24px] opacity-[0.34]">.{cents}</span>
-        </p>
-        <p className="mt-[9px] mb-0 flex items-baseline gap-[7px] text-[12.5px] font-medium tabular-nums" style={{ color: move >= 0 ? UP : DOWN }}>
-          <span>
-            {move >= 0 ? "+" : "−"}
-            {money(Math.abs(move))} · {Math.abs(pct).toFixed(1)}%
-          </span>
-          <span className="text-foreground/40">{when}</span>
-        </p>
+        <motion.div
+          role="status"
+          /* a window switch, a refresh, or starting and ending a scrub swaps the readout in place
+             (4px, 2px blur, 150ms); the scrub itself moves the figures at once */
+          key={`${win}-${tick}-${hover == null ? "live" : "scrub"}`}
+          initial={reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.15, ease: EASE }}
+        >
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            ${whole}
+            <span className="text-foreground/35">.{cents}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: move >= 0 ? UP : DOWN }}>
+            <span>
+              {move >= 0 ? "+" : "−"}${money(Math.abs(move))} · {move >= 0 ? "+" : "−"}
+              {Math.abs(pct).toFixed(1)}%
+            </span>
+            <span className="font-normal text-foreground/45">{when}</span>
+          </p>
+        </motion.div>
 
         <span
           ref={plotRef}
-          className="relative mt-[22px] mb-[6px] block cursor-crosshair touch-pan-y"
+          className="relative mb-1.5 mt-5 block cursor-crosshair touch-pan-y"
           style={{ color: lineHue, paddingBlock: PAD_Y }}
           onPointerMove={(e) => e.pointerType === "mouse" && phase !== "pull" && scrubTo(e.clientX)}
           onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
         >
-          <svg
-            viewBox={`0 0 ${VB_W} ${VB_H}`}
-            preserveAspectRatio="none"
-            className="block h-[92px] w-full overflow-visible"
-            role="img"
-            aria-label={`${symbol} price over the ${w.label}, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent`}
+          {/* the line is stretched with a stroke that keeps its width, so it draws in by
+              a wipe from the left instead of a dash */}
+          <motion.span
+            className="block"
+            initial={reduced ? false : { clipPath: "inset(-10% 100% -10% -10%)" }}
+            animate={{ clipPath: "inset(-10% -10% -10% -10%)" }}
+            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
           >
-            <path d={series.d} fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          </svg>
-          {/* the guide and the ring are HTML over the stretched SVG, so they keep their shape */}
+            <svg
+              viewBox={`0 0 ${VB_W} ${VB_H}`}
+              preserveAspectRatio="none"
+              className="block h-[92px] w-full overflow-visible"
+              role="img"
+              aria-label={`${symbol} price ${money(point.val)} dollars, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent over the ${w.label}`}
+            >
+              {/* a new window or a refresh cross-fades the line in, 200ms; the wipe above runs once on mount */}
+              <motion.path
+                key={`${win}-${tick}`}
+                d={series.d}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2, ease: EASE }}
+              />
+            </svg>
+          </motion.span>
+          {/* the guide and the dot are HTML over the stretched SVG, so they keep their shape */}
           <i
             aria-hidden
-            className="pointer-events-none absolute w-px -ml-[0.5px] bg-current transition-opacity duration-[140ms]"
+            className="pointer-events-none absolute -ml-[0.5px] w-px bg-foreground transition-opacity duration-150"
             style={{ top: PAD_Y, bottom: PAD_Y, left: `${point.x}%`, opacity: hover == null ? 0 : 0.28 }}
           />
           <i
             aria-hidden
-            className="pointer-events-none absolute -ml-[4.5px] -mt-[4.5px] h-[9px] w-[9px] rounded-full"
+            className="pointer-events-none absolute -ml-[3.5px] -mt-[3.5px] h-[7px] w-[7px] rounded-full bg-current"
             style={{
               left: `${point.x}%`,
               top: `calc(${PAD_Y}px + (100% - ${PAD_Y * 2}px) * ${(point.y / VB_H).toFixed(4)})`,
-              background: "var(--card)",
-              boxShadow: "0 0 0 2px currentColor",
-              scale: hover == null ? 1 : 1.18,
-              transition: reduced ? "none" : `scale 0.16s ${TIP_EASE}`,
+              scale: hover == null ? 1 : 1.3,
+              transition: reduced ? "none" : `scale 160ms ${EASE_CSS}`,
             }}
           />
         </span>
@@ -309,11 +348,11 @@ export function SimpleChart({
         <div className="relative mt-4 flex gap-1" role="group" aria-label="Window">
           <span
             aria-hidden
-            className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.07]"
+            className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.08]"
             style={{
               width: `calc((100% - ${(WINDOWS.length - 1) * 4}px) / ${WINDOWS.length})`,
               transform: `translateX(calc(${winIndex} * (100% + 4px)))`,
-              transition: reduced ? "none" : `transform 0.38s ${SETTLE}`,
+              transition: reduced ? "none" : `transform 250ms ${EASE_CSS}`,
             }}
           />
           {WINDOWS.map((o) => {
@@ -323,12 +362,13 @@ export function SimpleChart({
                 key={o.key}
                 type="button"
                 aria-pressed={on}
+                aria-label={`Show ${o.label}`}
                 onClick={() => {
                   setWin(o.key)
                   setHover(null)
                 }}
                 className={cn(
-                  "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium tracking-[0.01em] transition-[color,transform] duration-200 active:scale-[0.94]",
+                  "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] focus-visible:text-foreground/90",
                   on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90",
                 )}
               >

@@ -27,8 +27,20 @@ export type GoldBadgeProps = {
   label?: string
   /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills) */
   pose?: readonly [number, number] | readonly [number, number, number]
+  /** the highlight the light leaves, 0 to 3 */
+  shine?: number
+  /** the brushed grain across the face, 0 to 4 */
+  brushed?: number
+  /** the dull handled patches, 0 (clean) to 1.5 */
+  smudges?: number
+  /** the light line along the outline, 0 to 2 */
+  edge?: number
   className?: string
 }
+
+/** the live settings, in the order the shader reads them. They are uniforms, so changing one
+ *  redraws the badge and rebuilds nothing. */
+type Look = readonly [number, number, number, number]
 
 /* ── the material, as ratios of the Figma master's 114.714 × 99.0732 box. These stops are the
    metal itself (a lit surface does not follow the page theme), not theme colours. ── */
@@ -40,11 +52,11 @@ const FILL = {
   x2: 32.5 / REF_W,
   y2: 95.5 / REF_H,
   stops: [
-    [0, "#fff3c4"],
-    [0.477953, "#f2ce6b"],
-    [0.60838, "#d19e2f"],
-    [0.860602, "#9c6a14"],
-    [1, "#4a2e06"],
+    [0, "#fffae6"],
+    [0.477953, "#ffe08a"],
+    [0.60838, "#f0bd4a"],
+    [0.860602, "#c98f22"],
+    [1, "#8a5a10"],
   ] as [number, string][],
 }
 const STROKE = {
@@ -71,7 +83,7 @@ const RAD = Math.PI / 180
 
 /* ── flip: click, tap or swipe to turn the badge about its vertical axis ─────────────────
    A click or tap is a flick of a coin: two whole turns that start at full speed, ease out
-   slowly (quint), carry OVER_DEG past the front and settle back, with a few sparks thrown off
+   slowly (quint), carry OVER_DEG past the front and settle back
    at the pointer. A swipe follows the finger, then carries on at its speed and settles on a
    whole turn with a spring. A vertical swipe, or one the browser takes for a scroll
    (pointercancel), settles without a turn. The owner steps it every frame while busy(). */
@@ -142,7 +154,7 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
     lastX = e.clientX
     lastTime = now
   }
-  const up = (e: PointerEvent) => {
+  const up = () => {
     if (!dragging) return
     dragging = false
     const turn = Math.round(angle / 360) * 360
@@ -153,7 +165,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       springing = true
     } else if (travel < TAP) {
       turnOnce()
-      sparkBurst(e.clientX, e.clientY)
     } else {
       // a swipe: carry on at its speed, settle on a whole turn in that direction
       velocity = dragVelocity
@@ -212,43 +223,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       hit.removeEventListener("pointerup", up)
       hit.removeEventListener("pointercancel", cancel)
     },
-  }
-}
-
-/* sparks: what the metal throws off when it is flicked. Two white-hot hairline chips, one
-   short and one far, that arc out, fall under gravity and fade at the end of their flight.
-   Fixed to the viewport so no parent can clip them; the burst removes itself. */
-const HOT = "#fffdf2"
-const WARM = "#ffd98a"
-function sparkBurst(x: number, y: number) {
-  if (typeof Element.prototype.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-  const root = document.createElement("div")
-  root.setAttribute("aria-hidden", "true")
-  Object.assign(root.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: "0", height: "0", pointerEvents: "none", zIndex: "2147483647" })
-  document.body.appendChild(root)
-  const near = 34 + Math.random() * 16
-  const far = near + 22 + Math.random() * 22
-  let left = 2
-  for (const reach of [near, far]) {
-    const deg = -90 + (Math.random() - 0.5) * 150 // biased upward and outward, the way sparks leave a strike
-    const a = (deg * Math.PI) / 180
-    const drop = reach * 0.25
-    const frames: Keyframe[] = []
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10
-      const s = 1 - (1 - t) ** 2 // decelerating travel
-      frames.push({
-        transform: `translate(${Math.cos(a) * reach * s}px, ${Math.sin(a) * reach * s + drop * t * t}px) rotate(${deg}deg)`,
-        opacity: t < 0.65 ? 1 : (1 - (t - 0.65) / 0.35) ** 1.6,
-        offset: t,
-      })
-    }
-    const el = document.createElement("span")
-    Object.assign(el.style, { position: "absolute", left: "-2px", top: "-0.5px", width: "4px", height: "1px", background: HOT, boxShadow: `0 0 2px ${WARM}` })
-    root.appendChild(el)
-    el.animate(frames, { duration: 300 + reach * 3.5, easing: "linear", fill: "forwards" }).onfinish = () => {
-      if (--left === 0) root.remove()
-    }
   }
 }
 
@@ -1397,6 +1371,7 @@ struct Scene {
   light: vec4f, // xyz: toward the light, w: its strength
   grad: vec4f,  // xy: cos and sin of the gradient's turn toward the cursor, z: art height in widths, w: seconds
   ends: vec4f,  // the Figma gradient's bright end (xy) and dark end (zw), in art widths, y down
+  knobs: vec4f, // x shine, y brushed, z smudges, w edge
 }
 @group(0) @binding(0) var<uniform> scene: Scene;
 
@@ -1423,10 +1398,11 @@ fn vs_main(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2
 // the fill's stops in gold: #FFF3C4, #F2CE6B, #D19E2F, #9C6A14, #4A2E06
 fn chrome(t: f32) -> vec3f {
   let x = clamp(t, 0.0, 1.0);
-  if (x < 0.477953) { return mix(vec3f(1.0, 0.953, 0.769), vec3f(0.949, 0.808, 0.42), x / 0.477953); }
-  if (x < 0.60838) { return mix(vec3f(0.949, 0.808, 0.42), vec3f(0.82, 0.62, 0.184), (x - 0.477953) / 0.130427); }
-  if (x < 0.860602) { return mix(vec3f(0.82, 0.62, 0.184), vec3f(0.612, 0.416, 0.078), (x - 0.60838) / 0.252222); }
-  return mix(vec3f(0.612, 0.416, 0.078), vec3f(0.29, 0.18, 0.024), (x - 0.860602) / 0.139398);
+  // lighter throughout (user call, 2026-09-29): polished gold's shade is a deep yellow, never brown
+  if (x < 0.477953) { return mix(vec3f(1.0, 0.98, 0.902), vec3f(1.0, 0.878, 0.541), x / 0.477953); }
+  if (x < 0.60838) { return mix(vec3f(1.0, 0.878, 0.541), vec3f(0.941, 0.741, 0.29), (x - 0.477953) / 0.130427); }
+  if (x < 0.860602) { return mix(vec3f(0.941, 0.741, 0.29), vec3f(0.788, 0.561, 0.133), (x - 0.60838) / 0.252222); }
+  return mix(vec3f(0.788, 0.561, 0.133), vec3f(0.541, 0.353, 0.063), (x - 0.860602) / 0.139398);
 }
 
 // fine brushed grain, 0..1: soft lines across the art at two scales, attached to the surface
@@ -1479,31 +1455,35 @@ fn fs_main(v: VertexOut) -> @location(0) vec4f {
   // metal's own colour, a tight core inside a broad sheen
   let l = normalize(scene.light.xyz);
   let grain = brushed(v.uv);
-  let smudge = patches(v.uv);
-  var colour = base * (0.34 + 0.76 * max(dot(n, l), 0.0));
+  let smudge = min(patches(v.uv) * scene.knobs.z, 1.0);
+  var colour = base * (0.5 + 0.62 * max(dot(n, l), 0.0));
   let nh = max(dot(n, normalize(l + view)), 0.0);
-  let core = pow(nh, 70.0) * 0.35 * (0.75 + 0.5 * grain) * (1.0 - 0.8 * smudge);
-  let sheen = pow(nh, mix(18.0, 6.0, smudge)) * mix(0.22, 0.34, smudge);
-  colour += (base * 0.7 + vec3f(0.3, 0.27, 0.18)) * (core + sheen) * scene.light.w;
+  // polished: a hot core, tight, inside a broad sheen
+  let core = pow(nh, 110.0) * 0.75 * (0.85 + 0.3 * grain) * (1.0 - 0.5 * smudge);
+  let sheen = pow(nh, mix(14.0, 7.0, smudge)) * mix(0.34, 0.4, smudge);
+  colour += (base * 0.55 + vec3f(0.45, 0.42, 0.3)) * (core + sheen) * scene.light.w * scene.knobs.x;
 
-  // what metal mirrors besides the light: the room, lighter above and darker below
+  // what metal mirrors besides the light: the room, lighter above and darker below, and a
+  // soft box overhead that slides across the face as the badge sways
   let r = reflect(-view, n);
-  colour *= mix(mix(0.72, 1.12, smoothstep(-0.5, 0.7, r.y)), 0.95, 0.5 * smudge);
+  colour *= mix(mix(0.86, 1.16, smoothstep(-0.5, 0.7, r.y)), 1.0, 0.5 * smudge);
+  let box = smoothstep(0.26, 0.5, r.y) * (1.0 - smoothstep(0.5, 0.8, r.y));
+  colour += vec3f(1.0, 0.95, 0.78) * box * 0.3 * scene.knobs.x;
 
-  // the brushed grain, faint; the smudged patches a touch duller than the clean metal
-  colour *= 0.97 + 0.06 * grain;
-  colour *= mix(1.03, 0.8, smudge);
+  // the brushed grain, faint; the smudged patches barely duller than the clean metal
+  colour *= 1.0 + 0.04 * scene.knobs.y * (grain - 0.5);
+  colour *= mix(1.02, 0.93, smudge);
 
   // edge glare: a thin reflected light along the outlines where the surface turns away
   let away = 1.0 - clamp(dot(n, view), 0.0, 1.0);
   let dark = 1.0 - clamp(dot(colour, vec3f(0.333)), 0.0, 1.0);
-  colour += vec3f(pow(away, 2.0) * (0.12 + 0.5 * dark) + pow(away, 3.0) * 0.95 * dark);
+  colour += vec3f(pow(away, 2.0) * (0.12 + 0.5 * dark) + pow(away, 3.0) * 0.95 * dark) * scene.knobs.w;
 
   // the outline: a light line along the art's edge, strongest where the metal is dark
   let e = clamp(v.edge, 0.0, 1.0);
   let line = 1.0 - smoothstep(0.06, 0.16, e);
   let tail = pow(1.0 - e, 6.0) * 0.35;
-  colour += vec3f((line + tail) * (0.14 + 0.66 * dark));
+  colour += vec3f((line + tail) * (0.14 + 0.66 * dark)) * scene.knobs.w;
 
   return vec4f(min(colour, vec3f(1.0)), 1.0);
 }
@@ -1680,7 +1660,7 @@ function translation(x: number, y: number, z: number): M4 {
 type Renderer = { draw: (m: Motion) => void; dispose: () => void }
 
 /** the badge on `canvas`: the mesh, its buffers and targets on the shared device. `onLost` runs if the device goes away */
-async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, onLost: () => void): Promise<Renderer> {
+async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, look: () => Look, onLost: () => void): Promise<Renderer> {
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
   const aspect = h / w
   const mesh = meshFor(d, viewBox, detail)
@@ -1712,7 +1692,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   const vertices = upload(mesh.vertices, BUFFER.VERTEX)
   const indices = upload(mesh.indices, BUFFER.INDEX)
   const count = mesh.indices.length
-  const uniforms = new Float32Array(48) // the Scene struct: two mat4x4f and four vec4f
+  const uniforms = new Float32Array(52) // the Scene struct: two mat4x4f and five vec4f
   const sceneBuffer = device.createBuffer({ size: uniforms.byteLength, usage: BUFFER.UNIFORM | BUFFER.COPY_DST })
   const sceneGroup = device.createBindGroup({ layout: g.badge.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: sceneBuffer } }] })
 
@@ -1761,6 +1741,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
       uniforms.set(model, 16)
       uniforms.set([m.lx / ll, m.ly / ll, m.lz / ll, 1], 36)
       uniforms.set([Math.cos(m.light * RAD), Math.sin(m.light * RAD), aspect, (performance.now() % 3600000) / 1000], 40)
+      uniforms.set(look(), 48)
       device.queue.writeBuffer(sceneBuffer, 0, uniforms)
       const encoder = device.createCommandEncoder()
       const scene = encoder.beginRenderPass({
@@ -1819,7 +1800,10 @@ const DEFAULT_MARK = {
   d: "M354.084 0C374.63 8.50833 392.5 23.8578 403.922 44.9326C418.809 72.4024 419.569 103.739 408.683 130.599C372.855 219 258.635 211.309 206.626 211.71C145.919 212.178 96.2825 259.131 91.5504 318.731C95.9969 371.278 140.054 412.539 193.751 412.539C250.399 412.539 296.322 366.615 296.322 309.967C296.322 285.118 287.485 262.333 272.784 244.583C323.926 247.005 407.022 268.509 437.287 366.686C413.233 460.456 328.149 529.763 226.877 529.764C175.525 529.764 128.335 511.943 91.1539 482.149C67.7037 480.784 45.3008 488.644 28.0719 502.979C-6.1077 470.701 -9.49672 415.736 20.2223 379.638C12.3178 355.271 9.66566 330.28 9.66566 304.795C9.6658 186.402 110.21 87.5845 226.877 87.584C253.145 87.584 278.167 88.1909 302.354 75.083C331.715 59.1705 349.967 30.7466 354.084 0Z",
 }
 
-export function GoldBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Gold badge", pose, className }: GoldBadgeProps) {
+export function GoldBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Gold badge", pose, shine = 1, brushed = 1, smudges = 1, edge = 1, className }: GoldBadgeProps) {
+  // the live settings ride in a ref: the renderer reads them each frame, and a change asks for one
+  const lookRef = useRef<Look>([shine, brushed, smudges, edge])
+  lookRef.current = [shine, brushed, smudges, edge]
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
   const strokeBase = `translate(${x0 + STROKE.tx * w} ${y0 + STROKE.ty * h}) rotate(${STROKE.rotate}) scale(${STROKE.sx * w} ${STROKE.sy * h})`
@@ -1912,7 +1896,7 @@ export function GoldBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, si
         near = e.isIntersecting
         if (near && gpu && canvas && !started) {
           started = true
-          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => fail(new Error("device lost")))
+          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => lookRef.current, () => fail(new Error("device lost")))
             .then((r) => {
               if (cancelled) r.dispose()
               else {
@@ -1941,6 +1925,10 @@ export function GoldBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, si
       canvas?.remove()
     }
   }, [renderer, path, viewBox, size, sway, still, flippable, poseKey, strokeBase])
+
+  useEffect(() => {
+    driverRef.current?.redraw()
+  }, [shine, brushed, smudges, edge])
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Enter" && e.key !== " ") return

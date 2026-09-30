@@ -5,14 +5,29 @@ import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Market Snapshot, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · no card: the 26px rounded ground is gone, it sits on the page. Pulling still moves the
+     whole block down and the ring of dots gathers in the room it leaves
+   · one large size, 26px, for the price. The cents step back by ink, not by a second size
+   · every figure is tabular, set once on the root
+   · the line is 1.8px and draws in once on mount; the scrub mark is a plain dot, not a
+     ring cut out of a card colour
+   · nothing moves for longer than 400ms and nothing overshoots: the settle is 360ms and
+     the period fill 250ms, both on the house ease (they were 480ms and 380ms)
+   · the price and the move are a status readout, so scrubbing is read out in place
+   Props are unchanged. */
+
 const UP = "var(--chart-up)"
 const DOWN = "var(--chart-down)"
+const EASE = [0.16, 1, 0.3, 1] as const
+const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)"
 
 const PERIODS = ["1D", "1W", "1M", "3M", "YTD", "1Y", "All"] as const
 type Period = (typeof PERIODS)[number]
 const DEFAULT_VALUES = [178.52, 176.84, 180.15, 181.42, 179.96, 184.22, 187.61, 190.04, 188.72, 194.85, 202.14, 198.93, 211.75, 224.68, 219.42, 236.18, 248.06, 243.44, 268.31, 284.12, 276.88, 301.45]
 
-/** window each period button represents, in days — drives the scrub date */
+/** window each period button represents, in days; drives the scrub date */
 const WINDOW_DAYS: Record<Period, number> = { "1D": 1, "1W": 7, "1M": 30, "3M": 90, YTD: 210, "1Y": 365, All: 660 }
 /** what the move line says the move is measured over, at rest */
 const WINDOW_LABEL: Record<Period, string> = { "1D": "past day", "1W": "past week", "1M": "past month", "3M": "past 3 months", YTD: "year to date", "1Y": "past year", All: "all time" }
@@ -24,11 +39,8 @@ const PULL_AT = 64
 const PULL_MAX = 96
 const PULL_HOLD = 56
 const HOLD_MS = 1000
+const SETTLE_MS = 360
 const DOTS = 6
-/** the tab pill and the sheet's settle share one curve: a quick glide with a small landing overshoot */
-const SETTLE = "cubic-bezier(0.34, 1.16, 0.5, 1)"
-/** the scrub dot's grow, springy and short */
-const TIP_EASE = "cubic-bezier(0.28, 1.4, 0.36, 1)"
 
 function mulberry32(seed: number) {
   return () => {
@@ -73,12 +85,12 @@ export interface MarketSnapshotProps {
 }
 
 /**
- * Market snapshot card: the price over one smooth, period-sliced line. Scrubbing
- * moves a ring along the line with a faint guide, and the price, the move and the
- * date all read that point. The period tabs slide one pill between them. Pull the
- * card down to refresh: a ring of dots gathers as the sheet stretches, spins while
- * it holds, and a new latest price lands on the end of the series. The move is
- * (price − the period's first price), and the percent is that over the first price.
+ * Market snapshot: the price over one smooth, period-sliced line. Scrubbing moves a dot
+ * along the line with a faint guide, and the price, the move and the date all read that
+ * point. The period tabs slide one fill between them. Pull the block down to refresh: a
+ * ring of dots gathers as it stretches, spins while it holds, and a new latest price lands
+ * on the end of the series. The move is (price − the period's first price), and the
+ * percent is that over the first price.
  */
 export function MarketSnapshot({
   symbol = "AMZN",
@@ -115,10 +127,10 @@ export function MarketSnapshot({
     return { pts, d: smoothPath(pts) }
   }, [data])
 
-  const at = hover ?? data.length - 1
+  const at = Math.min(hover ?? data.length - 1, data.length - 1)
   const price = data[at]
   const move = price - data[0]
-  const pct = (move / data[0]) * 100
+  const pct = (move / (data[0] || 1)) * 100
   const lineHue = data[data.length - 1] >= data[0] ? UP : DOWN
   const [whole, cents] = money(price).split(".")
 
@@ -131,7 +143,7 @@ export function MarketSnapshot({
       ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
       : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: period === "All" || period === "1Y" ? "2-digit" : undefined })
   }
-  const when = hover == null ? WINDOW_LABEL[period] : stamp(hover)
+  const when = hover == null ? WINDOW_LABEL[period] : stamp(at)
 
   const scrubTo = (clientX: number) => {
     const r = plotRef.current?.getBoundingClientRect()
@@ -142,7 +154,7 @@ export function MarketSnapshot({
   const settle = () => {
     setPhase("settle")
     setPull(0)
-    timers.current.push(window.setTimeout(() => setPhase("idle"), 480))
+    timers.current.push(window.setTimeout(() => setPhase("idle"), SETTLE_MS))
   }
   const refresh = () => {
     if (phase === "work") return
@@ -161,7 +173,7 @@ export function MarketSnapshot({
     )
   }
 
-  // pull: a vertical drag on the sheet. Pointer capture, not window listeners, so it holds in any document.
+  // pull: a vertical drag on the block. Pointer capture, not window listeners, so it holds in any document.
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (phase === "work" || (e.target as HTMLElement).closest("button")) return
     if (e.pointerType === "mouse" && e.button !== 0) return
@@ -203,8 +215,8 @@ export function MarketSnapshot({
   const point = plot.pts[at]
 
   return (
-    <div className={cn("relative w-full max-w-[340px] overflow-hidden rounded-[26px]", className)} style={{ background: "var(--card)" }}>
-      {/* the refresh ring, behind the sheet: it gathers with the pull and spins while the sheet holds */}
+    <div className={cn("relative w-full max-w-[340px] overflow-hidden tabular-nums", className)}>
+      {/* the refresh ring: it gathers with the pull in the room the block leaves, and spins while the block holds */}
       <div
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-[30px] z-[1] -ml-[30px] -mt-[30px] grid h-[60px] w-[60px] place-items-center"
@@ -222,7 +234,7 @@ export function MarketSnapshot({
                 <span
                   key={k}
                   className="absolute left-1/2 top-1/2 -ml-[2px] -mt-[2px] h-1 w-1 rounded-full"
-                  style={{ background: "color-mix(in srgb, var(--foreground) 34%, transparent)", translate: `${(Math.cos(a) * 9).toFixed(2)}px ${(Math.sin(a) * 9).toFixed(2)}px` }}
+                  style={{ background: "color-mix(in srgb, var(--foreground) 35%, transparent)", translate: `${(Math.cos(a) * 9).toFixed(2)}px ${(Math.sin(a) * 9).toFixed(2)}px` }}
                 />
               )
             })}
@@ -230,7 +242,7 @@ export function MarketSnapshot({
         </span>
       </div>
 
-      {/* the sheet: drag it down to refresh, or focus it and press Enter */}
+      {/* the block: drag it down to refresh, or focus it and press Enter */}
       <div
         tabIndex={0}
         role="group"
@@ -240,62 +252,79 @@ export function MarketSnapshot({
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onKeyDown={onKey}
-        className="relative z-[2] select-none rounded-[26px] px-3 pb-3 pt-[20px] outline-none touch-pan-x focus-visible:shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--foreground)_45%,transparent)]"
+        className="relative z-[2] select-none rounded-lg px-2 pb-2 pt-3 outline-none touch-pan-x focus-visible:bg-foreground/[0.03]"
         style={{
-          background: "var(--card)",
           transform: `translateY(${pull.toFixed(1)}px)`,
-          transition: phase === "pull" || reduced ? "none" : `transform 0.48s ${SETTLE}`,
+          transition: phase === "pull" || reduced ? "none" : `transform ${SETTLE_MS}ms ${EASE_CSS}`,
         }}
       >
         <div className="mb-3 flex items-baseline justify-between text-[12px]">
           <span className="truncate text-foreground/45">{name}</span>
-          <span className="shrink-0 pl-3 font-medium text-foreground/85">{symbol}</span>
+          <span className="shrink-0 pl-3 font-medium text-foreground/90">{symbol}</span>
         </div>
-        <p className="m-0 text-[33px] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground">
-          <span className="mr-[2px]">$</span>
-          {whole}
-          <span className="text-[24px] opacity-[0.34]">.{cents}</span>
-        </p>
-        <p className="mt-[9px] mb-0 flex items-baseline gap-[7px] text-[12.5px] font-medium tabular-nums" style={{ color: move >= 0 ? UP : DOWN }}>
-          <span>
-            {move >= 0 ? "+" : "−"}
-            {money(Math.abs(move))} · {Math.abs(pct).toFixed(1)}%
-          </span>
-          <span className="text-foreground/40">{when}</span>
-        </p>
+        <div role="status">
+          {/* a period switch or a landed refresh swaps the readout in place (4px, 2px blur,
+              150ms); scrubbing reads the point at once, it moves with the pointer */}
+          <motion.div
+            key={`${period}-${extra.length}`}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.15, ease: EASE }}
+          >
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            ${whole}
+            <span className="text-foreground/35">.{cents}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: move >= 0 ? UP : DOWN }}>
+            <span>
+              {move >= 0 ? "+" : "−"}${money(Math.abs(move))} · {move >= 0 ? "+" : "−"}
+              {Math.abs(pct).toFixed(1)}%
+            </span>
+            <span className="font-normal text-foreground/45">{when}</span>
+          </p>
+          </motion.div>
+        </div>
 
         <span
           ref={plotRef}
-          className="relative mt-[22px] mb-[6px] block cursor-crosshair touch-pan-y"
+          className="relative mb-1.5 mt-5 block cursor-crosshair touch-pan-y"
           style={{ color: lineHue, paddingBlock: PAD_Y }}
           onPointerMove={(e) => e.pointerType === "mouse" && phase !== "pull" && scrubTo(e.clientX)}
           onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
         >
-          <svg
-            viewBox={`0 0 ${VB_W} ${VB_H}`}
-            preserveAspectRatio="none"
-            className="block h-[92px] w-full overflow-visible"
-            role="img"
-            aria-label={`${name} price ${money(price)} dollars, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent over the ${WINDOW_LABEL[period]}`}
+          {/* the line is stretched with a stroke that keeps its width, so it draws in by
+              a wipe from the left instead of a dash; each period draws its own line in */}
+          <motion.span
+            key={period}
+            className="block"
+            initial={reduced ? false : { clipPath: "inset(-10% 100% -10% -10%)" }}
+            animate={{ clipPath: "inset(-10% -10% -10% -10%)" }}
+            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
           >
-            <path d={plot.d} fill="none" stroke="currentColor" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          </svg>
-          {/* the guide and the ring are HTML over the stretched SVG, so they keep their shape */}
+            <svg
+              viewBox={`0 0 ${VB_W} ${VB_H}`}
+              preserveAspectRatio="none"
+              className="block h-[92px] w-full overflow-visible"
+              role="img"
+              aria-label={`${name} price ${money(price)} dollars, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent over the ${WINDOW_LABEL[period]}`}
+            >
+              <path d={plot.d} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+          </motion.span>
+          {/* the guide and the dot are HTML over the stretched SVG, so they keep their shape */}
           <i
             aria-hidden
-            className="pointer-events-none absolute w-px -ml-[0.5px] bg-current transition-opacity duration-[140ms]"
+            className="pointer-events-none absolute -ml-[0.5px] w-px bg-foreground transition-opacity duration-150"
             style={{ top: PAD_Y, bottom: PAD_Y, left: `${point.x}%`, opacity: hover == null ? 0 : 0.28 }}
           />
           <i
             aria-hidden
-            className="pointer-events-none absolute -ml-[4.5px] -mt-[4.5px] h-[9px] w-[9px] rounded-full"
+            className="pointer-events-none absolute -ml-[3.5px] -mt-[3.5px] h-[7px] w-[7px] rounded-full bg-current"
             style={{
               left: `${point.x}%`,
               top: `calc(${PAD_Y}px + (100% - ${PAD_Y * 2}px) * ${(point.y / VB_H).toFixed(4)})`,
-              background: "var(--card)",
-              boxShadow: "0 0 0 2px currentColor",
-              scale: hover == null ? 1 : 1.18,
-              transition: reduced ? "none" : `scale 0.16s ${TIP_EASE}`,
+              scale: hover == null ? 1 : 1.3,
+              transition: reduced ? "none" : `scale 160ms ${EASE_CSS}`,
             }}
           />
         </span>
@@ -303,11 +332,11 @@ export function MarketSnapshot({
         <div className="relative mt-4 flex gap-1" role="group" aria-label="Period">
           <span
             aria-hidden
-            className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.07]"
+            className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.08]"
             style={{
               width: `calc((100% - ${(PERIODS.length - 1) * 4}px) / ${PERIODS.length})`,
               transform: `translateX(calc(${periodIndex} * (100% + 4px)))`,
-              transition: reduced ? "none" : `transform 0.38s ${SETTLE}`,
+              transition: reduced ? "none" : `transform 250ms ${EASE_CSS}`,
             }}
           />
           {PERIODS.map((item) => {
@@ -317,12 +346,13 @@ export function MarketSnapshot({
                 key={item}
                 type="button"
                 aria-pressed={on}
+                aria-label={`Show ${WINDOW_LABEL[item]}`}
                 onClick={() => {
                   setPeriod(item)
                   setHover(null)
                 }}
                 className={cn(
-                  "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium tracking-[0.01em] transition-[color,transform] duration-200 active:scale-[0.94]",
+                  "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] focus-visible:text-foreground/90",
                   on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90",
                 )}
               >
@@ -331,7 +361,7 @@ export function MarketSnapshot({
             )
           })}
         </div>
-        <div className="mt-3 flex items-center justify-between px-1 text-[10px] tabular-nums text-foreground/35">
+        <div className="mt-3 flex items-center justify-between px-1 text-[10px] text-foreground/35">
           <span>{updatedAt}</span>
           <span>{exchange}</span>
         </div>

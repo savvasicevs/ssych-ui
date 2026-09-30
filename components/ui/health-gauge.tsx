@@ -5,14 +5,23 @@ import { animate, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Health Gauge, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · the track and the value arc are filled shapes with round ends, 8px deep. They were
+     10px strokes; the arc now grows with the number instead of drawing a dash
+   · red below 40, amber for "Caution" from 40 to 70, green from 70: the band says which
+     state the score is in (amber given back 2026-09-30, it is the warning state)
+   · the end marker is a small filled dot cut out of the arc, not a 2.5px ring
+   · the metric dots are ink, one strength for the chosen one and one for the rest, with
+     no ring around them. Pointing at a dot reads that metric and its score in the line
+     above before you press
+   · every figure is tabular; the sweep takes 0.4s (it was 1.1s), the line under the dial
+     swaps in place when it changes */
+
 const EASE = [0.16, 1, 0.3, 1] as const
-const AMBER = "var(--chart-amber)"
-const GREEN = "var(--chart-2)"
+const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
-const SANS = "inherit"
-const TEXT = "var(--foreground)"
-const TEXT_MUTED = "var(--muted-foreground)"
-const TRACK = "color-mix(in srgb, var(--foreground) 12%, transparent)"
+const AMBER = "var(--chart-amber)"
 
 export interface HealthMetric {
   /** 0–100, the position on the dial */
@@ -37,28 +46,45 @@ const DEFAULT_METRICS: HealthMetric[] = [
 const SPAN = 270
 const START = -135
 
-/* The 270° sweep bottoms out at ±R·sin45°, so the box is sized (and CY nudged
-   up) to clear the round caps and the 0/100 ticks instead of clipping them. */
+/* The 270° sweep bottoms out at ±R·sin45°, so the box is sized (and CY nudged up) to
+   clear the round ends and the 0 and 100 ticks. */
 const VB_W = 220
 const VB_H = 176
 const CX = VB_W / 2
 const CY = 94
+/** the ring's centre line, and how deep the band is */
 const R = 84
-const SW = 10
+const DEPTH = 8
+const R_OUT = R + DEPTH / 2
+const R_IN = R - DEPTH / 2
+const CAP = DEPTH / 2
 
 function polar(deg: number, r = R) {
   const a = ((deg - 90) * Math.PI) / 180
   return [CX + r * Math.cos(a), CY + r * Math.sin(a)] as const
 }
-function arc(from: number, to: number, r = R) {
-  const [x0, y0] = polar(from, r)
-  const [x1, y1] = polar(to, r)
-  const large = Math.abs(to - from) > 180 ? 1 : 0
-  return `M${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)}`
+const pt = (deg: number, r: number) => {
+  const [x, y] = polar(deg, r)
+  return `${x.toFixed(2)} ${y.toFixed(2)}`
 }
-const at = (v: number) => START + (v / 100) * SPAN
 
-/* thresholds tint the value arc, the readout label and the state dot, never the ground */
+/** a band of the ring from `from` to `to` degrees as one closed shape, both ends round */
+function band(from: number, to: number) {
+  const b = Math.max(from, to)
+  const large = b - from > 180 ? 1 : 0
+  return [
+    `M ${pt(from, R_OUT)}`,
+    `A ${R_OUT} ${R_OUT} 0 ${large} 1 ${pt(b, R_OUT)}`,
+    `A ${CAP} ${CAP} 0 0 1 ${pt(b, R_IN)}`,
+    `A ${R_IN} ${R_IN} 0 ${large} 0 ${pt(from, R_IN)}`,
+    `A ${CAP} ${CAP} 0 0 1 ${pt(from, R_OUT)}`,
+    "Z",
+  ].join(" ")
+}
+const at = (v: number) => START + (Math.max(0, Math.min(100, v)) / 100) * SPAN
+
+/* the zone tints the value arc and its label, never the ground: red at risk, amber for
+   the warning in between, green healthy */
 const ZONES = [
   { to: 40, color: RED, label: "At risk" },
   { to: 70, color: AMBER, label: "Caution" },
@@ -71,15 +97,19 @@ function tickPos(v: number) {
   return { x, y: y + 3 }
 }
 
+const TRACK_D = band(START, START + SPAN)
+
 /**
- * A bounded single-metric dial: a 270° arc on one flat track, a value arc that
- * draws in with round ends behind an end marker, and a centre number that counts
- * up to it. Clicking the dial cycles the metric, the arc redraws and the number
- * re-counts, and the dots below jump straight to the one you pick.
+ * A bounded single-metric dial: a 270° band on one flat track, a value band that sweeps
+ * round to its mark while the centre number counts up with it. Pressing the dial goes to
+ * the next metric; the dots below go straight to the one you pick, and pointing at a dot
+ * reads it first.
  */
 export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaugeProps) {
   const reduced = useReducedMotion()
   const [mi, setMi] = useState(0)
+  /** the dot being pointed at */
+  const [hot, setHot] = useState<number | null>(null)
   const metric = metrics[mi]
   const target = metric.value
   const zone = zoneOf(target)
@@ -93,7 +123,7 @@ export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaug
       return
     }
     const controls = animate(shown.current, target, {
-      duration: 1.1,
+      duration: 0.4,
       ease: EASE,
       onUpdate: (n) => {
         shown.current = n
@@ -103,93 +133,89 @@ export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaug
     return () => controls.stop()
   }, [reduced, target])
 
-  const [ex, ey] = polar(at(target))
+  const [ex, ey] = polar(at(v))
+  const read = hot !== null && hot !== mi ? metrics[hot] : null
 
   return (
-    <div className={cn("w-[220px]", className)} style={{ fontFamily: SANS }}>
+    <div className={cn("w-[220px] tabular-nums", className)}>
       <button
         type="button"
         onClick={() => setMi((m) => (m + 1) % metrics.length)}
-        aria-label={`Metric: ${metric.label}. Click to cycle.`}
-        className="block w-full cursor-pointer outline-none"
+        aria-label={`${metric.label}, ${Math.round(target)} out of 100, ${zone.label}. Press for the next metric`}
+        className="block w-full cursor-pointer rounded-lg outline-none"
       >
         <motion.svg
           viewBox={`0 0 ${VB_W} ${VB_H}`}
           className="block h-auto w-full"
           whileTap={reduced ? undefined : { scale: 0.97 }}
-          transition={{ duration: 0.15, ease: EASE }}
+          transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 30 }}
           role="img"
           aria-label={`${metric.label} ${Math.round(target)} out of 100, ${zone.label}`}
         >
           {/* one flat track, no zone banding */}
-          <path d={arc(START, START + SPAN)} fill="none" stroke={TRACK} strokeWidth={SW} strokeLinecap="round" />
-          {/* value arc — re-keys on metric change so it redraws */}
-          <motion.path
-            key={mi}
-            d={arc(START, at(target))}
-            fill="none"
-            stroke={zone.color}
-            strokeWidth={SW}
-            strokeLinecap="round"
-            initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 1.1, ease: EASE }}
-          />
-          <motion.circle
-            key={`end-${mi}`}
-            cx={ex}
-            cy={ey}
-            r={6}
-            fill="var(--card)"
-            stroke={zone.color}
-            strokeWidth={2.5}
-            initial={{ opacity: reduced ? 1 : 0 }}
-            animate={{ opacity: 1 }}
-            transition={reduced ? { duration: 0 } : { delay: 1, duration: 0.3 }}
-          />
-          <text x={CX} y={CY - 2} textAnchor="middle" fontSize={34} fontWeight={700} fill={TEXT} className="tabular-nums">
+          <path d={TRACK_D} fill="var(--foreground)" fillOpacity={0.08} />
+          {/* the value band follows the counting number, so both arrive together */}
+          <path d={band(START, at(v))} fill={zone.color} style={{ transition: reduced ? "none" : "fill 200ms" }} />
+          <circle cx={ex} cy={ey} r={1.75} fill="var(--background)" />
+          <text x={CX} y={CY - 2} textAnchor="middle" fontSize={34} fontWeight={600} fill="var(--foreground)" fillOpacity={0.9}>
             {Math.round(v)}
           </text>
-          <text x={CX} y={CY + 18} textAnchor="middle" fontSize={11} fontWeight={600} fill={zone.color}>
+          <text
+            x={CX}
+            y={CY + 18}
+            textAnchor="middle"
+            fontSize={11}
+            fontWeight={600}
+            fill={zone.color}
+            style={{ transition: reduced ? "none" : "fill 200ms" }}
+          >
             {zone.label}
           </text>
-          <text {...tickPos(0)} fontSize={9} fill="var(--color-foreground)" fillOpacity={0.3} textAnchor="middle">
+          <text {...tickPos(0)} fontSize={9} fill="var(--foreground)" fillOpacity={0.35} textAnchor="middle">
             0
           </text>
-          <text {...tickPos(100)} fontSize={9} fill="var(--color-foreground)" fillOpacity={0.3} textAnchor="middle">
+          <text {...tickPos(100)} fontSize={9} fill="var(--foreground)" fillOpacity={0.35} textAnchor="middle">
             100
           </text>
         </motion.svg>
       </button>
 
-      <div className="mt-1 text-center text-[11px]" style={{ color: TEXT_MUTED }}>
-        <span style={{ color: TEXT }}>{metric.label}</span> · {metric.sub}
+      <div role="status" className="mt-1 flex justify-center text-[11px]">
+        {/* the line swaps in place: a 4px rise through a 2px blur */}
+        <motion.span
+          key={`${(read ?? metric).label}-${read ? "read" : "sub"}`}
+          className="flex items-baseline gap-1.5"
+          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.15, ease: EASE }}
+        >
+          <span className="font-medium text-foreground/90">{(read ?? metric).label}</span>
+          <span className="text-foreground/45">{read ? `${Math.round(read.value)} · ${zoneOf(read.value).label}` : metric.sub}</span>
+        </motion.span>
       </div>
 
-      {/* one plain circle per metric, tinted by its own zone */}
-      <div className="mt-2.5 flex items-center justify-center gap-3" role="group" aria-label="Metric">
+      {/* one plain dot per metric */}
+      <div className="mt-1.5 flex items-center justify-center gap-1" role="group" aria-label="Metric" onPointerLeave={() => setHot(null)}>
         {metrics.map((m, i) => {
-          const c = zoneOf(m.value).color
           const on = i === mi
           return (
             <button
               key={m.label}
               type="button"
-              aria-label={`Show ${m.label}`}
+              aria-label={`Show ${m.label}, ${Math.round(m.value)} out of 100`}
               aria-pressed={on}
               onClick={() => setMi(i)}
-              className="grid size-7 cursor-pointer place-items-center rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60"
-              style={{ boxShadow: on ? `inset 0 0 0 1.5px color-mix(in srgb, ${c} 45%, transparent)` : undefined }}
+              onPointerEnter={() => setHot(i)}
+              onFocus={() => setHot(i)}
+              onBlur={() => setHot(null)}
+              className="grid size-7 cursor-pointer place-items-center rounded-full outline-none transition-colors duration-150 hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.08]"
             >
               <span
-                className="block rounded-full"
-                style={{
-                  width: on ? 18 : 15,
-                  height: on ? 18 : 15,
-                  background: c,
-                  opacity: on ? 1 : 0.55,
-                  transition: reduced ? "none" : "width 200ms, height 200ms, opacity 200ms",
-                }}
+                className={cn(
+                  "block size-1.5 rounded-full bg-foreground transition-[opacity,transform] duration-200",
+                  on ? "scale-[1.35] opacity-90" : hot === i ? "opacity-90" : "opacity-30",
+                  reduced && "transition-none",
+                )}
               />
             </button>
           )

@@ -27,8 +27,20 @@ export type NeonBadgeProps = {
   label?: string
   /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills) */
   pose?: readonly [number, number] | readonly [number, number, number]
+  /** the brightness of the tube, 0 to 2 */
+  glow?: number
+  /** the width of the tube, 0.3 to 3 */
+  width?: number
+  /** the light falling in from the tube, 0 to 3 */
+  halo?: number
+  /** how far the tube breathes, 0 (steady) to 4 */
+  pulse?: number
   className?: string
 }
+
+/** the live settings, in the order the shader reads them. They are uniforms, so changing one
+ *  redraws the badge and rebuilds nothing. */
+type Look = readonly [number, number, number, number]
 
 /* ── the material, as ratios of the Figma master's 114.714 × 99.0732 box. These stops are the
    metal itself (a lit surface does not follow the page theme), not theme colours. ── */
@@ -71,7 +83,7 @@ const RAD = Math.PI / 180
 
 /* ── flip: click, tap or swipe to turn the badge about its vertical axis ─────────────────
    A click or tap is a flick of a coin: two whole turns that start at full speed, ease out
-   slowly (quint), carry OVER_DEG past the front and settle back, with a few sparks thrown off
+   slowly (quint), carry OVER_DEG past the front and settle back
    at the pointer. A swipe follows the finger, then carries on at its speed and settles on a
    whole turn with a spring. A vertical swipe, or one the browser takes for a scroll
    (pointercancel), settles without a turn. The owner steps it every frame while busy(). */
@@ -142,7 +154,7 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
     lastX = e.clientX
     lastTime = now
   }
-  const up = (e: PointerEvent) => {
+  const up = () => {
     if (!dragging) return
     dragging = false
     const turn = Math.round(angle / 360) * 360
@@ -153,7 +165,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       springing = true
     } else if (travel < TAP) {
       turnOnce()
-      sparkBurst(e.clientX, e.clientY)
     } else {
       // a swipe: carry on at its speed, settle on a whole turn in that direction
       velocity = dragVelocity
@@ -212,43 +223,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       hit.removeEventListener("pointerup", up)
       hit.removeEventListener("pointercancel", cancel)
     },
-  }
-}
-
-/* sparks: what the metal throws off when it is flicked. Two white-hot hairline chips, one
-   short and one far, that arc out, fall under gravity and fade at the end of their flight.
-   Fixed to the viewport so no parent can clip them; the burst removes itself. */
-const HOT = "#fffdf2"
-const WARM = "#ffd98a"
-function sparkBurst(x: number, y: number) {
-  if (typeof Element.prototype.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-  const root = document.createElement("div")
-  root.setAttribute("aria-hidden", "true")
-  Object.assign(root.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: "0", height: "0", pointerEvents: "none", zIndex: "2147483647" })
-  document.body.appendChild(root)
-  const near = 34 + Math.random() * 16
-  const far = near + 22 + Math.random() * 22
-  let left = 2
-  for (const reach of [near, far]) {
-    const deg = -90 + (Math.random() - 0.5) * 150 // biased upward and outward, the way sparks leave a strike
-    const a = (deg * Math.PI) / 180
-    const drop = reach * 0.25
-    const frames: Keyframe[] = []
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10
-      const s = 1 - (1 - t) ** 2 // decelerating travel
-      frames.push({
-        transform: `translate(${Math.cos(a) * reach * s}px, ${Math.sin(a) * reach * s + drop * t * t}px) rotate(${deg}deg)`,
-        opacity: t < 0.65 ? 1 : (1 - (t - 0.65) / 0.35) ** 1.6,
-        offset: t,
-      })
-    }
-    const el = document.createElement("span")
-    Object.assign(el.style, { position: "absolute", left: "-2px", top: "-0.5px", width: "4px", height: "1px", background: HOT, boxShadow: `0 0 2px ${WARM}` })
-    root.appendChild(el)
-    el.animate(frames, { duration: 300 + reach * 3.5, easing: "linear", fill: "forwards" }).onfinish = () => {
-      if (--left === 0) root.remove()
-    }
   }
 }
 
@@ -1397,6 +1371,7 @@ struct Scene {
   light: vec4f, // xyz: toward the light, w: its strength
   grad: vec4f,  // xy: cos and sin of the gradient's turn toward the cursor, z: art height in widths, w: seconds
   ends: vec4f,  // the Figma gradient's bright end (xy) and dark end (zw), in art widths, y down
+  knobs: vec4f, // x glow, y width, z halo, w pulse
 }
 @group(0) @binding(0) var<uniform> scene: Scene;
 
@@ -1461,12 +1436,12 @@ fn fs_main(v: VertexOut) -> @location(0) vec4f {
   let body = vec3f(0.05, 0.055, 0.075) * (0.55 + 0.6 * ndl) + vec3f(0.02) * pow(nh, 30.0);
   // the tube: the outline band, breathing slowly, and a soft halo falling in from it
   let glow = vec3f(0.35, 0.92, 1.0);
-  let breathe = 0.86 + 0.14 * sin(time * 2.4 + v.uv.x * 3.0);
-  let line = 1.0 - smoothstep(0.0, 0.14, e);
-  let halo = pow(1.0 - e, 3.5) * 0.5;
-  var colour = body + glow * (line * 1.5 + halo) * breathe;
+  let breathe = 1.0 - 0.14 * scene.knobs.w * (0.5 - 0.5 * sin(time * 2.4 + v.uv.x * 3.0)) * 2.0;
+  let line = 1.0 - smoothstep(0.0, 0.14 * scene.knobs.y, e);
+  let halo = pow(1.0 - e, 3.5) * 0.5 * scene.knobs.z;
+  var colour = body + glow * (line * 1.5 * scene.knobs.x + halo) * breathe;
   // the glow spills onto the side, which turns away from the eye
-  colour += glow * pow(away, 3.0) * 0.6 * breathe;
+  colour += glow * pow(away, 3.0) * 0.6 * breathe * scene.knobs.x;
   return vec4f(min(colour, vec3f(1.0)), 1.0);
 }
 `
@@ -1642,7 +1617,7 @@ function translation(x: number, y: number, z: number): M4 {
 type Renderer = { draw: (m: Motion) => void; dispose: () => void }
 
 /** the badge on `canvas`: the mesh, its buffers and targets on the shared device. `onLost` runs if the device goes away */
-async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, onLost: () => void): Promise<Renderer> {
+async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, look: () => Look, onLost: () => void): Promise<Renderer> {
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
   const aspect = h / w
   const mesh = meshFor(d, viewBox, detail)
@@ -1674,7 +1649,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   const vertices = upload(mesh.vertices, BUFFER.VERTEX)
   const indices = upload(mesh.indices, BUFFER.INDEX)
   const count = mesh.indices.length
-  const uniforms = new Float32Array(48) // the Scene struct: two mat4x4f and four vec4f
+  const uniforms = new Float32Array(52) // the Scene struct: two mat4x4f and five vec4f
   const sceneBuffer = device.createBuffer({ size: uniforms.byteLength, usage: BUFFER.UNIFORM | BUFFER.COPY_DST })
   const sceneGroup = device.createBindGroup({ layout: g.badge.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: sceneBuffer } }] })
 
@@ -1723,6 +1698,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
       uniforms.set(model, 16)
       uniforms.set([m.lx / ll, m.ly / ll, m.lz / ll, 1], 36)
       uniforms.set([Math.cos(m.light * RAD), Math.sin(m.light * RAD), aspect, (performance.now() % 3600000) / 1000], 40)
+      uniforms.set(look(), 48)
       device.queue.writeBuffer(sceneBuffer, 0, uniforms)
       const encoder = device.createCommandEncoder()
       const scene = encoder.beginRenderPass({
@@ -1782,7 +1758,10 @@ const DEFAULT_MARK = {
   d: "M354.084 0C374.63 8.50833 392.5 23.8578 403.922 44.9326C418.809 72.4024 419.569 103.739 408.683 130.599C372.855 219 258.635 211.309 206.626 211.71C145.919 212.178 96.2825 259.131 91.5504 318.731C95.9969 371.278 140.054 412.539 193.751 412.539C250.399 412.539 296.322 366.615 296.322 309.967C296.322 285.118 287.485 262.333 272.784 244.583C323.926 247.005 407.022 268.509 437.287 366.686C413.233 460.456 328.149 529.763 226.877 529.764C175.525 529.764 128.335 511.943 91.1539 482.149C67.7037 480.784 45.3008 488.644 28.0719 502.979C-6.1077 470.701 -9.49672 415.736 20.2223 379.638C12.3178 355.271 9.66566 330.28 9.66566 304.795C9.6658 186.402 110.21 87.5845 226.877 87.584C253.145 87.584 278.167 88.1909 302.354 75.083C331.715 59.1705 349.967 30.7466 354.084 0Z",
 }
 
-export function NeonBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Neon badge", pose, className }: NeonBadgeProps) {
+export function NeonBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Neon badge", pose, glow = 1, width = 1, halo = 1, pulse = 1, className }: NeonBadgeProps) {
+  // the live settings ride in a ref: the renderer reads them each frame, and a change asks for one
+  const lookRef = useRef<Look>([glow, width, halo, pulse])
+  lookRef.current = [glow, width, halo, pulse]
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
   const strokeBase = `translate(${x0 + STROKE.tx * w} ${y0 + STROKE.ty * h}) rotate(${STROKE.rotate}) scale(${STROKE.sx * w} ${STROKE.sy * h})`
@@ -1875,7 +1854,7 @@ export function NeonBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, si
         near = e.isIntersecting
         if (near && gpu && canvas && !started) {
           started = true
-          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => fail(new Error("device lost")))
+          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => lookRef.current, () => fail(new Error("device lost")))
             .then((r) => {
               if (cancelled) r.dispose()
               else {
@@ -1904,6 +1883,10 @@ export function NeonBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, si
       canvas?.remove()
     }
   }, [renderer, path, viewBox, size, sway, still, flippable, poseKey, strokeBase])
+
+  useEffect(() => {
+    driverRef.current?.redraw()
+  }, [glow, width, halo, pulse])
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Enter" && e.key !== " ") return

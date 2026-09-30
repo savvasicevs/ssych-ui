@@ -5,9 +5,18 @@ import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Comb Rows, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · the accent comes from the token, not from a typed colour: the comb of the subject, or
+     of the row being pointed at, takes it, every other comb is ink
+   · every figure is tabular, the one in the caption included
+   · pointing at a row, or tabbing to it, keeps it full and dims the others, and the
+     caption turns into that row's readout: its value and how far it sits from the subject
+   · the comparison names itself to a screen reader, every row carries its own label */
+
 const EASE = [0.16, 1, 0.3, 1] as const
-const ACCENT: [number, number, number] = [72, 159, 250]
-const accentRgba = (a: number) => `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${a})`
+const ACCENT = "var(--chart-1)"
+const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
 
 export interface CombRow {
   label: string
@@ -25,10 +34,10 @@ const DEFAULT_ROWS: CombRow[] = [
 const TICKS = 46
 
 /**
- * A comparison in the Ink register: every row is a ruler of ticks, the cursor
- * tick stands taller at the value, and the subject row's comb carries the
- * accent. Hovering another row hands it the accent and the ink. The ticks
- * grow in row by row on mount.
+ * A comparison in the Ink register: every row is a ruler of ticks, the cursor tick
+ * stands taller at the value, and the subject row's comb carries the accent. Pointing at
+ * another row hands it the accent, dims the rest and reads it against the subject in
+ * place of the caption. The ticks grow in row by row on mount.
  */
 export function CombRows({
   title = "P/E ratio",
@@ -50,57 +59,90 @@ export function CombRows({
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<string | null>(null)
 
+  const base = rows.find((r) => r.label === subject)
+  const pointed = rows.find((r) => r.label === hot)
+  /* the pointed row against the subject: value ÷ subject's value − 1 */
+  const readout = (() => {
+    if (!pointed || pointed.label === subject) return caption
+    if (!base || base.value === 0) return `${pointed.label} ${pointed.value} of ${max}`
+    const gap = (pointed.value / base.value - 1) * 100
+    return `${pointed.label} ${pointed.value}, ${Math.abs(gap).toFixed(0)}% ${gap < 0 ? "below" : "above"} ${subject}`
+  })()
+
   return (
-    <div className={cn("w-[320px]", className)}>
+    <div className={cn("w-[320px] tabular-nums", className)} role="group" aria-label={`${title}, ${rows.length} rows${base ? `, ${subject} ${base.value}` : ""}`}>
       <div className="text-center">
-        <div className="text-[13px] font-medium text-foreground/85">{title}</div>
-        <div className="mt-0.5 text-[10.5px] text-foreground/40">{caption}</div>
+        <div className="text-[13px] font-medium text-foreground/90">{title}</div>
+        <div role="status" className="mt-0.5 text-[10.5px] text-foreground/45">
+          {/* the caption swaps in place: a 4px rise through a 2px blur */}
+          <motion.span
+            key={readout}
+            className="inline-block"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.15, ease: EASE }}
+          >
+            {readout}
+          </motion.span>
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-col" onPointerLeave={() => setHot(null)}>
+      <div className="mt-4 flex flex-col" role="list" onPointerLeave={() => setHot(null)}>
         {rows.map((r, ri) => {
           const cursor = Math.round((r.value / max) * TICKS)
           const active = hot === r.label || (hot === null && r.label === subject)
+          const dim = hot !== null && hot !== r.label
           return (
-            <motion.div
+            /* the outer row owns the dim so it never fights the entrance inside */
+            <div
               key={r.label}
-              className="-mx-2 flex items-center gap-3 rounded-md px-2 py-[7px]"
+              role="listitem"
+              tabIndex={0}
+              aria-label={`${r.label} ${r.value} of ${max}`}
               onPointerEnter={() => setHot(r.label)}
-              initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: ri * 0.06 }}
+              onFocus={() => setHot(r.label)}
+              onBlur={() => setHot(null)}
+              className="-mx-2 rounded-[4px] outline-none transition-[opacity,background-color] duration-200 focus-visible:bg-foreground/[0.06]"
+              style={{ opacity: dim ? 0.45 : 1 }}
             >
-              <span className={cn("w-[52px] shrink-0 text-[11.5px] font-medium transition-colors duration-150", active ? "text-foreground/85" : "text-foreground/50")}>{r.label}</span>
-              <span className="flex h-4 flex-1 items-center gap-[2.5px]" aria-hidden>
-                {Array.from({ length: TICKS }, (_, t) => {
-                  const isCursor = t === cursor
-                  const filled = t < cursor
-                  return (
-                    <motion.span
-                      key={t}
-                      className="w-px rounded-full"
-                      style={{
-                        height: isCursor ? 13 : filled ? 8 : 5,
-                        background: isCursor
-                          ? active
-                            ? accentRgba(1)
-                            : "color-mix(in srgb, var(--foreground) 85%, transparent)"
-                          : filled
+              <motion.div
+                className="flex items-center gap-3 px-2 py-[7px]"
+                initial={reduced ? false : { opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: ri * 0.035 }}
+              >
+                <span className={cn("w-[52px] shrink-0 text-[11.5px] font-medium transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/45")}>{r.label}</span>
+                <span className="flex h-4 flex-1 items-center gap-[2.5px]" aria-hidden>
+                  {Array.from({ length: TICKS }, (_, t) => {
+                    const isCursor = t === cursor
+                    const filled = t < cursor
+                    return (
+                      <motion.span
+                        key={t}
+                        className="w-px rounded-full"
+                        style={{
+                          height: isCursor ? 13 : filled ? 8 : 5,
+                          background: isCursor
                             ? active
-                              ? accentRgba(0.55)
-                              : "color-mix(in srgb, var(--foreground) 28%, transparent)"
-                            : "color-mix(in srgb, var(--foreground) 10%, transparent)",
-                        transition: "background 0.15s",
-                      }}
-                      initial={{ scaleY: reduced ? 1 : 0 }}
-                      animate={{ scaleY: 1 }}
-                      transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: ri * 0.06 + t * 0.004 }}
-                    />
-                  )
-                })}
-              </span>
-              <span className={cn("w-[36px] shrink-0 text-right text-[11px] tabular-nums transition-colors duration-150", active ? "text-foreground/85" : "text-foreground/45")}>{r.value}</span>
-            </motion.div>
+                              ? ACCENT
+                              : ink(85)
+                            : filled
+                              ? active
+                                ? `color-mix(in srgb, ${ACCENT} 55%, transparent)`
+                                : ink(28)
+                              : ink(10),
+                          transition: "background 150ms",
+                        }}
+                        initial={{ scaleY: reduced ? 1 : 0 }}
+                        animate={{ scaleY: 1 }}
+                        transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: ri * 0.035 + t * 0.003 }}
+                      />
+                    )
+                  })}
+                </span>
+                <span className={cn("w-[36px] shrink-0 text-right text-[11px] transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/45")}>{r.value}</span>
+              </motion.div>
+            </div>
           )
         })}
       </div>

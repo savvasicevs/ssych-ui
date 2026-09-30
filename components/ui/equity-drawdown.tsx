@@ -5,6 +5,16 @@ import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Equity Drawdown, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · tabular figures are set once on the root, so the axis figure that missed them lines up
+   · the readout is complete and in place: equity, the return to that point, the drawdown
+     there and how long it has been under the peak. Before, only the equity was written
+   · the outlined badge on the axis is plain text; an axis figure steps aside under it
+   · the equity line follows the direction of the whole return, green for a gain and red
+     for a loss (it was always green); the drawdown stays red
+   · the dots carry no ring, the drawdown axis uses a true minus */
+
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
@@ -40,6 +50,8 @@ const fmt = (n: number, o: { compact?: boolean; currency?: boolean; precision?: 
   return (n < 0 ? "−" : "") + body
 }
 
+const signedPct = (v: number, dp = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(dp)}%`
+
 /** running drawdown and the index of the high-water mark, for any equity series */
 function drawdownOf(eq: number[]) {
   const dd: number[] = []
@@ -69,11 +81,10 @@ const DD_TOP = EQ_BOT + GAP
 const DD_BOT = H - PAD.b
 
 /**
- * The trading-journal core: a cumulative equity curve over a synced underwater
- * drawdown panel (percent off the running peak). One crosshair drives both
- * panels and reads out equity, the drawdown at that point and how long it has
- * been below the high-water mark. Every number is derivable: drawdown is
- * (value − peak) ÷ peak, the return is (last − first) ÷ first.
+ * A cumulative equity curve over its underwater panel (percent off the running peak). One
+ * crosshair drives both and reads equity, the return to that point, the drawdown there
+ * and how long it has been below the high-water mark. Every number is derivable: drawdown
+ * is (value − peak) ÷ peak, the return is (value − first) ÷ first.
  */
 export function EquityDrawdown({
   base,
@@ -133,24 +144,52 @@ export function EquityDrawdown({
   }
 
   const active = hi ?? n - 1
-  const totalRet = ((eq[n - 1] - eq[0]) / eq[0]) * 100
+  const retAt = (i: number) => ((eq[i] - eq[0]) / eq[0]) * 100
+  const totalRet = retAt(n - 1)
   const maxDd = Math.min(...dd)
   const daysDown = active - lastHigh[active]
+  const lineHue = totalRet >= 0 ? GREEN : RED
+  const valueY = Math.max(EQ_TOP + 8, Math.min(EQ_BOT - 8, yEq(eq[active])))
+  const fade = reduced ? "none" : "opacity 160ms"
+  /* the readout swaps in place as the crosshair moves (text swap: 4px, 2px blur, 150ms),
+     starting from a dimmed copy so it never blinks out mid-scrub; reduced motion keeps
+     only the fade */
+  const swap = {
+    initial: reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" },
+    animate: { opacity: 1, y: 0, filter: "blur(0px)" },
+    transition: { duration: 0.15, ease: EASE },
+  }
 
   return (
-    <div className={cn("w-[560px]", className)}>
-      <div className="mb-1 flex items-end justify-between px-1">
-        <div>
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-foreground/90">
-              {fmt(eq[active], { currency: true, precision: 0 })}
-            </span>
-            <span className="text-[12px] font-medium tabular-nums" style={{ color: totalRet >= 0 ? GREEN : RED }}>
-              {totalRet >= 0 ? "+" : "−"}
-              {Math.abs(totalRet).toFixed(1)}%
-            </span>
-          </div>
+    <div className={cn("w-[560px] tabular-nums", className)}>
+      <div role="status" className="mb-1 flex items-baseline justify-between gap-4 px-1">
+        <div className="flex items-baseline gap-2.5">
+          <motion.span key={`v${active}`} {...swap} className="inline-block text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {fmt(eq[active], { currency: true, precision: 0 })}
+          </motion.span>
+          <motion.span key={`r${active}`} {...swap} className="inline-block text-[12px] font-medium" style={{ color: retAt(active) >= 0 ? GREEN : RED }}>
+            {signedPct(retAt(active))}
+          </motion.span>
         </div>
+        <motion.span key={hi === null ? "all" : `d${active}`} {...swap} className="inline-block whitespace-nowrap text-[10px] text-foreground/45">
+          {hi === null ? (
+            <>
+              Max drawdown{" "}
+              <span className="font-medium" style={{ color: RED }}>
+                {signedPct(maxDd)}
+              </span>
+            </>
+          ) : daysDown > 0 ? (
+            <>
+              <span className="font-medium" style={{ color: RED }}>
+                {signedPct(dd[active])}
+              </span>{" "}
+              off the peak, {daysDown} {daysDown === 1 ? "day" : "days"} below it
+            </>
+          ) : (
+            "At the peak"
+          )}
+        </motion.span>
       </div>
 
       <svg
@@ -160,14 +199,14 @@ export function EquityDrawdown({
         viewBox={`0 0 ${W} ${H}`}
         className="block cursor-crosshair touch-none"
         role="img"
-        aria-label={`Equity curve with drawdown, return ${totalRet.toFixed(1)} percent, max drawdown ${Math.abs(maxDd).toFixed(1)} percent`}
+        aria-label={`Equity curve with drawdown. Equity ${fmt(eq[n - 1], { currency: true, precision: 0 })}, return ${signedPct(totalRet)}, max drawdown ${signedPct(maxDd)}`}
         onPointerMove={onMove}
         onPointerLeave={() => setHi(null)}
       >
         <defs>
           <linearGradient id={`${uid}-eq`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={GREEN} stopOpacity="0.16" />
-            <stop offset="100%" stopColor={GREEN} stopOpacity="0" />
+            <stop offset="0%" stopColor={lineHue} stopOpacity="0.16" />
+            <stop offset="100%" stopColor={lineHue} stopOpacity="0" />
           </linearGradient>
           <linearGradient id={`${uid}-dd`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={RED} stopOpacity="0.02" />
@@ -177,51 +216,102 @@ export function EquityDrawdown({
 
         {[0, 0.5, 1].map((f) => {
           const gy = EQ_TOP + f * (EQ_BOT - EQ_TOP)
+          const under = hi !== null && Math.abs(gy - valueY) < 11
           return (
             <g key={f}>
-              <line x1={PAD.l} y1={gy} x2={W - PAD.r} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} strokeDasharray="2 5" />
-              <text x={W - PAD.r + 8} y={gy + 3} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.3} className="tabular-nums">
+              <line x1={PAD.l} y1={gy} x2={W - PAD.r} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} strokeDasharray="2 5" />
+              <text
+                x={W - PAD.r + 8}
+                y={gy + 3}
+                fontSize={8.5}
+                fill="var(--foreground)"
+                fillOpacity={0.35}
+                style={{ opacity: under ? 0 : 1, transition: fade }}
+              >
                 {fmt(eqMax - f * (eqMax - eqMin), { compact: true })}
               </text>
             </g>
           )
         })}
 
-        <motion.path d={geo.eqArea} fill={`url(#${uid}-eq)`} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.4 }} />
-        <motion.path d={geo.eqLine} fill="none" stroke={GREEN} strokeWidth={1.6} initial={{ pathLength: reduced ? 1 : 0 }} animate={{ pathLength: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }} />
+        <motion.path
+          d={geo.eqArea}
+          fill={`url(#${uid}-eq)`}
+          initial={{ opacity: reduced ? 1 : 0 }}
+          animate={{ opacity: 1 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.2 }}
+        />
+        <motion.path
+          d={geo.eqLine}
+          fill="none"
+          stroke={lineHue}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          initial={{ pathLength: reduced ? 1 : 0 }}
+          animate={{ pathLength: 1 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+        />
 
-        {/* drawdown panel */}
-        <line x1={PAD.l} y1={DD_TOP} x2={W - PAD.r} y2={DD_TOP} stroke="var(--foreground)" strokeOpacity={0.08} />
-        <text x={W - PAD.r + 8} y={DD_TOP + 3} fontSize={8} fill="var(--foreground)" fillOpacity={0.3}>
+        {/* drawdown panel: the zero line is the only solid gridline */}
+        <line x1={PAD.l} y1={DD_TOP} x2={W - PAD.r} y2={DD_TOP} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
+        <text x={W - PAD.r + 8} y={DD_TOP + 3} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
           0%
         </text>
-        <text x={W - PAD.r + 8} y={DD_BOT + 2} fontSize={8} fill="var(--foreground)" fillOpacity={0.3} className="tabular-nums">
-          {ddMin.toFixed(0)}%
+        <text x={W - PAD.r + 8} y={DD_BOT + 2} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
+          {`${ddMin < 0 ? "−" : ""}${Math.abs(ddMin).toFixed(0)}%`}
         </text>
-        <motion.path d={geo.ddArea} fill={`url(#${uid}-dd)`} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.5 }} />
-        <motion.path d={geo.ddLine} fill="none" stroke={RED} strokeOpacity={0.8} strokeWidth={1.2} initial={{ pathLength: reduced ? 1 : 0 }} animate={{ pathLength: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE, delay: 0.1 }} />
+        <motion.path
+          d={geo.ddArea}
+          fill={`url(#${uid}-dd)`}
+          initial={{ opacity: reduced ? 1 : 0 }}
+          animate={{ opacity: 1 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.25 }}
+        />
+        <motion.path
+          d={geo.ddLine}
+          fill="none"
+          stroke={RED}
+          strokeOpacity={0.8}
+          strokeWidth={1.2}
+          strokeLinejoin="round"
+          initial={{ pathLength: reduced ? 1 : 0 }}
+          animate={{ pathLength: 1 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.05 }}
+        />
 
         {/* the current underwater episode, from the high-water mark to the cursor */}
         {hi !== null && daysDown > 0 && (
           <g pointerEvents="none">
-            <rect x={x(lastHigh[active])} y={DD_TOP} width={x(active) - x(lastHigh[active])} height={DD_BOT - DD_TOP} fill={`color-mix(in srgb, ${RED} 8%, transparent)`} />
-            <line x1={x(lastHigh[active])} y1={yEq(eq[lastHigh[active]])} x2={x(active)} y2={yEq(eq[lastHigh[active]])} stroke={`color-mix(in srgb, ${RED} 45%, transparent)`} strokeWidth={1} strokeDasharray="3 3" />
-            <circle cx={x(lastHigh[active])} cy={yEq(eq[lastHigh[active]])} r={2.6} fill="var(--card)" stroke="var(--foreground)" strokeOpacity={0.45} strokeWidth={1.3} />
+            <rect
+              x={x(lastHigh[active])}
+              y={DD_TOP}
+              width={x(active) - x(lastHigh[active])}
+              height={DD_BOT - DD_TOP}
+              fill={`color-mix(in srgb, ${RED} 8%, transparent)`}
+            />
+            <line
+              x1={x(lastHigh[active])}
+              y1={yEq(eq[lastHigh[active]])}
+              x2={x(active)}
+              y2={yEq(eq[lastHigh[active]])}
+              stroke={`color-mix(in srgb, ${RED} 45%, transparent)`}
+              strokeWidth={1}
+              strokeDasharray="3 3"
+            />
+            <circle cx={x(lastHigh[active])} cy={yEq(eq[lastHigh[active]])} r={2.4} fill="var(--foreground)" fillOpacity={0.45} />
           </g>
         )}
 
-        {/* one crosshair across both panels */}
+        {/* one crosshair across both panels, the equity written on the axis */}
         {hi !== null && (
           <g pointerEvents="none">
             <line x1={x(active)} y1={EQ_TOP} x2={x(active)} y2={DD_BOT} stroke="var(--foreground)" strokeOpacity={0.2} strokeWidth={1} />
-            <circle cx={x(active)} cy={yEq(eq[active])} r={3.4} fill={GREEN} stroke="var(--card)" strokeWidth={1.6} />
-            <circle cx={x(active)} cy={yDd(dd[active])} r={3} fill={RED} stroke="var(--card)" strokeWidth={1.5} />
-            <g transform={`translate(${W - PAD.r + 2}, ${Math.max(EQ_TOP + 8, Math.min(EQ_BOT - 8, yEq(eq[active])))})`}>
-              <rect x={0} y={-8} width={52} height={16} rx={4} fill="var(--card)" stroke={GREEN} strokeOpacity={0.7} />
-              <text x={5} y={3.5} fontSize={9} fontWeight={600} fill={GREEN} className="tabular-nums">
-                {fmt(eq[active], { compact: true })}
-              </text>
-            </g>
+            <circle cx={x(active)} cy={yEq(eq[active])} r={3} fill={lineHue} />
+            <circle cx={x(active)} cy={yDd(dd[active])} r={2.6} fill={RED} />
+            <text x={W - PAD.r + 8} y={valueY + 3.5} fontSize={9} fontWeight={600} fill={lineHue}>
+              {fmt(eq[active], { compact: true })}
+            </text>
           </g>
         )}
       </svg>

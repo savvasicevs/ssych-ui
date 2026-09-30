@@ -1,16 +1,29 @@
 "use client"
 
-import { useId, useMemo, useRef, useState } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
-import { cn } from '@/lib/utils'
+import { useId, useMemo, useRef, useState } from "react"
+import { motion, useReducedMotion } from "motion/react"
 
-/* motion + ink tokens, standalone: the library file carries its own constants */
+import { cn } from "@/lib/utils"
+
+/* Assets Balance Card, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · no card: the 26px corner, the embossed outline, the wash and the drop shadow are gone,
+     the balance and its line sit on the page
+   · no glow: the bloom behind the line, the line's own drop shadow and the dot's halo are gone
+   · the label is sentence case at full letter fit (it was capitals, letter-spaced)
+   · pointing at the line puts that moment's value and its time where the balance is, as
+     plain text; the floating chip with its border and shadow is gone
+   · the line is 1.8px, the crosshair is one 1px rule the height of the plot
+   · the change is written with a true minus sign, the amount too
+   · the digits still roll in once, in 0.4s (it was 0.9s)
+   · the chart names itself to a screen reader
+   Props are the same. `className="border-0"` no longer does anything: there is no outline. */
+
 const EASE = [0.16, 1, 0.3, 1] as const
-const GREEN = 'var(--chart-2)'
-const RED = 'var(--chart-down)'
-const HAIRLINE = 'color-mix(in srgb, var(--foreground) 9%, transparent)'
+const GREEN = "var(--chart-up)"
+const RED = "var(--chart-down)"
 
-/** deterministic seeded PRNG (mulberry32) — no Math.random at render */
+/** deterministic seeded generator (mulberry32), so every render agrees */
 const seeded = (seed: number) => () => {
   seed |= 0
   seed = (seed + 0x6d2b79f5) | 0
@@ -44,69 +57,40 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 /** series value 0..1 → y in the chart's 0..100 viewBox */
 const seriesY = (v: number) => 6 + (1 - clamp01(v)) * 88
 
-const TABULAR = { fontVariantNumeric: 'tabular-nums' } as const
-
-/** the face sits BELOW the page ground now, not lit above it: a deep mix of
- *  background into card. Darker and quieter than the old top-lit wash. */
-const FACE_WASH = 'linear-gradient(color-mix(in srgb, var(--background) 45%, var(--card)), color-mix(in srgb, var(--background) 45%, var(--card)))'
-
-/** the plot box sits at top 10% / height 74% of the card, so the scrub crosshair
- *  has to bleed past its own box to reach the card edges: 10/74 above, 16/74
- *  below. overflow-hidden on the card trims it flush. */
-const CROSS_TOP = `${((-10 / 74) * 100).toFixed(2)}%`
-const CROSS_BOTTOM = `${((-16 / 74) * 100).toFixed(2)}%`
-
-/** the guide still runs to the card's top edge, but it dissolves on the way up
- *  instead of stopping on a flat line: nothing at the edge, full ink by the time
- *  it has entered the plot area. The fade is on the paint, not on a shorter bar,
- *  so the crosshair reads as reaching higher than a hard-ended one would. */
-const CROSS_INK = 'color-mix(in srgb, var(--foreground) 22%, transparent)'
-const CROSS_PAINT = `linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--foreground) 5%, transparent) 7%, color-mix(in srgb, var(--foreground) 14%, transparent) 13%, ${CROSS_INK} 20%, ${CROSS_INK} 100%)`
-/** the chip rides above the dot rather than beside its centre, so the value sits
- *  in clear space and the eye travels up the guide to read it */
-const TIP_LIFT = 18
-
-/** below this the card stacks: balance above, chart as a full-width band under it */
+/** below this width the balance stacks above the chart, which becomes a full-width band */
 const STACK_AT = 430
-/** ...and the same flip on the other axis: the balance block is about 200px of
- *  fixed content, so once the drag has pulled the card past that plus a full
- *  chart band the side-by-side split is mostly empty column on the left. 132 is
- *  the pull that gets there (MIN_H 228 + 132 = 360 ≈ 200 + BAND_H + padding). */
+/** the same flip on the other axis: pulled this far, the chart wants the full width */
 const STACK_PULL_AT = 132
-/** chart band height in stacked mode, and the drag handle grows it like the wide layout */
+/** chart band height in the stacked arrangement */
 const BAND_H = 132
 
-/** resting card height, and how far the bottom handle can pull the box down —
- *  the chart layers are percentage-boxed, so height IS the chart's height */
-const MIN_H = 228
+/** resting height, and how far the bottom handle can pull it down */
+const MIN_H = 196
 const MAX_PULL = 320
 /** one keyboard step on the handle */
 const PULL_STEP = 24
 
-/** digit cell height in em — shared by the odometer stack and static glyphs */
+/** digit cell height in em, shared by the rolling stack and the still glyphs */
 const DIGIT_EM = 1.2
+const cell = { display: "block", height: `${DIGIT_EM}em`, lineHeight: `${DIGIT_EM}em` } as const
 
-/** the stacked layout, written once and used twice: the container query applies
- *  it bare (the card is the container), the .abc-stacked class applies it when
- *  the drag has made the card tall enough to want the same arrangement. */
+/** the stacked layout, written once and used twice: by the container query, and by the
+ *  .abr-stacked class when the drag has made the block tall enough to want it */
 const stackedRules = (p: string) => `
-${p}.abc-chart{top:auto;bottom:0;height:var(--abc-band);width:100%;-webkit-mask-image:none;mask-image:none}
-${p}.abc-glow{left:22%;top:auto;bottom:calc(var(--abc-band) - 44px);width:56%;height:112px}
-${p}.abc-block{padding-top:26px;padding-bottom:calc(var(--abc-band) + 14px)}
-${p}.abc-cross{top:0;bottom:0}`
-const cell = { display: 'block', height: `${DIGIT_EM}em`, lineHeight: `${DIGIT_EM}em` } as const
+${p}.abr-chart{top:auto;bottom:24px;height:var(--abr-band);width:100%;-webkit-mask-image:none;mask-image:none}
+${p}.abr-block{padding-top:4px;padding-bottom:calc(var(--abr-band) + 38px)}`
 
-/** one rolling digit column — a 0-9 stack translating into place */
+/** one rolling digit column: a 0 to 9 stack sliding into place */
 function OdometerDigit({ ch, order, animate }: { ch: string; order: number; animate: boolean }) {
   const d = ch.charCodeAt(0) - 48
   if (!animate) return <span style={cell}>{ch}</span>
   return (
-    <span style={{ ...cell, overflow: 'hidden' }}>
+    <span style={{ ...cell, overflow: "hidden" }}>
       <motion.span
-        style={{ display: 'block' }}
-        initial={{ y: '0em' }}
+        style={{ display: "block" }}
+        initial={{ y: "0em" }}
         animate={{ y: `${(-d * DIGIT_EM).toFixed(2)}em` }}
-        transition={{ duration: 0.9, ease: EASE, delay: 0.1 + order * 0.05 }}
+        transition={{ duration: 0.4, ease: EASE, delay: order * 0.035 }}
       >
         {Array.from({ length: 10 }, (_, n) => (
           <span key={n} style={cell}>{n}</span>
@@ -116,11 +100,14 @@ function OdometerDigit({ ch, order, animate }: { ch: string; order: number; anim
   )
 }
 
-/** x position 0..1 → intraday clock label (09:30 → 16:00) */
+/** x position 0..1 → intraday clock label (09:30 to 16:00) */
 const intradayLabel = (t: number) => {
   const mins = Math.round(570 + t * 390)
-  return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`
 }
+
+/** a leading hyphen becomes the true minus sign */
+const trueMinus = (s: string) => s.replace(/^-/, "−")
 
 export type AssetsBalanceCardProps = {
   label?: string
@@ -128,7 +115,7 @@ export type AssetsBalanceCardProps = {
   changePct?: string
   changeAbs?: string
   period?: string
-  /** flips the whole signal (line, badge, numbers) from the system red to green */
+  /** flips the whole signal (line and change) from red to green */
   up?: boolean
   /** ambient line values, 0..1 (0 = bottom of the band) */
   series?: number[]
@@ -137,39 +124,46 @@ export type AssetsBalanceCardProps = {
 
 type Scrub = { t: number; v: number }
 
+/**
+ * A balance and the day that made it: one large figure, its signed change, and the line
+ * running out to the right. Pointing at the line reads that moment in place of the balance,
+ * with its time. The handle under it pulls the chart taller, and past a point the chart
+ * takes the full width under the figure.
+ */
 export function AssetsBalanceCard({
-  label = 'Assets',
-  balance = '$54,847.30',
-  changePct = '3.24%',
-  changeAbs = '-$1,023.95',
-  period = 'Today',
+  label = "Assets",
+  balance = "$54,847.30",
+  changePct = "3.24%",
+  changeAbs = "-$1,023.95",
+  period = "Today",
   up = false,
   series = DEFAULT_SERIES,
-  className = '',
+  className = "",
 }: AssetsBalanceCardProps) {
   const reduced = useReducedMotion()
   const frozen = !!reduced
-  const gradientId = useId()
+  const gradientId = useId().replace(/:/g, "")
   const signal = up ? GREEN : RED
 
   const [scrub, setScrub] = useState<Scrub | null>(null)
-  const [scrubbing, setScrubbing] = useState(false)
+  /** set on the first scrub, so the odometer rolls on mount only */
+  const [scrubbed, setScrubbed] = useState(false)
 
-  // bottom handle drag — pulls the whole box (and with it the chart) taller
+  // bottom handle drag: pulls the whole block (and with it the chart) taller
   const [pull, setPull] = useState(0)
   const [pulling, setPulling] = useState(false)
   const drag = useRef<{ y: number; from: number } | null>(null)
 
-  /** numeric base for the scrub chip — derived from the displayed balance */
-  const baseValue = useMemo(() => Number(balance.replace(/[^0-9.]/g, '')) || 0, [balance])
+  /** numeric base for the scrub readout, derived from the displayed balance */
+  const baseValue = useMemo(() => Number(balance.replace(/[^0-9.]/g, "")) || 0, [balance])
 
-  // ambient line geometry — 100x100 box stretched to fit, stroke stays crisp
+  // ambient line geometry: a 100x100 box stretched to fit, the stroke stays crisp
   const { linePath, areaPath } = useMemo(() => {
     const pts = series.map((v, i) => {
       const px = (i / (series.length - 1 || 1)) * 100
       return `${px.toFixed(2)} ${seriesY(v).toFixed(2)}`
     })
-    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p}`).join(' ')
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p}`).join(" ")
     return { linePath: line, areaPath: `${line} L100 100 L0 100 Z` }
   }, [series])
 
@@ -182,7 +176,7 @@ export function AssetsBalanceCard({
     const i1 = Math.min(series.length - 1, i0 + 1)
     const v = series[i0] + (series[i1] - series[i0]) * (f - i0)
     setScrub({ t, v })
-    setScrubbing(true)
+    if (!scrubbed) setScrubbed(true)
   }
 
   const clampPull = (v: number) => Math.min(MAX_PULL, Math.max(0, v))
@@ -190,8 +184,8 @@ export function AssetsBalanceCard({
   const onHandleDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     drag.current = { y: e.clientY, from: pull }
     setPulling(true)
-    // capture is the enhancement, not the mechanism — it keeps the pull alive once
-    // the cursor leaves the grip; a UA that refuses it still drags inside the box
+    // capture keeps the pull alive once the pointer leaves the grip; a browser that
+    // refuses it still drags inside the grip
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no capture, still draggable */ }
   }
   const onHandleMove = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -204,82 +198,62 @@ export function AssetsBalanceCard({
     setPulling(false)
   }
   const onHandleKey = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === 'ArrowDown') setPull((p) => clampPull(p + PULL_STEP))
-    else if (e.key === 'ArrowUp') setPull((p) => clampPull(p - PULL_STEP))
-    else if (e.key === 'Home') setPull(0)
-    else if (e.key === 'End') setPull(MAX_PULL)
+    if (e.key === "ArrowDown") setPull((p) => clampPull(p + PULL_STEP))
+    else if (e.key === "ArrowUp") setPull((p) => clampPull(p - PULL_STEP))
+    else if (e.key === "Home") setPull(0)
+    else if (e.key === "End") setPull(MAX_PULL)
     else return
     e.preventDefault()
   }
 
+  /** the value under the pointer: the balance scaled by the line, 0.96 at the floor of
+   *  the band to 1.04 at its top */
   const scrubValue = scrub ? baseValue * (0.96 + clamp01(scrub.v) * 0.08) : 0
-  // percentage-space positions — immune to any stage/preview transform scaling
-  const scrubX = scrub ? `${(scrub.t * 100).toFixed(2)}%` : '0%'
-  const scrubY = scrub ? `${seriesY(scrub.v).toFixed(2)}%` : '0%'
-  const chipFlips = scrub ? scrub.t > 0.68 : false
-  /** the chip lifts off the dot, but never past the card's top edge: the floor is
-   *  the card top (CROSS_TOP in plot-box units) plus half the chip */
-  const scrubTipTop = `max(calc(${CROSS_TOP} + 14px), calc(${scrubY} - ${TIP_LIFT}px))`
-  // height flip: the drag has made the box tall enough that the chart wants the
-  // full width, the same arrangement the narrow container query asks for
+  // percentage positions, so any scaling of the stage leaves them right
+  const scrubX = scrub ? `${(scrub.t * 100).toFixed(2)}%` : "0%"
+  const scrubY = scrub ? `${seriesY(scrub.v).toFixed(2)}%` : "0%"
   const stacked = pull >= STACK_PULL_AT
 
-  // both digits and the change row come from props; the odometer only handles 0-9
-  const balanceChars = balance.split('')
+  const pct = `${up ? "+" : "−"}${changePct.replace(/^[+−-]/, "")}`
+  const balanceChars = balance.split("")
   let digitOrder = -1
 
   return (
     <div
-      className={cn('abc-card relative overflow-hidden rounded-[26px]', stacked && 'abc-stacked', className)}
-      style={{ minHeight: MIN_H + pull, ['--abc-band' as string]: `${BAND_H + pull}px` }}
+      className={cn("abr-root relative tabular-nums", stacked && "abr-stacked", className)}
+      style={{ minHeight: MIN_H + pull, ["--abr-band" as string]: `${BAND_H + pull}px` }}
+      role="group"
+      aria-label={`${label} ${balance}`}
     >
-      {/* Stocked emboss — gradient hairline that lightens toward the top (same
-          recipe as WatchlistStack, abc- scoped), over a bluish top-light wash on
-          the card face. Both stay faint: hover lifts the shadow and the ring, not
-          the top light. The outline is the small painted ring off the box.
-          A `border-0` in className kills both for embedding.
-          Two ways into the stacked arrangement, and either one is enough: the
-          container query (card narrower than 430px) and the .abc-stacked class
-          (dragged taller than MIN_H + STACK_PULL_AT). Both move the chart out of
-          the right column into a full-width band under the balance. */}
+      {/* two ways into the stacked arrangement, and either one is enough: the block is
+          narrower than 430px, or it has been pulled taller than its rest height + 132 */}
       <style>{`
-.abc-card{container-type:inline-size;border:1px solid transparent;background:${FACE_WASH} padding-box,linear-gradient(180deg,color-mix(in srgb,var(--foreground) 7%,transparent),color-mix(in srgb,var(--foreground) 2.5%,transparent) 32%,color-mix(in srgb,var(--foreground) 2%,transparent)) border-box;box-shadow:0 14px 32px var(--card-shadow, rgba(0,0,0,0.28));transition:box-shadow .3s}
-.abc-card:hover{box-shadow:0 16px 38px var(--card-shadow, rgba(0,0,0,0.34))}
-.abc-card.border-0{background:${FACE_WASH} padding-box}
-.abc-cross{top:${CROSS_TOP};bottom:${CROSS_BOTTOM}}
-${stackedRules('.abc-card.abc-stacked ')}
-@container (max-width: ${STACK_AT}px){${stackedRules('')}
+.abr-root{container-type:inline-size}
+${stackedRules(".abr-root.abr-stacked ")}
+@container (max-width: ${STACK_AT}px){${stackedRules("")}
 }
       `}</style>
-      {/* soft glow bloom behind the line's peak region */}
-      <div
-        aria-hidden
-        className="abc-glow pointer-events-none absolute"
-        style={{
-          left: '44%',
-          top: '4%',
-          width: '36%',
-          height: '42%',
-          background: `radial-gradient(ellipse at center, color-mix(in srgb, ${signal} 12%, transparent) 0%, transparent 70%)`,
-          filter: 'blur(40px)',
-        }}
-      />
 
-      {/* ambient price line — dips and recovers across the right of the card */}
-      <svg
-        aria-hidden
-        className="abc-chart pointer-events-none absolute right-0 top-[10%] h-[74%] w-[58%]"
+      {/* the day's line, running out to the right of the figure */}
+      {/* the line draws in left to right through a clip on the whole plot: a dash draw
+          breaks on a stretched box with a non-scaling stroke, a clip does not */}
+      <motion.svg
+        className="abr-chart pointer-events-none absolute right-0 top-[8%] h-[74%] w-[58%] overflow-visible"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
+        role="img"
+        aria-label={`${label} over ${period.toLowerCase()}: ${balance}, ${pct}`}
         style={{
-          maskImage: 'linear-gradient(90deg, transparent 0%, black 26%)',
-          WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, black 26%)',
+          maskImage: "linear-gradient(90deg, transparent 0%, black 26%)",
+          WebkitMaskImage: "linear-gradient(90deg, transparent 0%, black 26%)",
         }}
+        initial={reduced ? false : { clipPath: "inset(-10% 100% -10% 0%)" }}
+        animate={{ clipPath: "inset(-10% 0% -10% 0%)" }}
+        transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={signal} stopOpacity="0.22" />
-            <stop offset="55%" stopColor={signal} stopOpacity="0.07" />
+            <stop offset="0%" stopColor={signal} stopOpacity="0.16" />
             <stop offset="100%" stopColor={signal} stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -288,115 +262,105 @@ ${stackedRules('.abc-card.abc-stacked ')}
           fill={`url(#${gradientId})`}
           initial={reduced ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.8, ease: EASE, delay: 0.25 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.1 }}
         />
-        <motion.path
+        <path
           d={linePath}
           fill="none"
           stroke={signal}
-          strokeWidth="2"
+          strokeWidth="1.8"
           strokeLinejoin="round"
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
-          style={{ filter: `drop-shadow(0 0 7px color-mix(in srgb, ${signal} 55%, transparent))` }}
-          // NOTE: the draw-on dash animation is skipped on purpose; it breaks
-          // under preserveAspectRatio="none" with this stroke setup (partial stroke)
-          initial={reduced ? false : { opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: EASE }}
+          style={{ transition: "stroke 200ms ease-out" }}
         />
-      </svg>
+      </motion.svg>
 
-      {/* balance block */}
-      <div className="abc-block relative px-7 pb-12 pt-[88px]">
-        <p
-          className="text-[10px] font-medium uppercase tracking-[0.14em]"
-          style={{ color: 'color-mix(in srgb, var(--foreground) 38%, transparent)' }}
-        >
-          {label}
-        </p>
-        <p
-          className="mt-1.5 text-[34px] font-semibold tracking-[-0.03em]"
-          style={{ color: 'color-mix(in srgb, var(--foreground) 90%, transparent)', lineHeight: DIGIT_EM, ...TABULAR }}
-        >
-          <span className="sr-only">{balance}</span>
-          <span aria-hidden className="flex">
-            {balanceChars.map((ch, i) =>
-              /\d/.test(ch) ? (
-                <OdometerDigit key={i} ch={ch} order={++digitOrder} animate={!frozen} />
-              ) : (
-                <span key={i} style={cell}>{ch}</span>
-              ),
+      {/* the figure; while the line is being pointed at it reads that moment instead */}
+      <div className="abr-block relative pb-10 pt-[72px]">
+        <p className="text-[11px] font-medium text-foreground/45">{label}</p>
+        <div role="status">
+          <p
+            className="mt-1.5 text-[34px] font-semibold tracking-[-0.03em] text-foreground/90"
+            style={{ lineHeight: DIGIT_EM }}
+          >
+            {scrub ? (
+              // the swap from the balance to the pointed moment crosses over (4px, 2px blur,
+              // 150ms); the figure then follows the pointer in place
+              <motion.span
+                key="scrub"
+                style={cell}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.15, ease: EASE }}
+              >
+                {scrubValue.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+              </motion.span>
+            ) : (
+              <>
+                <span className="sr-only">{balance}</span>
+                {/* the digits roll in once, on mount; coming back from a scrub the balance
+                    crosses over like the scrub value did instead of rolling again */}
+                <motion.span
+                  key="balance"
+                  aria-hidden
+                  className="flex"
+                  initial={scrubbed ? (reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }) : false}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  transition={{ duration: 0.15, ease: EASE }}
+                >
+                  {balanceChars.map((ch, i) =>
+                    /\d/.test(ch) ? (
+                      <OdometerDigit key={i} ch={ch} order={++digitOrder} animate={!frozen && !scrubbed} />
+                    ) : (
+                      <span key={i} style={cell}>{ch}</span>
+                    ),
+                  )}
+                </motion.span>
+              </>
             )}
-          </span>
-        </p>
-        {/* One statement of the move, not three. This was an arrow chip AND a
-            colour AND a signed figure — the same fix the watchlist rows took, so
-            the hero and the list under it now say direction the same way. */}
-        <div className="mt-2.5 flex items-center gap-2 text-[13px] font-medium" style={TABULAR}>
-          <span style={{ color: signal }}>{up ? '+' : '−'}{changePct.replace(/^[+−-]/, '')}</span>
-          <span style={{ color: 'color-mix(in srgb, var(--foreground) 26%, transparent)' }} aria-hidden>·</span>
-          <span style={{ color: 'color-mix(in srgb, var(--foreground) 45%, transparent)' }}>{changeAbs}</span>
-          <span style={{ color: 'color-mix(in srgb, var(--foreground) 32%, transparent)' }}>{period}</span>
+          </p>
+          <div className="mt-2 flex items-center gap-2 text-[13px] font-medium">
+            {scrub ? (
+              <motion.span
+                key="scrub-time"
+                className="text-foreground/45"
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.15, ease: EASE }}
+              >
+                {intradayLabel(scrub.t)}
+              </motion.span>
+            ) : (
+              <>
+                <span style={{ color: signal }}>{pct}</span>
+                <span className="text-foreground/45">{trueMinus(changeAbs)}</span>
+                <span className="text-foreground/35">{period}</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* hover scrub — hairline + dot riding the line + value chip */}
+      {/* scrub layer: one rule and a dot riding the line */}
       <div
-        className="abc-chart absolute right-0 top-[10%] h-[74%] w-[58%] cursor-crosshair"
+        className="abr-chart absolute right-0 top-[8%] h-[74%] w-[58%] cursor-crosshair touch-none"
         onPointerMove={onScrubMove}
-        onPointerLeave={() => setScrubbing(false)}
+        onPointerLeave={() => setScrub(null)}
+        onPointerCancel={() => setScrub(null)}
       >
-        <motion.div
-          className="pointer-events-none absolute inset-0"
-          initial={false}
-          animate={{ opacity: scrubbing && scrub ? 1 : 0 }}
-          transition={{ duration: 0.15 }}
-        >
-          {scrub && (
-            <>
-              {/* the guide runs the full height of the card, not just the plot
-                  box, and fades out into the top light on the way up */}
-              <div className="abc-cross absolute w-px" style={{ left: scrubX, background: CROSS_PAINT }} />
-              <div
-                className="absolute size-2 rounded-full"
-                style={{
-                  left: scrubX,
-                  top: scrubY,
-                  transform: 'translate(-50%, -50%)',
-                  background: signal,
-                  boxShadow: `0 0 0 2px var(--card), 0 0 8px color-mix(in srgb, ${signal} 70%, transparent)`,
-                }}
-              />
-              <div
-                className="absolute flex items-center gap-1.5 whitespace-nowrap rounded-[8px] border px-2 py-1 text-[11px] font-medium"
-                style={{
-                  left: scrubX,
-                  top: scrubTipTop,
-                  transform: chipFlips ? 'translate(calc(-100% - 12px), -50%)' : 'translate(12px, -50%)',
-                  // raised gradient over the opaque card — the fan chip's ground
-                  background: `linear-gradient(180deg, color-mix(in srgb, var(--foreground) 5%, var(--card)), var(--card))`,
-                  borderColor: HAIRLINE,
-                  // the chip lifts on a dark shadow, not a foreground-tinted one:
-                  // a foreground mix reads as a light glow behind the tooltip in dark
-                  boxShadow: '0 8px 24px var(--card-shadow, rgba(0,0,0,0.45))',
-                  ...TABULAR,
-                }}
-              >
-                <span className="font-semibold" style={{ color: 'color-mix(in srgb, var(--foreground) 92%, transparent)' }}>
-                  {scrubValue.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                </span>
-                <span style={{ color: 'color-mix(in srgb, var(--foreground) 42%, transparent)' }}>
-                  {intradayLabel(scrub.t)}
-                </span>
-              </div>
-            </>
-          )}
-        </motion.div>
+        {scrub && (
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <div className="absolute inset-y-0 w-px bg-foreground/[0.22]" style={{ left: scrubX }} />
+            <div
+              className="absolute size-[7px] rounded-full"
+              style={{ left: scrubX, top: scrubY, transform: "translate(-50%, -50%)", background: signal }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* drag handlebar — pull it down and the box grows; the chart is boxed in
-          percentages, so it stretches with the card into a vertical read */}
+      {/* the handle: pull it down and the chart grows with the block */}
       <button
         type="button"
         role="slider"
@@ -404,7 +368,7 @@ ${stackedRules('.abc-card.abc-stacked ')}
         aria-valuemin={0}
         aria-valuemax={MAX_PULL}
         aria-valuenow={pull}
-        className="absolute bottom-0 left-1/2 flex h-6 w-20 -translate-x-1/2 cursor-ns-resize touch-none items-end justify-center pb-2.5"
+        className="group absolute bottom-0 left-1/2 flex h-6 w-20 -translate-x-1/2 cursor-ns-resize touch-none items-center justify-center outline-none"
         onPointerDown={onHandleDown}
         onPointerMove={onHandleMove}
         onPointerUp={onHandleUp}
@@ -413,11 +377,12 @@ ${stackedRules('.abc-card.abc-stacked ')}
         onDoubleClick={() => setPull(0)}
       >
         <span
-          className="h-1 rounded-full transition-[width,background-color] duration-200"
-          style={{
-            width: pulling ? 56 : 40,
-            background: `color-mix(in srgb, var(--foreground) ${pulling ? 34 : 14}%, transparent)`,
-          }}
+          className={cn(
+            // the grip widens by scale, not by width: transform stays off layout
+            "h-1 w-14 rounded-full transition-[transform,background-color] duration-200",
+            pulling ? "scale-x-100 bg-foreground/[0.35]" : "scale-x-[0.714] bg-foreground/[0.14] group-hover:bg-foreground/[0.35] group-focus-visible:bg-foreground/[0.35]",
+            reduced && "transition-none",
+          )}
         />
       </button>
     </div>

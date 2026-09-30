@@ -5,9 +5,10 @@ import { cn } from "@/lib/utils"
 
 /* Lightning Badge — any single-path SVG mark as a 3D badge with lightning on it, drawn with WebGPU.
 
-   Dark blue glass with three arcs crawling over its face: each one the ridge of drifting noise
-   sharpened to a thread, flickering on and off at its own pace, with a wider blue haze under
-   it. The glass holds a faint charge at its rim and the outline is lit blue-white. Everything
+   Dark blue glass whose outline IS the lightning (user call, 2026-09-29): there is no drawn
+   line round the mark, only a bolt that runs the whole way round the cut edge, jagged, and
+   re-struck eight times a second. Two fainter branches leave it along some stretches and
+   come back. A blue haze sits under all of it. Nothing is drawn on the face. Everything
    else is the metal badge's: the 8s sway, the lean toward the pointer, the flip on click or
    tap, and a dark face with a blue stroke where WebGPU is missing. */
 
@@ -28,8 +29,20 @@ export type LightningBadgeProps = {
   label?: string
   /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills) */
   pose?: readonly [number, number] | readonly [number, number, number]
+  /** the thickness of the bolt, 0.4 to 3 */
+  bolt?: number
+  /** how far the bolt wanders from the edge, 0 to 2 */
+  jag?: number
+  /** how often it re-strikes, 0.2 to 3 */
+  speed?: number
+  /** the blue haze under the bolt, 0 to 3 */
+  haze?: number
   className?: string
 }
+
+/** the live settings, in the order the shader reads them. They are uniforms, so changing one
+ *  redraws the badge and rebuilds nothing. */
+type Look = readonly [number, number, number, number]
 
 /* ── the material, as ratios of the Figma master's 114.714 × 99.0732 box. These stops are the
    metal itself (a lit surface does not follow the page theme), not theme colours. ── */
@@ -72,7 +85,7 @@ const RAD = Math.PI / 180
 
 /* ── flip: click, tap or swipe to turn the badge about its vertical axis ─────────────────
    A click or tap is a flick of a coin: two whole turns that start at full speed, ease out
-   slowly (quint), carry OVER_DEG past the front and settle back, with a few sparks thrown off
+   slowly (quint), carry OVER_DEG past the front and settle back
    at the pointer. A swipe follows the finger, then carries on at its speed and settles on a
    whole turn with a spring. A vertical swipe, or one the browser takes for a scroll
    (pointercancel), settles without a turn. The owner steps it every frame while busy(). */
@@ -143,7 +156,7 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
     lastX = e.clientX
     lastTime = now
   }
-  const up = (e: PointerEvent) => {
+  const up = () => {
     if (!dragging) return
     dragging = false
     const turn = Math.round(angle / 360) * 360
@@ -154,7 +167,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       springing = true
     } else if (travel < TAP) {
       turnOnce()
-      sparkBurst(e.clientX, e.clientY)
     } else {
       // a swipe: carry on at its speed, settle on a whole turn in that direction
       velocity = dragVelocity
@@ -213,43 +225,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       hit.removeEventListener("pointerup", up)
       hit.removeEventListener("pointercancel", cancel)
     },
-  }
-}
-
-/* sparks: what the metal throws off when it is flicked. Two white-hot hairline chips, one
-   short and one far, that arc out, fall under gravity and fade at the end of their flight.
-   Fixed to the viewport so no parent can clip them; the burst removes itself. */
-const HOT = "#fffdf2"
-const WARM = "#ffd98a"
-function sparkBurst(x: number, y: number) {
-  if (typeof Element.prototype.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-  const root = document.createElement("div")
-  root.setAttribute("aria-hidden", "true")
-  Object.assign(root.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: "0", height: "0", pointerEvents: "none", zIndex: "2147483647" })
-  document.body.appendChild(root)
-  const near = 34 + Math.random() * 16
-  const far = near + 22 + Math.random() * 22
-  let left = 2
-  for (const reach of [near, far]) {
-    const deg = -90 + (Math.random() - 0.5) * 150 // biased upward and outward, the way sparks leave a strike
-    const a = (deg * Math.PI) / 180
-    const drop = reach * 0.25
-    const frames: Keyframe[] = []
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10
-      const s = 1 - (1 - t) ** 2 // decelerating travel
-      frames.push({
-        transform: `translate(${Math.cos(a) * reach * s}px, ${Math.sin(a) * reach * s + drop * t * t}px) rotate(${deg}deg)`,
-        opacity: t < 0.65 ? 1 : (1 - (t - 0.65) / 0.35) ** 1.6,
-        offset: t,
-      })
-    }
-    const el = document.createElement("span")
-    Object.assign(el.style, { position: "absolute", left: "-2px", top: "-0.5px", width: "4px", height: "1px", background: HOT, boxShadow: `0 0 2px ${WARM}` })
-    root.appendChild(el)
-    el.animate(frames, { duration: 300 + reach * 3.5, easing: "linear", fill: "forwards" }).onfinish = () => {
-      if (--left === 0) root.remove()
-    }
   }
 }
 
@@ -959,7 +934,7 @@ const BADGE = {
   ROUND: 0.014, // how far in from the outline the surface rolls over: a slight round, so edges stay crisp
   ROUND_DEPTH: 0.01, // how far back the roll takes it before the straight side
   BEVEL_STEPS: 5,
-  EDGE_BAND: 0.05, // how far in from the outline the shader's light outline reaches
+  EDGE_BAND: 0.11, // how far in from the outline the lightning may wander
   EDGE: 0.01, // longest outline edge, longest edge inside the face, and inside the face near an outline (detail 1)
   FACE_EDGE: 0.03,
   NEAR_EDGE: 0.012,
@@ -1398,6 +1373,7 @@ struct Scene {
   light: vec4f, // xyz: toward the light, w: its strength
   grad: vec4f,  // xy: cos and sin of the gradient's turn toward the cursor, z: art height in widths, w: seconds
   ends: vec4f,  // the Figma gradient's bright end (xy) and dark end (zw), in art widths, y down
+  knobs: vec4f, // x bolt, y jag, z speed, w haze
 }
 @group(0) @binding(0) var<uniform> scene: Scene;
 
@@ -1447,15 +1423,6 @@ fn fbm2(p: vec2f) -> f32 {
   return cloud(p) * 0.5 + cloud(p * 2.03 + vec2f(5.2, 1.3)) * 0.25 + cloud(p * 4.01 + vec2f(9.1, 7.7)) * 0.125 + cloud(p * 8.1 + vec2f(3.3, 2.9)) * 0.0625;
 }
 
-// an arc: the ridge of drifting noise, sharpened to a thread, flickering on and off
-fn arc(uv: vec2f, time: f32, k: f32) -> f32 {
-  let q = uv * vec2f(5.0, 5.0) + vec2f(time * 0.35 + k * 7.3, k * 11.1 - time * 0.2);
-  let ridge = 1.0 - abs(fbm2(q) * 2.0 - 1.0);
-  let thread = pow(clamp(ridge, 0.0, 1.0), 22.0);
-  let on = step(0.3, hash1(floor(time * 9.0 + k * 3.7) + k));
-  return thread * on;
-}
-
 @fragment
 fn fs_main(v: VertexOut) -> @location(0) vec4f {
   let n = normalize(v.normal);
@@ -1469,21 +1436,30 @@ fn fs_main(v: VertexOut) -> @location(0) vec4f {
 
   // dark glass, deep blue, with one tight white highlight
   var colour = vec3f(0.015, 0.025, 0.06) * (0.5 + 0.5 * ndl) + vec3f(0.35, 0.45, 0.7) * pow(nh, 80.0) * 0.45 * scene.light.w;
-  // three arcs crawling over the face at their own pace, with a wider blue haze under each
-  var bolt = 0.0;
-  var haze = 0.0;
-  for (var k = 0.0; k < 3.0; k += 1.0) {
-    let q = v.uv * vec2f(5.0, 5.0) + vec2f(time * 0.35 + k * 7.3, k * 11.1 - time * 0.2);
-    let ridge = 1.0 - abs(fbm2(q) * 2.0 - 1.0);
-    let on = step(0.3, hash1(floor(time * 9.0 + k * 3.7) + k));
-    bolt += pow(clamp(ridge, 0.0, 1.0), 22.0) * on;
-    haze += pow(clamp(ridge, 0.0, 1.0), 5.0) * on;
+  // The outline is the bolt. e is 0 on the outline and 1 at the band's inner limit, so a
+  // thread is the set of points whose e equals a wandering inset. The main bolt keeps to
+  // the edge and runs all the way round; each strike holds for a moment, then it is redrawn.
+  let band = 1.0 - smoothstep(0.8, 1.0, e);
+  let beat = floor(time * 8.0 * scene.knobs.z);
+  let flick = 0.6 + 0.4 * hash1(beat);
+  let jag = fbm2(v.uv * 30.0 + vec2f(beat * 2.3, -beat * 1.7));
+  let dm = abs(e - (0.05 + 0.4 * scene.knobs.y * jag));
+  var bolt = (1.0 - smoothstep(0.0, 0.085 * scene.knobs.x, dm)) * flick * 1.2;
+  var haze = (1.0 - smoothstep(0.0, 0.5, dm)) * flick;
+  // two fainter branches that leave the edge along some stretches
+  for (var k = 0.0; k < 2.0; k += 1.0) {
+    // each strike holds for a moment, then the thread is somewhere else
+    let strike = floor(time * (6.0 + k * 2.0) * scene.knobs.z + k * 3.7);
+    let inset = 0.08 + 0.62 * fbm2(v.uv * (13.0 + k * 4.0) + vec2f(strike * 1.9 + k * 7.3, k * 11.1 - strike * 1.3));
+    let d = abs(e - inset);
+    // which stretches of the outline this strike runs along
+    let run = smoothstep(0.46, 0.6, cloud(v.uv * 2.6 + vec2f(strike * 0.77 + k * 5.1, k * 3.3)));
+    bolt += (1.0 - smoothstep(0.0, 0.06 * scene.knobs.x, d)) * run * band * 0.6;
+    haze += (1.0 - smoothstep(0.0, 0.4, d)) * run * band * 0.5;
   }
-  colour += vec3f(0.75, 0.88, 1.0) * bolt * 1.6 + vec3f(0.25, 0.45, 1.0) * haze * 0.22;
-  // the charge in the glass: a faint blue fresnel, and the outline lit blue-white
-  colour += vec3f(0.2, 0.4, 1.0) * pow(away, 2.5) * 0.45;
-  let line = 1.0 - smoothstep(0.03, 0.14, e);
-  colour += vec3f(0.6, 0.8, 1.0) * (line * 0.7 + pow(1.0 - e, 6.0) * 0.25);
+  colour += vec3f(0.78, 0.9, 1.0) * min(bolt, 1.5) * 1.5 + vec3f(0.25, 0.45, 1.0) * haze * 0.2 * scene.knobs.w;
+  // the charge in the glass: a faint blue fresnel. No drawn outline: the bolt is the outline.
+  colour += vec3f(0.2, 0.4, 1.0) * pow(away, 2.5) * 0.35;
   return vec4f(min(colour, vec3f(1.0)), 1.0);
 }
 `
@@ -1659,7 +1635,7 @@ function translation(x: number, y: number, z: number): M4 {
 type Renderer = { draw: (m: Motion) => void; dispose: () => void }
 
 /** the badge on `canvas`: the mesh, its buffers and targets on the shared device. `onLost` runs if the device goes away */
-async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, onLost: () => void): Promise<Renderer> {
+async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, look: () => Look, onLost: () => void): Promise<Renderer> {
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
   const aspect = h / w
   const mesh = meshFor(d, viewBox, detail)
@@ -1691,7 +1667,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   const vertices = upload(mesh.vertices, BUFFER.VERTEX)
   const indices = upload(mesh.indices, BUFFER.INDEX)
   const count = mesh.indices.length
-  const uniforms = new Float32Array(48) // the Scene struct: two mat4x4f and four vec4f
+  const uniforms = new Float32Array(52) // the Scene struct: two mat4x4f and five vec4f
   const sceneBuffer = device.createBuffer({ size: uniforms.byteLength, usage: BUFFER.UNIFORM | BUFFER.COPY_DST })
   const sceneGroup = device.createBindGroup({ layout: g.badge.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: sceneBuffer } }] })
 
@@ -1740,6 +1716,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
       uniforms.set(model, 16)
       uniforms.set([m.lx / ll, m.ly / ll, m.lz / ll, 1], 36)
       uniforms.set([Math.cos(m.light * RAD), Math.sin(m.light * RAD), aspect, (performance.now() % 3600000) / 1000], 40)
+      uniforms.set(look(), 48)
       device.queue.writeBuffer(sceneBuffer, 0, uniforms)
       const encoder = device.createCommandEncoder()
       const scene = encoder.beginRenderPass({
@@ -1799,7 +1776,10 @@ const DEFAULT_MARK = {
   d: "M354.084 0C374.63 8.50833 392.5 23.8578 403.922 44.9326C418.809 72.4024 419.569 103.739 408.683 130.599C372.855 219 258.635 211.309 206.626 211.71C145.919 212.178 96.2825 259.131 91.5504 318.731C95.9969 371.278 140.054 412.539 193.751 412.539C250.399 412.539 296.322 366.615 296.322 309.967C296.322 285.118 287.485 262.333 272.784 244.583C323.926 247.005 407.022 268.509 437.287 366.686C413.233 460.456 328.149 529.763 226.877 529.764C175.525 529.764 128.335 511.943 91.1539 482.149C67.7037 480.784 45.3008 488.644 28.0719 502.979C-6.1077 470.701 -9.49672 415.736 20.2223 379.638C12.3178 355.271 9.66566 330.28 9.66566 304.795C9.6658 186.402 110.21 87.5845 226.877 87.584C253.145 87.584 278.167 88.1909 302.354 75.083C331.715 59.1705 349.967 30.7466 354.084 0Z",
 }
 
-export function LightningBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Lightning badge", pose, className }: LightningBadgeProps) {
+export function LightningBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Lightning badge", pose, bolt = 1, jag = 1, speed = 1, haze = 1, className }: LightningBadgeProps) {
+  // the live settings ride in a ref: the renderer reads them each frame, and a change asks for one
+  const lookRef = useRef<Look>([bolt, jag, speed, haze])
+  lookRef.current = [bolt, jag, speed, haze]
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
   const strokeBase = `translate(${x0 + STROKE.tx * w} ${y0 + STROKE.ty * h}) rotate(${STROKE.rotate}) scale(${STROKE.sx * w} ${STROKE.sy * h})`
@@ -1892,7 +1872,7 @@ export function LightningBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.v
         near = e.isIntersecting
         if (near && gpu && canvas && !started) {
           started = true
-          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => fail(new Error("device lost")))
+          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => lookRef.current, () => fail(new Error("device lost")))
             .then((r) => {
               if (cancelled) r.dispose()
               else {
@@ -1921,6 +1901,10 @@ export function LightningBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.v
       canvas?.remove()
     }
   }, [renderer, path, viewBox, size, sway, still, flippable, poseKey, strokeBase])
+
+  useEffect(() => {
+    driverRef.current?.redraw()
+  }, [bolt, jag, speed, haze])
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Enter" && e.key !== " ") return

@@ -6,7 +6,25 @@ import { ArrowUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/* New Items Pill, rebuilt through the ssych-component skill (2026-09-29).
+   What changed against the version before it (in git history), and why:
+   · no card, no header band, no inner shadow: the tape sits on the page with one hairline
+     under the column names
+   · the pill has no outline and no shadow: it is a solid round fill, so rows passing under
+     it do not show through
+   · sentence case everywhere: column names, the side and the live state were set in
+     letter-spaced capitals
+   · the live dot is green again while the tape is live (2026-09-30: live is a healthy
+     state, and green is how the library says healthy); paused falls back to ink
+   · pointing at a row gives it a faint fill and dims the others
+   · the pill is a real button inside a status region (it was a button with the status role,
+     which hid it from a screen reader as a button)
+   · corners of 8px and under, every figure tabular from the root
+   Props are the same. */
+
 const EASE = [0.16, 1, 0.3, 1] as const
+const GREEN = "var(--chart-up)"
+const RED = "var(--chart-down)"
 
 export interface FeedFill {
   id: number
@@ -19,7 +37,7 @@ export interface FeedFill {
 
 const SYMBOLS = ["NOVX", "ARDN", "MRDX", "ZTH", "ORBN"]
 
-/** Fixed session anchor so the tape never depends on the wall clock — the same
+/** Fixed session anchor so the tape never depends on the wall clock: the same
  *  index always renders the same second, on the server and on every re-render. */
 const OPEN_SECONDS = 9 * 3600 + 32 * 60
 
@@ -53,20 +71,16 @@ const CAP = 80
 /** anything under this counts as "parked at the top", where arrivals may land freely */
 const TOP = 4
 
+const COLS = "grid grid-cols-[64px_1fr_72px_76px] items-center gap-2 px-3"
+
 /**
  * A live tape that refuses to move the ground under you.
  *
  * Parked at the top, fills land and the list grows. Scroll down to read a row and
  * the behaviour inverts: fills still land, but the scroll position is pinned to the
  * row you were on, and the arrivals are counted into a pill instead. Tap the pill to
- * come back to the top and clear it.
- *
- * The pin is the whole component. Prepending to a scrolled list slides everything
- * down by the height of the new row, so the line under your cursor at mousedown is
- * not the line you click — on a fills blotter that is a misread position, and on a
- * request log it is the wrong trace opened. The count is the exact number that
- * arrived while you were away: never rounded, never capped at "9+", because the one
- * question the pill exists to answer is how much you have not seen.
+ * come back to the top and clear it. The count is the exact number that arrived while
+ * you were away, never rounded.
  */
 export function NewItemsPill({
   fills = DEFAULT_FILLS,
@@ -87,7 +101,7 @@ export function NewItemsPill({
   const next = useRef(SEED)
   /** scrollHeight captured before a prepend, so the pin can measure the delta */
   const before = useRef(0)
-  /** ids seeded on mount — they must not animate in, only later arrivals do */
+  /** ids seeded on mount: they stagger in once with the mount, later arrivals rise alone */
   const seeded = useRef(new Set(fills.map((f) => f.id)))
 
   const [tape, setTape] = useState(fills)
@@ -132,26 +146,20 @@ export function NewItemsPill({
   const showPill = pending > 0 && away
 
   return (
-    <div
-      className={cn("relative w-full max-w-[480px] overflow-hidden rounded-xl border border-foreground/[0.04]", className)}
-      style={{
-        background: "var(--card)",
-        boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 4%, transparent)",
-      }}
-    >
-      <div className="flex items-center justify-between border-b border-foreground/[0.04] bg-foreground/[0.02] px-4 py-2.5">
-        <span className="text-[13px] font-medium text-foreground/85">{title}</span>
+    <div className={cn("relative w-full max-w-[480px] tabular-nums", className)}>
+      <div className="flex items-baseline justify-between px-3 pb-2">
+        <span className="text-[13px] font-medium text-foreground/90">{title}</span>
         <span className="flex items-center gap-1.5">
           <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: live ? "var(--chart-up)" : "color-mix(in srgb, var(--foreground) 25%, transparent)" }}
             aria-hidden
+            className={cn("h-1.5 w-1.5 rounded-full transition-colors duration-200", !live && "bg-foreground/25")}
+            style={live ? { background: GREEN } : undefined}
           />
-          <span className="text-[9px] uppercase tracking-[0.1em] text-foreground/30">{live ? "live" : "paused"}</span>
+          <span className="text-[10px] text-foreground/45">{live ? "Live" : "Paused"}</span>
         </span>
       </div>
 
-      <div className="grid grid-cols-[64px_1fr_72px_76px] gap-2 border-b border-foreground/[0.04] px-4 py-1.5 text-[9px] uppercase tracking-[0.1em] text-foreground/30">
+      <div className={cn(COLS, "border-b border-foreground/[0.05] pb-1.5 text-[9px] text-foreground/35")}>
         <span>Time</span>
         <span>Symbol</span>
         <span className="text-right">Size</span>
@@ -160,24 +168,35 @@ export function NewItemsPill({
 
       <div className="relative">
         {/* the pill floats over the tape; only the button itself takes the pointer */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2"
+        >
           <AnimatePresence>
             {showPill && (
               <motion.button
                 type="button"
                 onClick={jump}
-                role="status"
-                aria-live="polite"
-                initial={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
-                transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}
-                className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-foreground/[0.05] px-2.5 py-1 text-[11px] text-foreground/80 transition-colors duration-150 hover:bg-foreground/[0.03]"
-                style={{ background: "var(--card)", boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))" }}
+                aria-label={`${pending} new, back to the top`}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: reduced ? 0.15 : 0.25, ease: EASE } }}
+                exit={reduced ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, y: -4, transition: { duration: 0.15, ease: EASE } }}
+                whileTap={reduced ? undefined : { scale: 0.97, transition: { type: "spring", stiffness: 500, damping: 30 } }}
+                className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--foreground)_14%,var(--background))] px-2.5 py-1 text-[11px] outline-none transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] focus-visible:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] motion-reduce:transition-none"
               >
-                <ArrowUp className="h-3 w-3 text-foreground/45" aria-hidden />
-                <span className="tabular-nums">{pending}</span>
-                <span className="text-foreground/50">new</span>
+                <ArrowUp className="h-3 w-3 text-foreground/45" strokeWidth={1.8} aria-hidden />
+                {/* each new arrival pops the count in from below (4px, 2px blur, 150ms) */}
+                <motion.span
+                  key={pending}
+                  className="inline-block font-semibold text-foreground/90"
+                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  transition={{ duration: 0.15, ease: EASE }}
+                >
+                  {pending}
+                </motion.span>
+                <span className="text-foreground/45">new</span>
               </motion.button>
             )}
           </AnimatePresence>
@@ -193,37 +212,41 @@ export function NewItemsPill({
           onScroll={onScroll}
           role="log"
           aria-label={`${title}, newest first`}
-          className="h-[264px] overflow-y-auto"
+          className="group/tape h-[264px] overflow-y-auto"
           style={{ overflowAnchor: "none" }}
         >
-          {tape.map((f) => {
+          {tape.map((f, i) => {
             const fresh = !seeded.current.has(f.id)
             const up = f.side === "buy"
+            // on mount the first 8 seeded rows rise in 35ms apart; a later arrival rises in
+            // on its own. Rows past 8 are simply there. Reduced motion keeps the fade only.
+            const enters = fresh || i < 8
             return (
               <motion.div
                 key={f.id}
-                initial={fresh && !reduced ? { opacity: 0 } : false}
-                animate={{ opacity: 1 }}
-                transition={reduced ? { duration: 0 } : { duration: 0.15, ease: EASE }}
-                className="grid grid-cols-[64px_1fr_72px_76px] items-center gap-2 px-4 py-2.5 transition-colors duration-150 hover:bg-foreground/[0.02]"
+                initial={enters ? (reduced ? { opacity: 0 } : { opacity: 0, y: 6 }) : false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: fresh ? 0.25 : 0.3, ease: EASE, delay: fresh ? 0 : i * 0.035 }}
               >
-                <span className="text-[10.5px] tabular-nums text-foreground/35">{f.time}</span>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-3 w-[2px] rounded-full"
-                    style={{ background: up ? "var(--chart-up)" : "var(--chart-down)" }}
-                    aria-hidden
-                  />
-                  <span className="text-[12.5px] text-foreground/80">{f.symbol}</span>
-                  <span className="text-[9px] uppercase tracking-[0.1em] text-foreground/30">{f.side}</span>
-                </span>
-                <span className="text-right text-[12px] tabular-nums text-foreground/55">{f.size}</span>
-                <span
-                  className="text-right text-[12.5px] font-semibold tabular-nums"
-                  style={{ color: up ? "var(--chart-up)" : "var(--chart-down)" }}
+                {/* the dim is plain CSS on the inner row: rows move under a still pointer when
+                    a fill lands, and the browser keeps hover honest where state would go stale */}
+                <div
+                  className={cn(
+                    COLS,
+                    "rounded-[4px] py-2.5 transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] group-hover/tape:[&:not(:hover)]:opacity-50 motion-reduce:transition-none",
+                  )}
                 >
-                  {f.price}
-                </span>
+                  <span className="text-[10.5px] text-foreground/35">{f.time}</span>
+                  <span className="flex items-center gap-2">
+                    <span aria-hidden className="h-3 w-[2px] rounded-full" style={{ background: up ? GREEN : RED }} />
+                    <span className="text-[12.5px] text-foreground/90">{f.symbol}</span>
+                    <span className="text-[9px] text-foreground/35">{up ? "Buy" : "Sell"}</span>
+                  </span>
+                  <span className="text-right text-[12px] text-foreground/45">{f.size}</span>
+                  <span className="text-right text-[12.5px] font-semibold" style={{ color: up ? GREEN : RED }}>
+                    {f.price}
+                  </span>
+                </div>
               </motion.div>
             )
           })}

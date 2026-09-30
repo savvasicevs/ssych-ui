@@ -5,9 +5,11 @@ import { cn } from "@/lib/utils"
 
 /* Glass Badge — any single-path SVG mark as a 3D frosted glass badge, drawn with WebGPU.
 
-   The badge's dome as frosted glass: most of the light passes through, the rolled edge and the
-   side catch it, and where the surface turns away it goes white and solid. The canvas is
-   premultiplied, so the surface writes the alpha it carries and the page shows through.
+   The badge's dome as clear glass: the face is almost not there and the page shows through
+   it. What draws the badge is what glass is seen by: the room reflected in it (a soft box
+   overhead and a strip to the side, which slide as it sways), one hot point of the light, the
+   cut edge catching it, and the rim, where the surface turns away and goes solid. The canvas
+   is premultiplied, so the surface writes the alpha it carries.
    Everything else is the metal badge's: the 8s sway, the lean toward the pointer, the flip on
    click or tap, and a flat pale face where WebGPU is missing. */
 
@@ -28,8 +30,20 @@ export type GlassBadgeProps = {
   label?: string
   /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills) */
   pose?: readonly [number, number] | readonly [number, number, number]
+  /** how much the glass itself shows, 0 (clear) to 8 (smoked) */
+  body?: number
+  /** the room reflected in the face, 0 to 3 */
+  reflections?: number
+  /** the solid rim where the surface turns away, 0 to 2 */
+  rim?: number
+  /** the lit cut edge and the thickness behind it, 0 to 2 */
+  edge?: number
   className?: string
 }
+
+/** the live settings, in the order the shader reads them. They are uniforms, so changing one
+ *  redraws the badge and rebuilds nothing. */
+type Look = readonly [number, number, number, number]
 
 /* ── the material, as ratios of the Figma master's 114.714 × 99.0732 box. These stops are the
    metal itself (a lit surface does not follow the page theme), not theme colours. ── */
@@ -72,7 +86,7 @@ const RAD = Math.PI / 180
 
 /* ── flip: click, tap or swipe to turn the badge about its vertical axis ─────────────────
    A click or tap is a flick of a coin: two whole turns that start at full speed, ease out
-   slowly (quint), carry OVER_DEG past the front and settle back, with a few sparks thrown off
+   slowly (quint), carry OVER_DEG past the front and settle back
    at the pointer. A swipe follows the finger, then carries on at its speed and settles on a
    whole turn with a spring. A vertical swipe, or one the browser takes for a scroll
    (pointercancel), settles without a turn. The owner steps it every frame while busy(). */
@@ -143,7 +157,7 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
     lastX = e.clientX
     lastTime = now
   }
-  const up = (e: PointerEvent) => {
+  const up = () => {
     if (!dragging) return
     dragging = false
     const turn = Math.round(angle / 360) * 360
@@ -154,7 +168,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       springing = true
     } else if (travel < TAP) {
       turnOnce()
-      sparkBurst(e.clientX, e.clientY)
     } else {
       // a swipe: carry on at its speed, settle on a whole turn in that direction
       velocity = dragVelocity
@@ -213,43 +226,6 @@ function createFlip(hit: HTMLElement, onStart: () => void): Flip {
       hit.removeEventListener("pointerup", up)
       hit.removeEventListener("pointercancel", cancel)
     },
-  }
-}
-
-/* sparks: what the metal throws off when it is flicked. Two white-hot hairline chips, one
-   short and one far, that arc out, fall under gravity and fade at the end of their flight.
-   Fixed to the viewport so no parent can clip them; the burst removes itself. */
-const HOT = "#fffdf2"
-const WARM = "#ffd98a"
-function sparkBurst(x: number, y: number) {
-  if (typeof Element.prototype.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-  const root = document.createElement("div")
-  root.setAttribute("aria-hidden", "true")
-  Object.assign(root.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: "0", height: "0", pointerEvents: "none", zIndex: "2147483647" })
-  document.body.appendChild(root)
-  const near = 34 + Math.random() * 16
-  const far = near + 22 + Math.random() * 22
-  let left = 2
-  for (const reach of [near, far]) {
-    const deg = -90 + (Math.random() - 0.5) * 150 // biased upward and outward, the way sparks leave a strike
-    const a = (deg * Math.PI) / 180
-    const drop = reach * 0.25
-    const frames: Keyframe[] = []
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10
-      const s = 1 - (1 - t) ** 2 // decelerating travel
-      frames.push({
-        transform: `translate(${Math.cos(a) * reach * s}px, ${Math.sin(a) * reach * s + drop * t * t}px) rotate(${deg}deg)`,
-        opacity: t < 0.65 ? 1 : (1 - (t - 0.65) / 0.35) ** 1.6,
-        offset: t,
-      })
-    }
-    const el = document.createElement("span")
-    Object.assign(el.style, { position: "absolute", left: "-2px", top: "-0.5px", width: "4px", height: "1px", background: HOT, boxShadow: `0 0 2px ${WARM}` })
-    root.appendChild(el)
-    el.animate(frames, { duration: 300 + reach * 3.5, easing: "linear", fill: "forwards" }).onfinish = () => {
-      if (--left === 0) root.remove()
-    }
   }
 }
 
@@ -959,7 +935,7 @@ const BADGE = {
   ROUND: 0.014, // how far in from the outline the surface rolls over: a slight round, so edges stay crisp
   ROUND_DEPTH: 0.01, // how far back the roll takes it before the straight side
   BEVEL_STEPS: 5,
-  EDGE_BAND: 0.05, // how far in from the outline the shader's light outline reaches
+  EDGE_BAND: 0.1, // how far in from the outline the glass shows its thickness
   EDGE: 0.01, // longest outline edge, longest edge inside the face, and inside the face near an outline (detail 1)
   FACE_EDGE: 0.03,
   NEAR_EDGE: 0.012,
@@ -1398,6 +1374,7 @@ struct Scene {
   light: vec4f, // xyz: toward the light, w: its strength
   grad: vec4f,  // xy: cos and sin of the gradient's turn toward the cursor, z: art height in widths, w: seconds
   ends: vec4f,  // the Figma gradient's bright end (xy) and dark end (zw), in art widths, y down
+  knobs: vec4f, // x body, y reflections, z rim, w edge
 }
 @group(0) @binding(0) var<uniform> scene: Scene;
 
@@ -1458,22 +1435,32 @@ fn fs_main(v: VertexOut) -> @location(0) vec4f {
   let e = clamp(v.edge, 0.0, 1.0);
   let away = 1.0 - clamp(dot(n, view), 0.0, 1.0);
 
-  // frosted glass: a cool tint, most of the light passing through, the rolled edge and the
-  // side catching it. The canvas is premultiplied, so colour is scaled by the alpha it carries.
-  let frost = cloud(v.uv * 42.0) * 0.5 + cloud(v.uv * 90.0 + vec2f(3.0, 7.0)) * 0.5;
-  let tint = vec3f(0.86, 0.92, 1.0);
-  let fres = pow(away, 2.2);
-  var colour = tint * (0.4 + 0.36 * ndl) * (0.88 + 0.24 * frost);
-  // the light: a broad soft highlight through the frost, and a tight core on the edge roll
-  colour += tint * pow(nh, 8.0) * 0.28 * scene.light.w;
-  colour += vec3f(1.0) * pow(nh, 120.0) * 0.6 * (1.0 - e) * scene.light.w;
-  // the rim: where the surface turns away the glass goes white and solid
-  colour += tint * fres * 0.9;
-  // the outline: the cut edge, always lit
-  let line = 1.0 - smoothstep(0.04, 0.14, e);
-  colour += vec3f(line * 0.55 + pow(1.0 - e, 5.0) * 0.3);
-  let alpha = clamp(0.55 + 0.45 * fres + line * 0.4 + 0.08 * frost, 0.0, 1.0);
-  return vec4f(min(colour, vec3f(1.0)) * alpha, alpha);
+  // clear glass: the body carries almost nothing, so the page shows through the face. Light
+  // is added on top of what shows through (premultiplied: colour without its share of alpha).
+  let tint = vec3f(0.86, 0.93, 1.0);
+  let fres = 0.03 + 0.97 * pow(away, 3.0);
+  let body = 0.05 * scene.knobs.x;
+  var colour = tint * body * 0.7 * (0.4 + 0.6 * ndl);
+  // the room in the glass: a soft box overhead and a strip to one side
+  let r = reflect(-view, n);
+  let box = smoothstep(0.30, 0.62, r.y) * (1.0 - smoothstep(0.62, 0.95, r.y));
+  let strip = smoothstep(0.34, 0.5, r.x) * (1.0 - smoothstep(0.5, 0.72, r.x));
+  colour += tint * (box * 0.42 + strip * 0.2) * (0.4 + 0.6 * fres) * scene.knobs.y;
+  // the light itself: one hot point
+  let hot = pow(nh, 160.0) * scene.light.w;
+  colour += vec3f(1.0) * hot * 0.9;
+  // the rim: where the surface turns away glass stops being clear
+  colour += tint * fres * 0.75 * scene.knobs.z;
+  // the cut edge catches the light. A little way in, the back edge shows through the glass
+  // as a second, fainter line, and between the two the glass is thick enough to see.
+  let line = 1.0 - smoothstep(0.015, 0.08, e);
+  let back = (1.0 - smoothstep(0.0, 0.07, abs(e - 0.62))) * 0.22;
+  let thick = (1.0 - smoothstep(0.1, 0.62, e)) * 0.09 + back;
+  colour += (vec3f(line * 0.5) + tint * thick) * scene.knobs.w;
+  colour = min(colour, vec3f(1.0));
+  let alpha = clamp(body + 0.85 * fres * scene.knobs.z + (line * 0.5 + thick) * scene.knobs.w + hot + box * 0.12 * scene.knobs.y, 0.0, 1.0);
+  // premultiplied colour may not exceed its alpha
+  return vec4f(colour, max(alpha, max(colour.r, max(colour.g, colour.b))));
 }
 `
 
@@ -1648,7 +1635,7 @@ function translation(x: number, y: number, z: number): M4 {
 type Renderer = { draw: (m: Motion) => void; dispose: () => void }
 
 /** the badge on `canvas`: the mesh, its buffers and targets on the shared device. `onLost` runs if the device goes away */
-async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, onLost: () => void): Promise<Renderer> {
+async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, look: () => Look, onLost: () => void): Promise<Renderer> {
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
   const aspect = h / w
   const mesh = meshFor(d, viewBox, detail)
@@ -1680,7 +1667,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   const vertices = upload(mesh.vertices, BUFFER.VERTEX)
   const indices = upload(mesh.indices, BUFFER.INDEX)
   const count = mesh.indices.length
-  const uniforms = new Float32Array(48) // the Scene struct: two mat4x4f and four vec4f
+  const uniforms = new Float32Array(52) // the Scene struct: two mat4x4f and five vec4f
   const sceneBuffer = device.createBuffer({ size: uniforms.byteLength, usage: BUFFER.UNIFORM | BUFFER.COPY_DST })
   const sceneGroup = device.createBindGroup({ layout: g.badge.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: sceneBuffer } }] })
 
@@ -1729,6 +1716,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
       uniforms.set(model, 16)
       uniforms.set([m.lx / ll, m.ly / ll, m.lz / ll, 1], 36)
       uniforms.set([Math.cos(m.light * RAD), Math.sin(m.light * RAD), aspect, (performance.now() % 3600000) / 1000], 40)
+      uniforms.set(look(), 48)
       device.queue.writeBuffer(sceneBuffer, 0, uniforms)
       const encoder = device.createCommandEncoder()
       const scene = encoder.beginRenderPass({
@@ -1787,7 +1775,10 @@ const DEFAULT_MARK = {
   d: "M354.084 0C374.63 8.50833 392.5 23.8578 403.922 44.9326C418.809 72.4024 419.569 103.739 408.683 130.599C372.855 219 258.635 211.309 206.626 211.71C145.919 212.178 96.2825 259.131 91.5504 318.731C95.9969 371.278 140.054 412.539 193.751 412.539C250.399 412.539 296.322 366.615 296.322 309.967C296.322 285.118 287.485 262.333 272.784 244.583C323.926 247.005 407.022 268.509 437.287 366.686C413.233 460.456 328.149 529.763 226.877 529.764C175.525 529.764 128.335 511.943 91.1539 482.149C67.7037 480.784 45.3008 488.644 28.0719 502.979C-6.1077 470.701 -9.49672 415.736 20.2223 379.638C12.3178 355.271 9.66566 330.28 9.66566 304.795C9.6658 186.402 110.21 87.5845 226.877 87.584C253.145 87.584 278.167 88.1909 302.354 75.083C331.715 59.1705 349.967 30.7466 354.084 0Z",
 }
 
-export function GlassBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Glass badge", pose, className }: GlassBadgeProps) {
+export function GlassBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, size = 120, flip = true, sway = true, label = "Glass badge", pose, body = 1, reflections = 1, rim = 1, edge = 1, className }: GlassBadgeProps) {
+  // the live settings ride in a ref: the renderer reads them each frame, and a change asks for one
+  const lookRef = useRef<Look>([body, reflections, rim, edge])
+  lookRef.current = [body, reflections, rim, edge]
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
   const strokeBase = `translate(${x0 + STROKE.tx * w} ${y0 + STROKE.ty * h}) rotate(${STROKE.rotate}) scale(${STROKE.sx * w} ${STROKE.sy * h})`
@@ -1880,7 +1871,7 @@ export function GlassBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, s
         near = e.isIntersecting
         if (near && gpu && canvas && !started) {
           started = true
-          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => fail(new Error("device lost")))
+          createRenderer(gpu, canvas, path, viewBox, size < 100 ? 1.6 : 1, () => lookRef.current, () => fail(new Error("device lost")))
             .then((r) => {
               if (cancelled) r.dispose()
               else {
@@ -1909,6 +1900,10 @@ export function GlassBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, s
       canvas?.remove()
     }
   }, [renderer, path, viewBox, size, sway, still, flippable, poseKey, strokeBase])
+
+  useEffect(() => {
+    driverRef.current?.redraw()
+  }, [body, reflections, rim, edge])
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Enter" && e.key !== " ") return
@@ -1948,7 +1943,7 @@ export function GlassBadge({ path = DEFAULT_MARK.d, viewBox = DEFAULT_MARK.vb, s
                   ))}
                 </radialGradient>
               </defs>
-              <path d={path} fill={`url(#mbf-${uid})`} stroke={`url(#mbs-${uid})`} strokeWidth={w / REF_W} strokeLinejoin="round" />
+              <path d={path} fill={`url(#mbf-${uid})`} fillOpacity={0.14} stroke={`url(#mbs-${uid})`} strokeWidth={w / REF_W} strokeLinejoin="round" />
             </svg>
             {sway && !still && <span ref={sheenRef} className="glbadge-sheen absolute inset-0" style={maskStyle} />}
           </div>

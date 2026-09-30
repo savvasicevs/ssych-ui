@@ -1,13 +1,35 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+
+/* Heat Calendar, rebuilt through the ssych-component skill (2026-09-29).
+   It now sits beside returns-calendar: the same 3px gaps and 3px corners, cells of 24px,
+   the same tint of one hue by magnitude, the same lift, ring and dimming on hover.
+   What changed against the version before it (in git history), and why:
+   · no ring on every cell (107 inner shadows) and no floating card with a shadow: the
+     count and the date are plain text under the grid, where the date range is
+   · the hue is ink by default, not blue: a count has no direction, so it is one ink at
+     many strengths. The cell being pointed at takes the accent ring
+   · magnitude is continuous, as in returns-calendar, not five alpha steps; the five
+     legend steps stay as the filter
+   · hover follows returns-calendar: the cell lifts, its row and column stay lit and the
+     rest dim. The ripple through the neighbours is gone
+   · day names on the left, the legend steps are real buttons
+   PROPS CHANGED:
+   · `color` takes any CSS colour and defaults to the foreground token (it was a hex
+     string with a blue default). A hex still works
+   · `endDate` defaults to a fixed day, 27 Sep 2026, not to the day of viewing, so the
+     sample is the same on every render. Pass `endDate` for a live calendar */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /* the house lift spring: cells are physical objects, so they settle instead of easing */
 const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
+const ACCENT = "var(--chart-1)"
+/** per diagonal step of the entrance; 22 diagonals on 16 weeks land inside 300ms */
+const STAGGER = 0.012
 
 /** Deterministic activity field so demo renders agree (quieter weekends). */
 const demoLevel = (w: number, d: number) => {
@@ -16,24 +38,19 @@ const demoLevel = (w: number, d: number) => {
   return d >= 5 ? Math.max(0, r - 0.55) * 1.4 : r
 }
 
-/** Sequential encoding: one hue, magnitude is its alpha, never a second color. */
-const ALPHA = [0.04, 0.14, 0.3, 0.5, 0.75]
+/** The legend's five steps; a cell belongs to the step its intensity falls in. */
+const STEPS = [0, 1, 2, 3, 4]
 
-const hexToRgb = (hex: string) => {
-  const h = hex.replace("#", "")
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)].join(",")
-}
-
-/** Cell size and gap; every position in the grid and the tooltip derive from these. */
-const CELL = 14
-const GAP = 4
-const PITCH = CELL + GAP
+/** Cell size and gap, as in returns-calendar; every position in the grid derives from these. */
+const CELL = 24
+const GAP = 3
 const MONTH_ROW = 12
+const DAY_COL = 26
 
-const DAYS = Array.from({ length: 7 }, (_, d) => ({ id: `d${d}`, d }))
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((name, d) => ({ name, d }))
 
-/** How far a cell rises when it is the hovered one, its neighbour, or two away. */
-const LIFT = [1.3, 1.08, 1.03]
+/** The last day of the sample grid, a Sunday, so the sample never moves. */
+const DEFAULT_END = new Date(2026, 8, 27)
 
 const startOfDay = (d: Date) => {
   const x = new Date(d)
@@ -54,7 +71,7 @@ const fmtRange = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeri
 
 type Cell = { w: number; d: number }
 
-/** Pointer devices only: touch never hovers, so the ripple stays off there. */
+/** Pointer devices only: touch never hovers, so the lift stays off there. */
 function useCanHover() {
   const [can, setCan] = useState(true)
   useEffect(() => {
@@ -68,20 +85,20 @@ function useCanHover() {
 }
 
 /**
- * Weeks of activity as a sequential single-hue grid with month labels, so the
- * eye needs no legend to find a date. Columns settle in left to right. Hovering
- * a cell lifts it and its neighbours in a small ripple and glides a tooltip
- * with the date and exact count. One click anchors a span and dims the rest,
- * hovering then previews the run to the pointer with its total, a second click
- * locks it, a third clears it. Hovering a legend step keeps only that level lit.
+ * Weeks of activity as a grid of one hue, stronger where there was more, with month and
+ * day names so a date is found without a legend. Cells settle in on a diagonal delay.
+ * Pointing at a cell lifts it, keeps its week and weekday lit, dims the rest and reads
+ * the count and date under the grid. One click anchors a span, pointing then previews the
+ * run with its total, a second click locks it, a third clears it. Pointing at a legend
+ * step keeps only that level lit.
  */
 export function HeatCalendar({
   unit = "ships",
   weeks = 16,
   maxCount = 14,
   values,
-  endDate,
-  color = "#4790E4",
+  endDate = DEFAULT_END,
+  color = "var(--foreground)",
   className,
 }: {
   /** Noun after every count, e.g. "ships", "commits". */
@@ -91,9 +108,9 @@ export function HeatCalendar({
   maxCount?: number
   /** `values[week][day]` intensities in 0..1 (7 days per week). Defaults to a deterministic demo field. */
   values?: number[][]
-  /** Last day of the grid. Defaults to today; the grid ends on that day's week. */
+  /** Last day of the grid; the grid ends on that day's week. Defaults to a fixed sample day. */
   endDate?: Date
-  /** The single hue as hex; magnitude maps to its alpha. */
+  /** The single hue, any CSS colour; magnitude is how much of it is mixed in. */
   color?: string
   className?: string
 }) {
@@ -103,45 +120,44 @@ export function HeatCalendar({
   const [pinned, setPinned] = useState<Cell | null>(null)
   const [spanEnd, setSpanEnd] = useState<Cell | null>(null)
   const [step, setStep] = useState<number | null>(null)
-  /* the entrance owns the cells until it has landed; the ripple takes over after */
+  /* the entrance owns the cells until it has landed; the hover lift takes over after */
   const [settled, setSettled] = useState(false)
   useEffect(() => {
-    const t = setTimeout(() => setSettled(true), reduced ? 0 : weeks * 35 + 450)
+    const t = setTimeout(() => setSettled(true), reduced ? 0 : (weeks + 6) * STAGGER * 1000 + 320)
     return () => clearTimeout(t)
   }, [weeks, reduced])
 
-  /* "today" is read after mount so the server and a viewer on another calendar
-     day render the same HTML first; an explicit `endDate` is deterministic */
-  const [today, setToday] = useState<Date | null>(null)
-  useEffect(() => setToday(startOfDay(new Date())), [])
-  const end = useMemo(() => (endDate ? startOfDay(endDate) : today), [endDate, today])
-  const start = useMemo(() => (end ? addDays(mondayOf(end), -(weeks - 1) * 7) : null), [end, weeks])
+  const end = useMemo(() => startOfDay(endDate), [endDate])
+  const start = useMemo(() => addDays(mondayOf(end), -(weeks - 1) * 7), [end, weeks])
 
-  const rgb = hexToRgb(color)
-  const level = (w: number, d: number) => values?.[w]?.[d] ?? demoLevel(w, d)
+  const level = (w: number, d: number) => Math.min(1, Math.max(0, values?.[w]?.[d] ?? demoLevel(w, d)))
   const bucket = (v: number) => Math.min(4, Math.floor(v * 5))
-  const fill = (b: number) => `rgba(${rgb},${ALPHA[b]})`
   const count = (v: number) => Math.round(v * maxCount)
-  const dateOf = (w: number, d: number) => (start ? addDays(start, w * 7 + d) : null)
-  const future = (w: number, d: number) => {
-    const date = dateOf(w, d)
-    return end !== null && date !== null && date > end
-  }
+  const dateOf = (w: number, d: number) => addDays(start, w * 7 + d)
+  const future = (w: number, d: number) => dateOf(w, d) > end
+
+  /** magnitude → how much of the one hue is mixed in, never a second colour */
+  const tint = (v: number, on: boolean) =>
+    `color-mix(in srgb, ${color} ${Math.round(v * 55 + (on ? 22 : 7))}%, transparent)`
 
   /* one label per month at its first column; the leading label yields if the
      next month starts within two columns, so two labels never overlap */
   const cols = useMemo(() => {
     const list = Array.from({ length: weeks }, (_, w) => {
-      const date = start ? addDays(start, w * 7) : null
-      const m = date ? date.getMonth() : -1
-      const fresh = start !== null && date !== null && (w === 0 || addDays(start, (w - 1) * 7).getMonth() !== m)
-      return { id: `w${w}`, w, m, label: fresh && date ? fmtMonth.format(date) : null }
+      const date = addDays(start, w * 7)
+      const m = date.getMonth()
+      const fresh = w === 0 || addDays(start, (w - 1) * 7).getMonth() !== m
+      return { id: `w${w}`, w, m, label: fresh ? fmtMonth.format(date) : null }
     })
-    if (list[1]?.label || list[2]?.label) list[0].label = null
+    if (list[0] && (list[1]?.label || list[2]?.label)) list[0].label = null
     return list
   }, [start, weeks])
 
-  /* one click anchors a span and dims everything else; hovering then previews
+  /** every count on the grid, added up */
+  let total = 0
+  for (let w = 0; w < weeks; w++) for (let d = 0; d < 7; d++) if (!future(w, d)) total += count(level(w, d))
+
+  /* one click anchors a span and dims everything else; pointing then previews
      the run from the anchor to the pointer and totals it live, a second click
      locks it so the number stays put, and the next click anywhere clears it */
   const idx = (c: Cell) => c.w * 7 + c.d
@@ -166,24 +182,32 @@ export function HeatCalendar({
     else setPinned(cell)
   }
 
-  /** the cell the grid reacts to: lift, ripple and label highlight follow the pointer */
+  /** the cell the grid reacts to: lift and label highlight follow the pointer */
   const hot = hover ?? spanEnd ?? pinned
-  /** the cell the tooltip hangs from: a locked span keeps it on its end */
+  /** the cell the readout speaks for: a locked span keeps it on its end */
   const tip = spanEnd ?? hover ?? pinned
-  const tipDate = tip ? dateOf(tip.w, tip.d) : null
-  const hotMonth = hot ? (dateOf(hot.w, hot.d)?.getMonth() ?? null) : null
-  /* the tooltip is one element that glides between cells; near either edge it
-     hangs from the cell's outer corner instead of its center so it stays inside */
-  const align = tip ? (tip.w < 3 ? "start" : tip.w > weeks - 4 ? "end" : "center") : "center"
-  const tipX = tip ? tip.w * PITCH + (align === "start" ? 0 : align === "end" ? CELL : CELL / 2) : 0
-  const tipY = tip ? MONTH_ROW + GAP + tip.d * PITCH : 0
+  const hotMonth = hot ? dateOf(hot.w, hot.d).getMonth() : null
+  const showSpan = span !== null && span.lo !== span.hi
+
+  const readout = showSpan && span
+    ? {
+        value: `${spanTotal} ${unit}`,
+        note: `${fmtRange.format(addDays(start, span.lo))} to ${fmtRange.format(addDays(start, span.hi))}, ${span.hi - span.lo + 1} days`,
+      }
+    : tip
+      ? { value: `${count(level(tip.w, tip.d))} ${unit}`, note: fmtDay.format(dateOf(tip.w, tip.d)) }
+      : { value: `${total} ${unit}`, note: `${fmtRange.format(start)} to ${fmtRange.format(end)}` }
 
   return (
-    <div className={cn("w-fit", className)}>
+    <div
+      className={cn("w-fit tabular-nums", className)}
+      role="group"
+      aria-label={`${unit} per day, ${fmtRange.format(start)} to ${fmtRange.format(end)}, ${total} in total`}
+    >
       <div
         className="relative grid"
         style={{
-          gridTemplateColumns: `repeat(${weeks}, ${CELL}px)`,
+          gridTemplateColumns: `${DAY_COL}px repeat(${weeks}, ${CELL}px)`,
           gridTemplateRows: `${MONTH_ROW}px repeat(7, ${CELL}px)`,
           gap: GAP,
         }}
@@ -195,41 +219,57 @@ export function HeatCalendar({
               key={c.id}
               className={cn(
                 "whitespace-nowrap text-[9px] leading-none transition-colors duration-200",
-                hotMonth === c.m ? "text-foreground/80" : "text-foreground/30",
+                hotMonth === c.m ? "text-foreground/80" : "text-foreground/45",
               )}
-              style={{ gridColumn: c.w + 1, gridRow: 1 }}
+              style={{ gridColumn: c.w + 2, gridRow: 1 }}
             >
               {c.label}
             </span>
           ) : null,
         )}
 
+        {DAYS.map(({ name, d }) =>
+          d % 2 === 0 ? (
+            <span
+              key={name}
+              className={cn(
+                "flex items-center justify-end pr-1 text-[9px] transition-colors duration-200",
+                hot?.d === d ? "text-foreground/80" : "text-foreground/45",
+              )}
+              style={{ gridColumn: 1, gridRow: d + 2 }}
+            >
+              {name}
+            </span>
+          ) : null,
+        )}
+
         {cols.map(({ id, w }) =>
-          DAYS.map(({ id: dayId, d }) => {
-            const date = dateOf(w, d)
+          DAYS.map(({ name, d }) => {
             if (future(w, d)) return null
             const v = level(w, d)
-            const b = bucket(v)
             const i = w * 7 + d
             const on = hot?.w === w && hot?.d === d
             const isEnd = span ? i === span.lo || i === span.hi : pinned?.w === w && pinned?.d === d
-            const dim = (step !== null && step !== b) || (span !== null && (i < span.lo || i > span.hi))
-            /* the ripple: the hovered cell rises most, the ring around it a little, two out barely */
-            const dist = hot ? Math.max(Math.abs(hot.w - w), Math.abs(hot.d - d)) : 9
-            const lift = reduced ? 1 : dist === 0 ? LIFT[0] : canHover && dist < LIFT.length ? LIFT[dist] : 1
+            /* a legend step keeps its level; a span keeps its run; a pointed cell keeps its week and weekday */
+            const dim =
+              step !== null
+                ? step !== bucket(v)
+                : span
+                  ? i < span.lo || i > span.hi
+                  : !!hot && !on && hot.w !== w && hot.d !== d
+            const lift = settled && on && canHover && !reduced ? 1.15 : 1
             return (
               /* the outer span owns the dim so it never fights the transforms inside */
               <span
-                key={`${id}-${dayId}`}
-                className="relative block h-[14px] w-[14px] transition-opacity duration-200"
-                style={{ gridColumn: w + 1, gridRow: d + 2, opacity: dim ? 0.25 : 1, zIndex: lift > 1 ? LIFT.length - dist : 0 }}
+                key={`${id}-${name}`}
+                className="relative block transition-opacity duration-200"
+                style={{ gridColumn: w + 2, gridRow: d + 2, opacity: dim ? 0.35 : 1, zIndex: on ? 1 : 0 }}
               >
                 {/* the hit area is the cell plus half the gap on every side, so a fast
-                    pointer never falls through; the visual inside takes no pointer events,
-                    so a lifted neighbour cannot steal a click either */}
+                    pointer never falls through; the visual inside takes no pointer events */}
                 <motion.button
                   type="button"
-                  aria-label={`${count(v)} ${unit}${date ? ` on ${fmtDay.format(date)}` : ""}`}
+                  aria-label={`${count(v)} ${unit} on ${fmtDay.format(dateOf(w, d))}`}
                   aria-pressed={isEnd}
                   onPointerEnter={() => setHover({ w, d })}
                   onFocus={() => setHover({ w, d })}
@@ -238,27 +278,26 @@ export function HeatCalendar({
                   onKeyDown={(e) => {
                     if (e.key === "Escape") clear()
                   }}
-                  className="absolute -inset-0.5 block rounded-[5px] outline-none"
-                  whileTap={reduced ? undefined : { scale: 0.9, transition: LIFT_SPRING }}
+                  className="absolute -inset-0.5 block rounded-[4px] outline-none"
+                  whileTap={reduced ? undefined : { scale: 0.92, transition: LIFT_SPRING }}
                 >
                   <motion.span
-                    className="pointer-events-none absolute inset-0.5 block rounded-[3.5px]"
+                    className="pointer-events-none absolute inset-0.5 block rounded-[3px]"
                     style={{
-                      background: fill(b),
-                      boxShadow: isEnd
-                        ? "inset 0 0 0 1.5px var(--foreground)"
-                        : on
-                          ? "inset 0 0 0 1px color-mix(in srgb, var(--foreground) 40%, transparent)"
-                          : "inset 0 0 0 1px color-mix(in srgb, var(--foreground) 3%, transparent)",
-                      transition: "box-shadow 150ms",
+                      background: tint(v, on),
+                      boxShadow: isEnd ? "inset 0 0 0 1.5px var(--foreground)" : on ? `inset 0 0 0 1.5px ${ACCENT}` : "none",
+                      transition: "background 150ms, box-shadow 150ms",
                     }}
-                    /* columns settle in left to right; once landed, the ripple spreads
-                       out from the hovered cell by distance */
-                    initial={reduced ? false : { opacity: 0 }}
+                    /* cells settle in on a diagonal delay; once landed the pointed cell lifts */
+                    initial={reduced ? false : { opacity: 0, scale: 0.8 }}
                     animate={
                       settled
-                        ? { opacity: 1, scale: lift, transition: { ...LIFT_SPRING, delay: Math.min(dist, 3) * 0.03 } }
-                        : { opacity: 1, scale: 1, transition: reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: w * 0.035 } }
+                        ? { opacity: 1, scale: lift, transition: reduced ? { duration: 0 } : LIFT_SPRING }
+                        : {
+                            opacity: 1,
+                            scale: 1,
+                            transition: reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: STAGGER * (w + d) },
+                          }
                     }
                   />
                 </motion.button>
@@ -266,72 +305,39 @@ export function HeatCalendar({
             )
           }),
         )}
-
-        <AnimatePresence>
-          {tip && tipDate ? (
-            <motion.div
-              key="tip"
-              className="pointer-events-none absolute left-0 top-0 z-10"
-              initial={false}
-              animate={{ x: tipX, y: tipY }}
-              transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}
-            >
-              <motion.div
-                role="status"
-                className={cn(
-                  "absolute bottom-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-foreground/[0.05] px-2.5 py-1 text-[10px] tabular-nums",
-                  align === "end" ? "right-0" : "left-0",
-                )}
-                style={{
-                  x: align === "center" ? "-50%" : 0,
-                  background: "var(--card)",
-                  boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))",
-                }}
-                initial={reduced ? false : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 2 }}
-                transition={reduced ? { duration: 0 } : { duration: 0.15, ease: EASE }}
-              >
-                {span && span.lo !== span.hi ? (
-                  <>
-                    <span className="font-medium text-foreground/85">
-                      {spanTotal} {unit}
-                    </span>
-                    <span className="text-foreground/45">
-                      {start ? `${fmtRange.format(addDays(start, span.lo))} – ${fmtRange.format(addDays(start, span.hi))}` : ""}
-                    </span>
-                    <span className="text-foreground/45">{span.hi - span.lo + 1} days</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-medium text-foreground/85">
-                      {count(level(tip.w, tip.d))} {unit}
-                    </span>
-                    <span className="text-foreground/45">{fmtDay.format(tipDate)}</span>
-                  </>
-                )}
-              </motion.div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-6">
-        <span className="text-[10px] tabular-nums text-foreground/45">
-          {start && end ? `${fmtRange.format(start)} – ${fmtRange.format(end)}` : " "}
+      <div className="mt-3 flex items-center justify-between gap-6" style={{ paddingLeft: DAY_COL + GAP }}>
+        <span role="status" className="flex items-baseline gap-1.5 whitespace-nowrap text-[10px]">
+          {/* the readout swaps in place as the pointer moves: 4px rise, 2px blur, 150ms */}
+          <motion.span
+            key={`${readout.value}|${readout.note}`}
+            className="flex items-baseline gap-1.5"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.15, ease: EASE }}
+          >
+            <span className="font-medium text-foreground/90">{readout.value}</span>
+            <span className="text-foreground/45">{readout.note}</span>
+          </motion.span>
         </span>
-        {/* hovering a step keeps only cells of that level lit, so the legend doubles as a filter */}
-        <span className="flex items-center gap-1" onPointerLeave={() => setStep(null)}>
-          <span className="mr-0.5 text-[10px] text-foreground/30">less</span>
-          {ALPHA.map((a, i) => (
-            <span
-              key={a}
-              onPointerEnter={() => setStep(i)}
-              className="h-[11px] w-[11px] rounded-[3px] transition-transform duration-150"
-              style={{ background: fill(i), transform: step === i ? "scale(1.25)" : undefined }}
+        {/* pointing at a step keeps only cells of that level lit, so the legend doubles as a filter */}
+        <span className="flex items-center gap-[3px]" onPointerLeave={() => setStep(null)}>
+          <span className="mr-1 text-[10px] text-foreground/45">Less</span>
+          {STEPS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-label={`Level ${s + 1} of ${STEPS.length}`}
+              aria-pressed={step === s}
+              onPointerEnter={() => setStep(s)}
+              onFocus={() => setStep(s)}
+              onBlur={() => setStep(null)}
+              className="h-[11px] w-[11px] rounded-[3px] outline-none transition-transform duration-150"
+              style={{ background: tint((s + 0.5) / STEPS.length, step === s), transform: step === s ? "scale(1.25)" : undefined }}
             />
           ))}
-          <span className="ml-0.5 text-[10px] text-foreground/30">more</span>
+          <span className="ml-1 text-[10px] text-foreground/45">More</span>
         </span>
       </div>
     </div>
