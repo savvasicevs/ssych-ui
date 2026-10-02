@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "release-feed",
+  "type": "registry:ui",
+  "title": "Release Feed",
+  "description": "A changelog on a rail; point at a kind to filter notes, press a version to copy it",
+  "categories": [
+    "data"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/release-feed.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useRef, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Release Feed, promoted from a lab sketch through ssych-component (2026-09-29).\n   What it is for: a changelog, newest first, where every line says whether it was added,\n   changed or fixed.\n   Read first: the version numbers down the rail, then the notes under each.\n   The pointer: point at a release and the others dim. Point at one of the three kinds\n   in the top corner and only notes of that kind keep their ink; press it to hold that\n   filter. Press a version to copy it; the word \"copied\" answers in its place.\n   Lab sketch: src/components/lab/ReleaseFeed.tsx. Kept: the rail with a node per release,\n   version and date on one line, a kind in front of every note, copy on press. Changed: the\n   kinds were green, blue and amber chips; they are words in their own hue, --chart-1,\n   --chart-5 and --chart-3 (2026-09-30), since three kinds down one list must be told apart\n   and a kind has no direction to give it green or red. The counts per kind and the filter are new. Node rings, the copy\n   and check icons are gone.\n   Formulas:\n   · added, changed, fixed = count of notes of that kind over every release (2, 2, 1)\n   · notes                 = Σ notes per release (2 + 2 + 1 = 5) */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\n\nexport type ReleaseKind = \"added\" | \"changed\" | \"fixed\"\n\nexport interface ReleaseNote {\n  kind: ReleaseKind\n  text: string\n}\n\nexport interface Release {\n  version: string\n  date: string\n  notes: ReleaseNote[]\n}\n\nexport interface ReleaseFeedProps {\n  releases?: Release[]\n  /** names the feed for screen readers; the versions say what it is on screen */\n  title?: string\n  onCopy?: (version: string) => void\n  className?: string\n}\n\nconst DEFAULT_RELEASES: Release[] = [\n  {\n    version: \"0.4.0\",\n    date: \"Jul 11\",\n    notes: [\n      { kind: \"added\", text: \"Metrics, atoms and console groups: 30 new components.\" },\n      { kind: \"changed\", text: \"Every outline is one step fainter.\" },\n    ],\n  },\n  {\n    version: \"0.3.2\",\n    date: \"Jul 8\",\n    notes: [\n      { kind: \"fixed\", text: \"Copying the source of a locked component while signed in.\" },\n      { kind: \"changed\", text: \"Bundles now inline their registry dependencies.\" },\n    ],\n  },\n  {\n    version: \"0.3.0\",\n    date: \"Jul 2\",\n    notes: [{ kind: \"added\", text: \"Resizable preview stage with pointer capture.\" }],\n  },\n]\n\nconst KINDS: ReleaseKind[] = [\"added\", \"changed\", \"fixed\"]\n/** one hue per kind, in the house order; the same hue marks its count in the top corner */\nconst HUE: Record<ReleaseKind, string> = {\n  added: \"var(--chart-1)\",\n  changed: \"var(--chart-5)\",\n  fixed: \"var(--chart-3)\",\n}\n/** A hue as text: its lightness is capped in the light theme so small words stay readable. */\nconst ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`\n\n/**\n * A changelog in the Linear register: versions on a hairline rail, each note led by its\n * kind. Pointing at a release or at a kind dims everything else; pressing a version\n * copies it.\n */\nexport function ReleaseFeed({ releases = DEFAULT_RELEASES, title = \"Changelog\", onCopy, className }: ReleaseFeedProps) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<string | null>(null)\n  const [peek, setPeek] = useState<ReleaseKind | null>(null)\n  const [held, setHeld] = useState<ReleaseKind | null>(null)\n  const [copied, setCopied] = useState<string | null>(null)\n  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)\n  useEffect(\n    () => () => {\n      if (timer.current) clearTimeout(timer.current)\n    },\n    [],\n  )\n\n  const kind = peek ?? held\n  const notes = releases.flatMap((r) => r.notes)\n  const count = (k: ReleaseKind) => notes.filter((n) => n.kind === k).length\n\n  const copy = (version: string) => {\n    void navigator.clipboard?.writeText(`v${version}`).catch(() => {})\n    onCopy?.(version)\n    setCopied(version)\n    if (timer.current) clearTimeout(timer.current)\n    timer.current = setTimeout(() => setCopied(null), 1300)\n  }\n\n  return (\n    <div className={cn(\"w-full max-w-[420px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]\", className)} role=\"group\" aria-label={`${title}, ${releases.length} releases, ${notes.length} notes`}>\n      <div className=\"flex justify-end pb-4\">\n        <span className=\"flex items-center gap-0.5\" onPointerLeave={() => setPeek(null)}>\n          {KINDS.map((k) => (\n            <button\n              key={k}\n              type=\"button\"\n              aria-pressed={held === k}\n              aria-label={`${count(k)} ${k}, show only these`}\n              onPointerEnter={() => setPeek(k)}\n              onFocus={() => setPeek(k)}\n              onBlur={() => setPeek(null)}\n              onClick={() => setHeld((h) => (h === k ? null : k))}\n              className={cn(\n                \"rounded-full px-2 py-1 text-[10.5px] outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:text-foreground/90 focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100\",\n                held === k ? \"bg-foreground/[0.08] text-foreground/90\" : \"text-foreground/45\",\n              )}\n            >\n              {count(k)} <span style={{ color: ink(HUE[k]) }}>{k}</span>\n            </button>\n          ))}\n        </span>\n      </div>\n\n      <div className=\"relative\" onPointerLeave={() => setHot(null)}>\n        <span aria-hidden className=\"absolute bottom-2 left-[3px] top-2 w-px bg-foreground/[0.06]\" />\n        <div className=\"flex flex-col gap-6\">\n          {releases.map((r, i) => (\n            /* the outer wrapper owns the dim so it never fights the entrance inside */\n            <div\n              key={r.version}\n              onPointerEnter={() => setHot(r.version)}\n              className=\"transition-opacity duration-200 motion-reduce:transition-none\"\n              style={{ opacity: hot !== null && hot !== r.version ? 0.45 : 1 }}\n            >\n              <motion.div\n                className=\"relative pl-6\"\n                initial={reduced ? false : { opacity: 0, y: 6 }}\n                animate={{ opacity: 1, y: 0 }}\n                transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: i * 0.035 }}\n              >\n                <span\n                  aria-hidden\n                  className=\"absolute left-0 top-[7px] h-[7px] w-[7px] rounded-full\"\n                  style={{ background: `color-mix(in srgb, var(--foreground) ${i === 0 ? 90 : 30}%, var(--background))` }}\n                />\n                <button\n                  type=\"button\"\n                  onClick={() => copy(r.version)}\n                  onFocus={() => setHot(r.version)}\n                  onBlur={() => setHot(null)}\n                  aria-label={`Copy v${r.version}, released ${r.date}`}\n                  className=\"-mx-1.5 flex items-baseline gap-2.5 rounded-[4px] px-1.5 py-0.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100\"\n                >\n                  <span className=\"text-[13px] font-medium text-foreground/90\">v{r.version}</span>\n                  <span role=\"status\" className=\"text-[10px] text-foreground/35\">\n                    {/* \"copied\" swaps in for the date and back: 4px, 2px blur, 150ms */}\n                    <motion.span\n                      key={copied === r.version ? \"copied\" : \"date\"}\n                      className=\"inline-block\"\n                      initial={reduced ? false : { opacity: 0, y: 4, filter: \"blur(2px)\" }}\n                      animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n                      transition={{ duration: 0.15, ease: EASE }}\n                    >\n                      {copied === r.version ? \"copied\" : r.date}\n                    </motion.span>\n                  </span>\n                </button>\n                <div className=\"mt-2 flex flex-col gap-1.5\">\n                  {r.notes.map((n) => (\n                    <div\n                      key={n.text}\n                      className=\"flex items-baseline gap-2.5 transition-opacity duration-200 motion-reduce:transition-none\"\n                      style={{ opacity: kind !== null && kind !== n.kind ? 0.35 : 1 }}\n                    >\n                      <span className=\"w-[48px] shrink-0 text-[10.5px] font-medium\" style={{ color: ink(HUE[n.kind]) }}>{n.kind}</span>\n                      <span className=\"text-[12px] leading-snug text-foreground/70\">{n.text}</span>\n                    </div>\n                  ))}\n                </div>\n              </motion.div>\n            </div>\n          ))}\n        </div>\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/release-feed.tsx"
+    }
+  ]
+}

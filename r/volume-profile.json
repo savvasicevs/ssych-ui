@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "volume-profile",
+  "type": "registry:ui",
+  "title": "Volume Profile",
+  "description": "Volume by price with the point of control and value area named; scrub to read any level's share",
+  "categories": [
+    "charts"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/volume-profile.tsx",
+      "content": "\"use client\"\n\nimport { useRef, useState } from \"react\"\nimport { useInView, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Volume Profile, new through ssych-component (2026-09-29).\n   What it is for: seeing at which prices the trading actually happened, so the fair\n   range and the thin edges of a session read at a glance.\n   Read first: the longest bar, the point of control, named on the price axis.\n   The pointer: scrubbing up and down the profile turns the level under it the accent,\n   dims the rest and reads its price range, volume and share of the session in the line\n   above the bars.\n   Reference: \"volume profile\" on browsable returned candle charts with a volume pane and\n   no true profile, so no source was read. The one idea kept from those listings is the\n   price axis on the right with the marks hugging it. The rest is the trading convention:\n   point of control, value area, bars by price.\n   Colour: volume has no direction, so it is one ink at three strengths: the point of\n   control strongest, the value area full, everything outside it dimmer.\n   Formulas, all from `levels`, `step` and `share`:\n   · total            = sum of volume over every level\n   · point of control = the level with the most volume\n   · value area       = start at the point of control and keep adding the neighbouring\n                        level (above or below) with the larger volume until the sum\n                        reaches share × total; it runs from the lowest level taken to\n                        the top of the highest one (price + step)\n   · bar length       = volume / volume at the point of control\n   · share of volume  = volume / total × 100\n   Motion (2026-10-01): the bars grow out from the left once the profile is a third in view,\n   top row first, 15ms apart (capped at 360ms) over 450ms, as CSS transitions; reduced motion\n   shows them grown. No data changes here, so nothing else moves. */\n\nconst CSS_EASE = \"cubic-bezier(0.16, 1, 0.3, 1)\"\nconst ACCENT = \"var(--chart-1)\"\n\nexport interface VolumeLevel {\n  /** lower edge of the price bucket */\n  price: number\n  /** volume traded inside the bucket, in units of the asset */\n  volume: number\n}\n\nexport interface VolumeProfileProps {\n  /** one entry per price bucket, any order */\n  levels?: VolumeLevel[]\n  /** height of one bucket, in price */\n  step?: number\n  /** the part of all volume the value area has to hold, 0 to 1 */\n  share?: number\n  symbol?: string\n  title?: string\n  className?: string\n}\n\n/** Deterministic session (Lehmer): one high-volume node and a smaller shelf under it. */\nconst DEFAULT_LEVELS: VolumeLevel[] = (() => {\n  let s = 3050\n  const rnd = () => {\n    s = (s * 16807) % 2147483647\n    return s / 2147483647\n  }\n  return Array.from({ length: 24 }, (_, i) => {\n    const node = Math.exp(-((i - 14) ** 2) / 18)\n    const shelf = 0.45 * Math.exp(-((i - 5) ** 2) / 8)\n    return { price: 2940 + i * 10, volume: Math.round((node + shelf + 0.08 + rnd() * 0.12) * 2400) }\n  })\n})()\n\nconst W = 440\nconst ROW = 12\nconst AXIS = 122\nconst BAR_W = W - AXIS\nconst BAR_H = ROW - 2\n\nconst ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`\nconst whole = (v: number) => v.toLocaleString(\"en-US\", { maximumFractionDigits: 2 })\n\nfunction valueArea(vols: number[], share: number) {\n  const total = vols.reduce((s, v) => s + v, 0)\n  const poc = vols.reduce((best, v, i) => (v > vols[best] ? i : best), 0)\n  let lo = poc\n  let hi = poc\n  let held = vols[poc] ?? 0\n  while (held < total * share && (lo > 0 || hi < vols.length - 1)) {\n    const below = lo > 0 ? vols[lo - 1] : -1\n    const above = hi < vols.length - 1 ? vols[hi + 1] : -1\n    if (above >= below) {\n      hi += 1\n      held += above\n    } else {\n      lo -= 1\n      held += below\n    }\n  }\n  return { total, poc, lo, hi, held }\n}\n\n/**\n * Volume by price: one bar per price level beside the axis, the point of control named,\n * the value area at full strength and the thin edges dimmer. Scrubbing reads any level.\n */\nexport function VolumeProfile({\n  levels = DEFAULT_LEVELS,\n  step = 10,\n  share = 0.7,\n  symbol = \"ETH\",\n  title = \"Volume profile\",\n  className,\n}: VolumeProfileProps) {\n  const reduced = useReducedMotion()\n  const svgRef = useRef<SVGSVGElement>(null)\n  /* the bars wait until the profile is a third in view, then grow once */\n  const play = useInView(svgRef, { once: true, amount: 0.3 }) || !!reduced\n  const [hot, setHot] = useState<number | null>(null)\n\n  /* lowest price first, so index 0 is the bottom row */\n  const rows = [...levels].sort((a, b) => a.price - b.price)\n  const n = rows.length\n  const H = Math.max(1, n) * ROW\n  const { total, poc, lo, hi, held } = valueArea(\n    rows.map((r) => r.volume),\n    share,\n  )\n  const top = Math.max(1e-6, rows[poc]?.volume ?? 0)\n  const y = (i: number) => (n - 1 - i) * ROW\n\n  const onMove = (e: React.PointerEvent) => {\n    const el = svgRef.current\n    if (!el || n === 0) return\n    const r = el.getBoundingClientRect()\n    const row = Math.floor(((e.clientY - r.top) / r.height) * n)\n    setHot(n - 1 - Math.max(0, Math.min(n - 1, row)))\n  }\n\n  /* the axis names the three levels that matter and a quiet tick every fourth level */\n  const named = new Map<number, string>([\n    [hi, \"value area high\"],\n    [lo, \"value area low\"],\n    [poc, \"point of control\"],\n  ])\n  const pocPrice = rows[poc]?.price ?? 0\n  const areaLow = rows[lo]?.price ?? 0\n  const areaHigh = (rows[hi]?.price ?? 0) + step\n  const shown = hot !== null ? rows[hot] : null\n\n  return (\n    <div role=\"group\" aria-label={`${symbol} ${title.toLowerCase()}`} className={cn(\"w-[440px] max-w-full tabular-nums\", className)}>\n      {/* no visible title (2026-10-01): the axis names the point of control and the value area */}\n      <div className=\"mb-3\">\n        <div role=\"status\" className=\"text-[10.5px] text-foreground/45\">\n          {shown && hot !== null ? (\n            <>\n              <span className=\"font-medium text-foreground/90\">\n                {whole(shown.price)} to {whole(shown.price + step)}\n              </span>{\" \"}\n              · {whole(shown.volume)} {symbol} · {((shown.volume / (total || 1)) * 100).toFixed(1)}% of volume ·{\" \"}\n              {hot === poc ? \"point of control\" : hot >= lo && hot <= hi ? \"inside the value area\" : \"outside the value area\"}\n            </>\n          ) : (\n            <>\n              Point of control <span className=\"font-medium text-foreground/90\">{whole(pocPrice)}</span> · {((held / (total || 1)) * 100).toFixed(1)}% of volume between {whole(areaLow)} and{\" \"}\n              {whole(areaHigh)}\n            </>\n          )}\n        </div>\n      </div>\n\n      <svg\n        ref={svgRef}\n        width={W}\n        height={H}\n        viewBox={`0 0 ${W} ${H}`}\n        className=\"block h-auto max-w-full cursor-crosshair touch-none\"\n        role=\"img\"\n        aria-label={`${symbol} ${title.toLowerCase()}, point of control ${whole(pocPrice)}, value area ${whole(areaLow)} to ${whole(areaHigh)}`}\n        onPointerMove={onMove}\n        onPointerLeave={() => setHot(null)}\n      >\n        {rows.map((r, i) => {\n          const on = hot === i\n          const inside = i >= lo && i <= hi\n          const fill = on ? ACCENT : i === poc ? ink(92) : inside ? ink(60) : ink(22)\n          return (\n            <g key={r.price} style={{ opacity: hot !== null && !on ? 0.45 : 1, transition: \"opacity 150ms\" }}>\n              <rect\n                x={0}\n                y={y(i) + 1}\n                width={Math.max(1, (r.volume / top) * (BAR_W - 14))}\n                height={BAR_H}\n                rx={2}\n                fill={fill}\n                style={{\n                  transformBox: \"fill-box\",\n                  transformOrigin: \"0% 50%\",\n                  transform: play ? \"none\" : \"scaleX(0)\",\n                  transition: reduced ? \"fill 150ms\" : `fill 150ms, transform 450ms ${CSS_EASE} ${Math.min(0.36, (n - 1 - i) * 0.015).toFixed(3)}s`,\n                }}\n              />\n            </g>\n          )\n        })}\n\n        {/* the value area, as one thin filled bracket between the bars and the axis */}\n        {n > 0 && <rect x={BAR_W - 8} y={y(hi) + 1} width={2} height={(hi - lo + 1) * ROW - 2} rx={1} fill={ink(35)} />}\n\n        {rows.map((r, i) => {\n          const name = named.get(i)\n          const on = hot === i\n          if (!name && !on && i % 4 !== 0) return null\n          return (\n            <text\n              key={r.price}\n              x={BAR_W + 2}\n              y={y(i) + ROW / 2 + 3}\n              fontSize={9}\n              fontWeight={on || i === poc ? 600 : 400}\n              fill=\"var(--foreground)\"\n              fillOpacity={on || i === poc ? 0.9 : name ? 0.45 : 0.35}\n              className=\"tabular-nums\"\n            >\n              {whole(r.price)}\n              {name ? ` · ${name}` : \"\"}\n            </text>\n          )\n        })}\n      </svg>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/volume-profile.tsx"
+    }
+  ]
+}

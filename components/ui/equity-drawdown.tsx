@@ -1,7 +1,7 @@
 "use client"
 
 import { useId, useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -13,7 +13,12 @@ import { cn } from "@/lib/utils"
    · the outlined badge on the axis is plain text; an axis figure steps aside under it
    · the equity line follows the direction of the whole return, green for a gain and red
      for a loss (it was always green); the drawdown stays red
-   · the dots carry no ring, the drawdown axis uses a true minus */
+   · the dots carry no ring, the drawdown axis uses a true minus
+   Motion (2026-10-01): once the chart first comes into view one clip wipes both panels in
+   from the left, the equity line, its fill, the underwater line and its fill together, 900ms
+   (it was a 400ms dash draw on mount). A new series of the same length morphs both lines and
+   both fills point for point in 380ms; a series of another length is drawn at once. Reduced
+   motion draws every state at once. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -100,6 +105,8 @@ export function EquityDrawdown({
   const reduced = useReducedMotion()
   const uid = useId().replace(/:/g, "")
   const svgRef = useRef<SVGSVGElement>(null)
+  const seen = useInView(svgRef, { once: true, amount: 0.3 })
+  const shown = seen || !!reduced
   const [hi, setHi] = useState<number | null>(null)
 
   const { eq, n, dd, lastHigh, eqMin, eqMax, ddMin } = useMemo(() => {
@@ -151,6 +158,7 @@ export function EquityDrawdown({
   const lineHue = totalRet >= 0 ? GREEN : RED
   const valueY = Math.max(EQ_TOP + 8, Math.min(EQ_BOT - 8, yEq(eq[active])))
   const fade = reduced ? "none" : "opacity 160ms"
+  const morph = reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }
   /* the readout swaps in place as the crosshair moves (text swap: 4px, 2px blur, 150ms),
      starting from a dimmed copy so it never blinks out mid-scrub; reduced motion keeps
      only the fade */
@@ -205,13 +213,24 @@ export function EquityDrawdown({
       >
         <defs>
           <linearGradient id={`${uid}-eq`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lineHue} stopOpacity="0.16" />
-            <stop offset="100%" stopColor={lineHue} stopOpacity="0" />
+            <stop offset="0%" stopColor={lineHue} stopOpacity="0.16" style={{ transition: reduced ? "none" : "stop-color 200ms" }} />
+            <stop offset="100%" stopColor={lineHue} stopOpacity="0" style={{ transition: reduced ? "none" : "stop-color 200ms" }} />
           </linearGradient>
           <linearGradient id={`${uid}-dd`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={RED} stopOpacity="0.02" />
             <stop offset="100%" stopColor={RED} stopOpacity="0.22" />
           </linearGradient>
+          {/* the entrance: one clip wipes both panels in from the left, once */}
+          <clipPath id={`${uid}-wipe`}>
+            <motion.rect
+              x={0}
+              y={0}
+              height={H}
+              initial={{ width: reduced ? W - PAD.r + 4 : 0 }}
+              animate={{ width: shown ? W - PAD.r + 4 : 0 }}
+              transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
+            />
+          </clipPath>
         </defs>
 
         {[0, 0.5, 1].map((f) => {
@@ -234,26 +253,7 @@ export function EquityDrawdown({
           )
         })}
 
-        <motion.path
-          d={geo.eqArea}
-          fill={`url(#${uid}-eq)`}
-          initial={{ opacity: reduced ? 1 : 0 }}
-          animate={{ opacity: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.2 }}
-        />
-        <motion.path
-          d={geo.eqLine}
-          fill="none"
-          stroke={lineHue}
-          strokeWidth={1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={{ pathLength: reduced ? 1 : 0 }}
-          animate={{ pathLength: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
-        />
-
-        {/* drawdown panel: the zero line is the only solid gridline */}
+        {/* drawdown panel: the zero line is the only solid gridline; it sits under the curves */}
         <line x1={PAD.l} y1={DD_TOP} x2={W - PAD.r} y2={DD_TOP} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
         <text x={W - PAD.r + 8} y={DD_TOP + 3} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
           0%
@@ -261,24 +261,34 @@ export function EquityDrawdown({
         <text x={W - PAD.r + 8} y={DD_BOT + 2} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
           {`${ddMin < 0 ? "−" : ""}${Math.abs(ddMin).toFixed(0)}%`}
         </text>
-        <motion.path
-          d={geo.ddArea}
-          fill={`url(#${uid}-dd)`}
-          initial={{ opacity: reduced ? 1 : 0 }}
-          animate={{ opacity: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.25 }}
-        />
-        <motion.path
-          d={geo.ddLine}
-          fill="none"
-          stroke={RED}
-          strokeOpacity={0.8}
-          strokeWidth={1.2}
-          strokeLinejoin="round"
-          initial={{ pathLength: reduced ? 1 : 0 }}
-          animate={{ pathLength: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.05 }}
-        />
+
+        {/* keyed by length: same-length series morph point for point, another length is drawn at once */}
+        <g key={n} clipPath={`url(#${uid}-wipe)`}>
+          <motion.path initial={false} animate={{ d: geo.eqArea }} transition={morph} fill={`url(#${uid}-eq)`} />
+          <motion.path
+            initial={false}
+            animate={{ d: geo.eqLine }}
+            transition={morph}
+            fill="none"
+            stroke={lineHue}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ transition: reduced ? "none" : "stroke 200ms" }}
+          />
+          <motion.path initial={false} animate={{ d: geo.ddArea }} transition={morph} fill={`url(#${uid}-dd)`} />
+          <motion.path
+            initial={false}
+            animate={{ d: geo.ddLine }}
+            transition={morph}
+            fill="none"
+            stroke={RED}
+            strokeOpacity={0.8}
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+          />
+        </g>
+
 
         {/* the current underwater episode, from the high-water mark to the cursor */}
         {hi !== null && daysDown > 0 && (

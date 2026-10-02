@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useId, useMemo, useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -16,7 +16,10 @@ import { cn } from "@/lib/utils"
      there is no card colour under them
    · the summary has no rule above it and the change is signed text, not a tinted chip
    · the chart names itself to a screen reader, every figure is tabular
-   Props are unchanged. */
+   Props are unchanged.
+   Motion (2026-10-01): once the chart is in view the price and both averages sweep in left
+   to right through one clip (0.9s; they drew on mount, off screen too); a new series morphs
+   all three lines and glides the gridlines with their ticks */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -49,10 +52,10 @@ const smaOf = (data: number[], win: number) => data.map((_, i) => {
 })
 
 type Key = "fast" | "slow"
-/** the two overlays: label, trailing window in bars, its own hue (categorical order), draw-in delay */
-const AVERAGES: { key: Key; label: string; win: number; hue: string; delay: number }[] = [
-  { key: "fast", label: "60 SMA", win: 14, hue: "var(--chart-1)", delay: 0.035 },
-  { key: "slow", label: "200 SMA", win: 45, hue: "var(--chart-5)", delay: 0.07 },
+/** the two overlays: label, trailing window in bars, its own hue (categorical order) */
+const AVERAGES: { key: Key; label: string; win: number; hue: string }[] = [
+  { key: "fast", label: "60 SMA", win: 14, hue: "var(--chart-1)" },
+  { key: "slow", label: "200 SMA", win: 45, hue: "var(--chart-5)" },
 ]
 
 export interface SmaChartProps {
@@ -75,6 +78,13 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
   const svgRef = useRef<SVGSVGElement>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [hot, setHot] = useState<Key | null>(null)
+  const uid = useId().replace(/:/g, "")
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /** a change of data glides between the two states */
+  const morph = reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }
 
   const { n, price, avg, min, max, x, y, path } = useMemo(() => {
     const price = prices.length ? prices : [0]
@@ -115,7 +125,7 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
   }
 
   return (
-    <div className={cn("w-[420px] tabular-nums", className)}>
+    <div ref={rootRef} className={cn("w-[420px] tabular-nums", className)}>
       <div className="flex items-center justify-between">
         <span>
           <span className="text-[12.5px] font-semibold text-foreground/90">{symbol}</span>
@@ -156,43 +166,75 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
       >
-        {/* right-edge price ticks */}
+        <defs>
+          {/* all three lines sweep in left to right, a few px wider than the plot for the round caps */}
+          <clipPath id={`${uid}-reveal`}>
+            <motion.rect
+              x={-4}
+              y={0}
+              height={H}
+              initial={reduced ? false : { width: 0 }}
+              animate={{ width: play ? W - PAD.r + 8 : 0 }}
+              transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
+            />
+          </clipPath>
+        </defs>
+
+        {/* right-edge price ticks; new data glides each line and its figure */}
         {[max, max - (max - min) * 0.25, max - (max - min) * 0.5, max - (max - min) * 0.75, min].map((v, i) => (
           <g key={i}>
-            <line x1={0} y1={y(v)} x2={W - PAD.r} y2={y(v)} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
-            <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35} className="tabular-nums">
+            <motion.line
+              x1={0}
+              x2={W - PAD.r}
+              stroke="var(--foreground)"
+              strokeOpacity={0.05}
+              strokeWidth={1}
+              initial={false}
+              animate={{ y1: y(v), y2: y(v) }}
+              transition={morph}
+            />
+            <motion.text
+              x={W - PAD.r + 8}
+              fontSize={8.5}
+              fill="var(--foreground)"
+              fillOpacity={0.35}
+              className="tabular-nums"
+              initial={false}
+              animate={{ attrY: y(v) + 3 }}
+              transition={morph}
+            >
               {v.toFixed(2)}
-            </text>
+            </motion.text>
           </g>
         ))}
 
         {/* averages first, price on top */}
-        {[...AVERAGES].reverse().map((a) => (
+        <g clipPath={`url(#${uid}-reveal)`}>
+          {[...AVERAGES].reverse().map((a) => (
+            <motion.path
+              key={a.key}
+              fill="none"
+              stroke={a.hue}
+              strokeWidth={1.2}
+              strokeLinejoin="round"
+              style={{ opacity: hot !== null && hot !== a.key ? 0.35 : 1, transition: fade }}
+              initial={false}
+              animate={{ d: path(avg[a.key]) }}
+              transition={morph}
+            />
+          ))}
           <motion.path
-            key={a.key}
-            d={path(avg[a.key])}
             fill="none"
-            stroke={a.hue}
-            strokeWidth={1.2}
+            stroke={ink(90)}
+            strokeWidth={1.8}
+            strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ opacity: hot !== null && hot !== a.key ? 0.35 : 1, transition: fade }}
-            initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: a.delay }}
+            style={{ opacity: hot !== null ? 0.35 : 1, transition: fade }}
+            initial={false}
+            animate={{ d: path(price) }}
+            transition={morph}
           />
-        ))}
-        <motion.path
-          d={path(price)}
-          fill="none"
-          stroke={ink(90)}
-          strokeWidth={1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ opacity: hot !== null ? 0.35 : 1, transition: fade }}
-          initial={{ pathLength: reduced ? 1 : 0 }}
-          animate={{ pathLength: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
-        />
+        </g>
 
         {/* guide and one dot per line */}
         {hover != null && (

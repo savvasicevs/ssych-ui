@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils"
    · the shape's colour now means something: green when buy ratings outweigh sell ratings,
      red when they do not, ink when the labels say neither
    · the shape fades in and its outline draws, it no longer scales up from the middle
-   · every figure is tabular; the sample labels are in sentence case */
+   · every figure is tabular; the sample labels are in sentence case
+   Motion (2026-10-01): the fade, the outline draw and the points now wait until the chart
+   is in view (they played on mount, off screen too), all landed by 0.65s; new counts morph
+   the shape and glide each point along its spoke */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -63,6 +66,12 @@ export function RatingsRadar({
 }) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<number | null>(null)
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /** a change of data glides between the two states */
+  const morph = reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }
   const max = Math.max(...ratings.map((r) => r.count), 1)
   const total = ratings.reduce((a, r) => a + r.count, 0)
 
@@ -82,7 +91,7 @@ export function RatingsRadar({
   const share = (n: number) => (total ? (n / total) * 100 : 0).toFixed(1)
 
   return (
-    <div className={cn("w-[300px] tabular-nums", className)}>
+    <div ref={rootRef} className={cn("w-[300px] tabular-nums", className)}>
       <div className="text-center">
         <div className="text-[13px] font-medium text-foreground/90">{title}</div>
         <div role="status" className="mt-0.5 text-[10.5px] text-foreground/45">
@@ -140,35 +149,34 @@ export function RatingsRadar({
           })}
 
           <motion.path
-            d={shape}
             fill={hue}
             fillOpacity={0.16}
-            initial={{ opacity: reduced ? 1 : 0 }}
-            animate={{ opacity: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.1 }}
+            initial={reduced ? false : { opacity: 0, d: shape }}
+            animate={{ opacity: play ? 1 : 0, d: shape }}
+            transition={reduced ? { duration: 0 } : { opacity: { duration: 0.3, ease: EASE, delay: 0.1 }, d: morph }}
           />
           <motion.path
-            d={shape}
             fill="none"
             stroke={hue}
             strokeWidth={1.8}
             strokeLinejoin="round"
-            initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            initial={reduced ? false : { pathLength: 0, d: shape }}
+            animate={{ pathLength: play ? 1 : 0, d: shape }}
+            transition={reduced ? { duration: 0 } : { pathLength: { duration: 0.4, ease: EASE }, d: morph }}
           />
 
           {wedge.map((p, i) => (
+            /* the group carries the point to its place, so new counts glide it along the spoke */
             <motion.g
               key={ratings[i].label}
-              initial={{ opacity: reduced ? 1 : 0 }}
-              animate={{ opacity: 1 }}
-              transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.2 + i * 0.035 }}
+              initial={reduced ? false : { opacity: 0, x: p[0], y: p[1] }}
+              animate={{ opacity: play ? 1 : 0, x: p[0], y: p[1] }}
+              transition={reduced ? { duration: 0 } : { opacity: { duration: 0.3, ease: EASE, delay: 0.2 + i * 0.035 }, default: morph }}
             >
               {/* the point grows by a transform about its own centre (2 → 3.2), never a radius tween */}
               <circle
-                cx={p[0]}
-                cy={p[1]}
+                cx={0}
+                cy={0}
                 r={2}
                 fill={hue}
                 style={{

@@ -25,8 +25,9 @@ export type GoldBadgeProps = {
   sway?: boolean
   /** accessible name of the flip button */
   label?: string
-  /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills) */
-  pose?: readonly [number, number] | readonly [number, number, number]
+  /** a fixed [rx, ry] or [rx, ry, flip] in degrees: one still frame, no sway, cursor or flip (for stills).
+   *  [rx, ry, flip, lightX, lightY] also places the light, as a pointer offset from the centre (-1 to 1) */
+  pose?: readonly [number, number] | readonly [number, number, number] | readonly [number, number, number, number, number]
   /** the highlight the light leaves, 0 to 3 */
   shine?: number
   /** the brushed grain across the face, 0 to 4 */
@@ -255,7 +256,20 @@ function createDriver(o: {
 }): Driver {
   const { root, hit, pose, still } = o
   const swaying = o.sway && !still
-  const m: Motion = { rx: pose?.[0] ?? 0, ry: pose?.[1] ?? 0, flip: pose?.[2] ?? 0, sway: swaying ? swayAt(0) : 0, light: 0, lx: 0.2, ly: 0.8, lz: 1, hover: false }
+  // a still pose can also place the light, as a pointer offset from the centre (-1 to 1 each way):
+  // the same light a cursor at that spot gives, so a recording can sweep the highlight across
+  const lit = pose && pose.length >= 5 ? { dx: pose[3], dy: pose[4] } : null
+  const m: Motion = {
+    rx: pose?.[0] ?? 0,
+    ry: pose?.[1] ?? 0,
+    flip: pose?.[2] ?? 0,
+    sway: swaying ? swayAt(0) : 0,
+    light: lit ? Math.atan2(lit.dy, lit.dx) / RAD - o.baseDeg : 0,
+    lx: lit ? lit.dx * 1.4 : 0.2,
+    ly: lit ? -lit.dy * 1.4 : 0.8,
+    lz: 1,
+    hover: false,
+  }
   let tx = m.rx
   let ty = m.ry
   let lightTarget = 0
@@ -1065,9 +1079,72 @@ function flatten(d: string, step: number): V2[][] {
 }
 
 /** into mark widths (centred, y up), no repeated points, counter-clockwise, edges no longer than `edge` */
+/** A corner that turns harder than SHARP_TURN degrees is rounded off before the mesh is built. The rim
+ *  and the side wall are pushed out along each point's mitre, and at a near hairline point that push
+ *  hits its cap and tears the rim (the slit in the ssych library mark turns about 133°). The rounding
+ *  is BLUNT of the badge's width, the same as ROUND (the roll over the edge): any point sharper
+ *  than the roll dents, so the tip gets the round a real rolled edge would give it. */
+const SHARP_TURN = 100
+const BLUNT = 0.014
+
+function blunt(pts: V2[]): V2[] {
+  const n = pts.length
+  const lim = Math.cos((SHARP_TURN * Math.PI) / 180)
+  const dir = (a: V2, b: V2): V2 => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }
+  const sharp: number[] = []
+  for (let i = 0; i < n; i++) {
+    const u1 = dir(pts[(i + n - 1) % n], pts[i])
+    const u2 = dir(pts[i], pts[(i + 1) % n])
+    if (u1[0] * u2[0] + u1[1] * u2[1] < lim) sharp.push(i)
+  }
+  if (!sharp.length) return pts
+  // walk BLUNT along the outline each way from a corner (across as many small segments as it takes)
+  const walk = (i: number, step: 1 | -1) => {
+    let left = BLUNT
+    let j = i
+    for (let guard = 0; guard < n / 2; guard++) {
+      const k = (j + step + n) % n
+      const l = Math.hypot(pts[k][0] - pts[j][0], pts[k][1] - pts[j][1])
+      if (l >= left) {
+        const f = left / (l || 1)
+        return { at: [pts[j][0] + (pts[k][0] - pts[j][0]) * f, pts[j][1] + (pts[k][1] - pts[j][1]) * f] as V2, skip: guard }
+      }
+      left -= l
+      j = k
+    }
+    return { at: pts[j], skip: 0 }
+  }
+  const drop = new Set<number>()
+  const curve = new Map<number, V2[]>()
+  for (const i of sharp) {
+    const s = walk(i, -1)
+    const e = walk(i, 1)
+    for (let g = 1; g <= s.skip; g++) drop.add((i - g + n) % n)
+    for (let g = 1; g <= e.skip; g++) drop.add((i + g) % n)
+    // from a little before the corner to a little after it, with the corner as the control point:
+    // it leaves along the incoming edge and arrives along the outgoing one in gentle turns
+    const p = pts[i]
+    const c: V2[] = []
+    for (let k = 0; k <= 8; k++) {
+      const q = k / 8
+      const w0 = (1 - q) * (1 - q)
+      const w1 = 2 * q * (1 - q)
+      const w2 = q * q
+      c.push([s.at[0] * w0 + p[0] * w1 + e.at[0] * w2, s.at[1] * w0 + p[1] * w1 + e.at[1] * w2])
+    }
+    curve.set(i, c)
+  }
+  const out: V2[] = []
+  for (let i = 0; i < n; i++) {
+    if (curve.has(i)) out.push(...curve.get(i)!)
+    else if (!drop.has(i)) out.push(pts[i])
+  }
+  return out
+}
+
 function prepare(ring: V2[], x0: number, y0: number, w: number, h: number, edge: number): V2[] {
   const mapped = ring.map(([px, py]): V2 => [(px - x0 - w / 2) / w, -(py - y0 - h / 2) / w])
-  const pts = mapped.filter((p, i) => {
+  let pts = mapped.filter((p, i) => {
     const q = mapped[(i + mapped.length - 1) % mapped.length]
     return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-7
   })
@@ -1078,6 +1155,7 @@ function prepare(ring: V2[], x0: number, y0: number, w: number, h: number, edge:
     signed += a[0] * b[1] - b[0] * a[1]
   }
   if (signed < 0) pts.reverse()
+  pts = blunt(pts)
   const out: V2[] = []
   for (let i = 0; i < pts.length; i++) {
     const a = pts[i]
@@ -1183,8 +1261,15 @@ function roll(dist: number) {
 const edgeKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`)
 
 /** split triangle edges longer than limit(a, b) (never `fixed` ones) until none is left; neighbours split the same edges, so the mesh stays watertight */
-function refine(pts: V2[], input: number[], fixed: Set<string>, limit: (a: number, b: number) => number) {
+/** how long the mesh build may hold the main thread before it gives the page a turn (ms) */
+const SLICE_MS = 8
+const nextTurn = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+async function refine(pts: V2[], input: number[], fixed: Set<string>, limit: (a: number, b: number) => number) {
   let tris = input
+  /* the build gives the page a turn every SLICE_MS (2026-10-01): one mesh is 0.2 to 0.8 s of
+     work, and done in one go it froze the Effects page as it opened. Same work, same order. */
+  let deadline = performance.now() + SLICE_MS
   const mids = new Map<string, number>()
   const mid = (a: number, b: number) => {
     const key = edgeKey(a, b)
@@ -1196,16 +1281,45 @@ function refine(pts: V2[], input: number[], fixed: Set<string>, limit: (a: numbe
     }
     return m
   }
+  /* SPEED (2026-10-01). Every pass used to test every triangle again, finished ones included,
+     and every test built a string key and asked limit() afresh: a page of eight badges (the
+     Effects page) froze for seconds while their meshes built. Now a triangle that passed is
+     carried over without a second look (none of its edges is long, and a neighbour only ever
+     splits a long edge, so it can never change), and each edge's answer is kept under a number
+     key (the ordered pair): its points never move, so the answer never changes. The same mesh, in the same
+     triangle order, for a fraction of the work. */
+  const answers = new Map<number, boolean>()
+  const long = (a: number, b: number) => {
+    // the ordered pair: limit() may read its two points in order, so (a, b) and (b, a) are kept apart
+    const k = a * 67108864 + b
+    let v = answers.get(k)
+    if (v === undefined) {
+      v = !fixed.has(edgeKey(a, b)) && Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]) > limit(a, b)
+      answers.set(k, v)
+    }
+    return v
+  }
+  let done: boolean[] = []
   for (let pass = 0; pass < 20; pass++) {
-    const long = (a: number, b: number) => !fixed.has(edgeKey(a, b)) && Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]) > limit(a, b)
     const out: number[] = []
+    const outDone: boolean[] = []
     let split = false
     for (let t = 0; t < tris.length; t += 3) {
+      if (t % 3072 === 0 && performance.now() > deadline) {
+        await nextTurn()
+        deadline = performance.now() + SLICE_MS
+      }
       let [a, b, c] = [tris[t], tris[t + 1], tris[t + 2]]
+      if (done[t / 3]) {
+        out.push(a, b, c)
+        outDone.push(true)
+        continue
+      }
       let flags = [long(a, b), long(b, c), long(c, a)]
       const count = flags.filter(Boolean).length
       if (count === 0) {
         out.push(a, b, c)
+        outDone.push(true)
         continue
       }
       split = true
@@ -1216,6 +1330,7 @@ function refine(pts: V2[], input: number[], fixed: Set<string>, limit: (a: numbe
         }
         const ab = mid(a, b)
         out.push(a, ab, c, ab, b, c)
+        outDone.push(false, false)
       } else if (count === 2) {
         while (flags[2]) {
           ;[a, b, c] = [b, c, a]
@@ -1224,20 +1339,23 @@ function refine(pts: V2[], input: number[], fixed: Set<string>, limit: (a: numbe
         const ab = mid(a, b)
         const bc = mid(b, c)
         out.push(ab, b, bc, a, ab, bc, a, bc, c)
+        outDone.push(false, false, false)
       } else {
         const ab = mid(a, b)
         const bc = mid(b, c)
         const ca = mid(c, a)
         out.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca)
+        outDone.push(false, false, false, false)
       }
     }
     tris = out
+    done = outDone
     if (!split) break
   }
   return tris
 }
 
-function buildMesh(d: string, x0: number, y0: number, w: number, h: number, detail: number): Mesh {
+async function buildMesh(d: string, x0: number, y0: number, w: number, h: number, detail: number): Promise<Mesh> {
   const { R, THICKNESS, ROUND, BEVEL_STEPS, EDGE_BAND } = BADGE
   const edge = BADGE.EDGE * detail
   const faceEdge = BADGE.FACE_EDGE * detail
@@ -1303,10 +1421,11 @@ function buildMesh(d: string, x0: number, y0: number, w: number, h: number, deta
     const dist: number[] = []
     const distOf = (i: number) => (dist[i] ??= nearest(face[i][0], face[i][1]).dist)
     const limit = (a: number, b: number) => (Math.min(distOf(a), distOf(b)) < EDGE_BAND ? nearEdge : faceEdge)
-    const tris = refine(face, earcut(face.flat(), holeStarts), outline, limit)
+    const tris = await refine(face, earcut(face.flat(), holeStarts), outline, limit)
     const inner = face.map((p, i) => (i < ringPoints ? null : nearest(p[0], p[1])))
 
     for (const back of [false, true]) {
+      await nextTurn()
       const ringIds = loops.map((loop) =>
         profile.map((q) =>
           loop.pts.map((_, i) => {
@@ -1347,11 +1466,16 @@ function buildMesh(d: string, x0: number, y0: number, w: number, h: number, deta
 }
 /* ── end of the mesh ── */
 
-/** meshes by detail, viewBox and path, so a mark on the page twice is built once */
-const MESHES = new Map<string, Mesh>()
+/** meshes by detail, viewBox and path, so a mark on the page twice is built once. The map is
+ *  shared on the window by every badge in this family, keyed by the mesh settings too: the
+ *  finishes that build the same domed mesh (same BADGE values, same code) build it once between
+ *  them, so the Effects page builds four meshes where it built eight (2026-10-01: each build is
+ *  a 180 to 490 ms main-thread task on a real GPU). Alone in someone's project it is a plain map. */
+const MESHES: Map<string, Promise<Mesh>> = ((globalThis as { __badgeMeshBuilds?: Map<string, Promise<Mesh>> }).__badgeMeshBuilds ??= new Map())
+const MESH_SETTINGS = JSON.stringify(BADGE)
 function meshFor(d: string, viewBox: string, detail: number) {
-  const key = `${detail}:${viewBox}:${d}`
-  let mesh = MESHES.get(key)
+  const key = `${MESH_SETTINGS}|${detail}:${viewBox}:${d}`
+  let mesh = MESHES.get(key) // a build in flight is shared too
   if (!mesh) {
     const [x0, y0, w, h] = viewBox.split(/[\s,]+/).map(Number)
     mesh = buildMesh(d, x0, y0, w, h, detail)
@@ -1663,7 +1787,7 @@ type Renderer = { draw: (m: Motion) => void; dispose: () => void }
 async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, viewBox: string, detail: number, look: () => Look, onLost: () => void): Promise<Renderer> {
   const [, , w, h] = viewBox.split(/[\s,]+/).map(Number)
   const aspect = h / w
-  const mesh = meshFor(d, viewBox, detail)
+  const mesh = await meshFor(d, viewBox, detail)
   const entry = acquireGpu(gpu)
   let g: Shared
   try {

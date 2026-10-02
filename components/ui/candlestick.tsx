@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -12,9 +12,14 @@ import { cn } from "@/lib/utils"
      is gone; an axis figure steps aside while the price sits on it
    · the other candles dim to 0.35 over 160ms when one is pointed at
    · the legend is the readout (role status) and the chart's name carries the last close
-   · tabular figures are set once on the root */
+   · tabular figures are set once on the root
+   Motion (2026-10-01): once the chart first comes into view, every candle rises out of its
+   own middle (0.6 to full height, with a fade) and every volume bar grows off the floor,
+   left to right under one 380ms stagger, done by about 830ms. CSS transitions on transform,
+   so the 92 marks cost no script per frame. Reduced motion draws the end state. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
+const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)"
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 
@@ -98,6 +103,8 @@ export function Candlestick({
 }) {
   const reduced = useReducedMotion() ?? false
   const svgRef = useRef<SVGSVGElement>(null)
+  const seen = useInView(svgRef, { once: true, amount: 0.3 })
+  const shown = seen || reduced
   const [hi, setHi] = useState<number | null>(null)
   const n = candles.length
 
@@ -137,8 +144,9 @@ export function Candlestick({
   const hue = up ? GREEN : RED
   const priceY = Math.max(PRICE_TOP + 8, Math.min(PRICE_BOT - 8, yP(active.c)))
   const fade = reduced ? "none" : "opacity 160ms"
-  /* the entrance: every candle rises from its own middle, 8ms apart, the whole run under 300ms */
-  const stagger = Math.min(0.008, 0.28 / Math.max(1, n))
+  /* the entrance: every candle rises from its own middle, about 8ms apart, the whole run under 380ms */
+  const stagger = Math.min(0.02, 0.38 / Math.max(1, n))
+  const grow = (i: number) => (reduced ? "none" : `transform 0.45s ${EASE_CSS} ${(i * stagger).toFixed(3)}s, opacity 0.45s ${EASE_CSS} ${(i * stagger).toFixed(3)}s`)
 
   return (
     <div className={cn("w-[560px] tabular-nums", className)}>
@@ -199,20 +207,31 @@ export function Candlestick({
           const bodyTop = yP(Math.max(d.o, d.c))
           const bodyH = Math.max(1, Math.abs(yP(d.o) - yP(d.c)))
           return (
-            <motion.g
-              key={i}
-              initial={reduced ? false : { opacity: 0, scaleY: 0.6 }}
-              animate={{ opacity: 1, scaleY: 1 }}
-              style={{ transformBox: "fill-box", transformOrigin: "50% 50%" }}
-              transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: i * stagger }}
-            >
-              <g style={{ opacity: dim ? 0.35 : 1, transition: fade }}>
-                {/* volume is the same hue at a lower strength */}
-                <rect x={cx(i) - cw / 2} y={yV(d.v)} width={cw} height={VOL_BOT - yV(d.v)} rx={1} fill={barHue} fillOpacity={0.45} />
+            <g key={i} style={{ opacity: dim ? 0.35 : 1, transition: fade }}>
+              {/* volume is the same hue at a lower strength; it grows off the floor */}
+              <rect
+                x={cx(i) - cw / 2}
+                y={yV(d.v)}
+                width={cw}
+                height={VOL_BOT - yV(d.v)}
+                rx={1}
+                fill={barHue}
+                fillOpacity={0.45}
+                style={{ transformOrigin: `0px ${VOL_BOT}px`, transform: shown ? "none" : "scaleY(0)", transition: grow(i) }}
+              />
+              {/* the candle rises out of its own middle, between its high and its low */}
+              <g
+                style={{
+                  transformOrigin: `0px ${((yP(d.h) + yP(d.l)) / 2).toFixed(1)}px`,
+                  transform: shown ? "none" : "scaleY(0.6)",
+                  opacity: shown ? 1 : 0,
+                  transition: grow(i),
+                }}
+              >
                 <line x1={cx(i)} y1={yP(d.h)} x2={cx(i)} y2={yP(d.l)} stroke={barHue} strokeWidth={1} />
                 <rect x={cx(i) - cw / 2} y={bodyTop} width={cw} height={bodyH} rx={1} fill={barHue} />
               </g>
-            </motion.g>
+            </g>
           )
         })}
 

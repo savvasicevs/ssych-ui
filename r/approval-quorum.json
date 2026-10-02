@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "approval-quorum",
+  "type": "registry:ui",
+  "title": "Approval Quorum",
+  "description": "N of M sign off. Press a role to sign or take it back, the meter turns green when the quorum is met",
+  "categories": [
+    "flows"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/approval-quorum.tsx",
+      "content": "\"use client\"\n\nimport { useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Approval Quorum, new through ssych-component (2026-09-29).\n   What it is for: an action that unlocks only when N of M approvers have signed.\n   Read first: the state line, as text: how many are in, how many are still needed, or\n   that the quorum is met.\n   What the pointer does: pointing at an approver dims the others; pressing one signs\n   for that role, pressing again takes the signature back. The coin lifts on the press.\n   Sketch: src/components/lab/ApprovalQuorum.tsx. Kept: the data shape (approvers with\n   name and initials, quorum), one Set of approvals that every number derives from, the\n   meter that walks to the quorum, the lift spring on the coin, the status text, Reset.\n   Changed: no card, header band, outline or rings; approvers are rows with the role and\n   its state written out, so nothing depends on a tooltip; roles, not people; amber is\n   gone from the gate, the meter is ink until the quorum is met and green after; the meter\n   is one segment per needed approval. Each row's state is green once approved and amber\n   while pending (given back 2026-09-30: they are done and waiting states).\n   Formulas:\n   · approved = size of the approvals set\n   · still needed = max(0, quorum − approved)\n   · meter segments filled = min(approved, quorum) of quorum\n   · pending = approvers − approved */\n\nconst LIFT_SPRING = { type: \"spring\", stiffness: 500, damping: 30 } as const\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-up)\"\n/* pending is the waiting state, so it carries amber; a signature is done, so it is green */\nconst AMBER = \"var(--chart-amber)\"\n\nexport interface Approver {\n  /** the role that signs */\n  name: string\n  initials: string\n  /** when it signed, for approvals that arrive with the data */\n  at?: string\n}\n\nexport interface ApprovalQuorumProps {\n  /** the action being held */\n  title?: string\n  approvers?: Approver[]\n  /** approvals needed to unlock */\n  quorum?: number\n  /** indexes of the approvers that have already signed */\n  initial?: number[]\n  className?: string\n}\n\nconst DEFAULT_APPROVERS: Approver[] = [\n  { name: \"Risk\", initials: \"Ri\", at: \"09:14\" },\n  { name: \"Treasury\", initials: \"Tr\", at: \"09:31\" },\n  { name: \"Ops\", initials: \"Op\" },\n  { name: \"Compliance\", initials: \"Co\" },\n  { name: \"Finance\", initials: \"Fi\" },\n]\n\nconst DEFAULT_INITIAL = [0, 1]\n\n/**\n * N of M sign-off. Each role is a row that says where it stands; the meter has one\n * segment per approval needed and turns green with the status line when the last fills.\n */\nexport function ApprovalQuorum({\n  title = \"Release $250,000.00 to settlement\",\n  approvers = DEFAULT_APPROVERS,\n  quorum = 3,\n  initial = DEFAULT_INITIAL,\n  className,\n}: ApprovalQuorumProps) {\n  const reduced = useReducedMotion()\n  /* all state is this set: counts, meter and status derive from it */\n  const [approvals, setApprovals] = useState<Set<number>>(() => new Set(initial))\n  const [hot, setHot] = useState<number | null>(null)\n\n  const count = approvals.size\n  const met = count >= quorum\n  const remaining = Math.max(0, quorum - count)\n  const filled = Math.min(count, quorum)\n  const pending = approvers.length - count\n\n  const toggle = (i: number) =>\n    setApprovals((prev) => {\n      const next = new Set(prev)\n      if (next.has(i)) next.delete(i)\n      else next.add(i)\n      return next\n    })\n\n  return (\n    <div\n      className={cn(\"w-full max-w-[360px] tabular-nums\", className)}\n      role=\"group\"\n      aria-label={`${title}. ${count} of ${quorum} approvals, ${met ? \"quorum met\" : `${remaining} more needed`}`}\n    >\n      <div className=\"flex items-baseline justify-between gap-3 px-3\">\n        <span className=\"truncate text-[13px] font-medium text-foreground/90\">{title}</span>\n      </div>\n\n      <div aria-hidden className=\"mt-3 flex gap-[3px] px-3\">\n        {Array.from({ length: quorum }, (_, i) => (\n          <span\n            key={i}\n            className=\"h-1 flex-1 rounded-full transition-colors duration-200 motion-reduce:transition-none\"\n            style={{ background: i < filled ? (met ? GREEN : \"color-mix(in srgb, var(--foreground) 90%, transparent)\") : \"color-mix(in srgb, var(--foreground) 10%, transparent)\" }}\n          />\n        ))}\n      </div>\n\n      <div role=\"status\" className=\"mt-2 px-3 text-[11.5px]\">\n        {met ? (\n          <motion.span\n            key=\"met\"\n            className=\"inline-block font-medium\"\n            style={{ color: GREEN }}\n            initial={reduced ? false : { opacity: 0, y: 3 }}\n            animate={{ opacity: 1, y: 0 }}\n            transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}\n          >\n            Quorum met · unlocked\n          </motion.span>\n        ) : (\n          /* the count swaps in place as a signature goes in or comes back: a 4px rise\n             through a 2px blur */\n          <motion.span\n            key={count}\n            className=\"inline-block\"\n            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: \"blur(2px)\" }}\n            animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n            transition={{ duration: 0.15, ease: EASE }}\n          >\n            <span className=\"font-medium text-foreground/90\">\n              {count} of {quorum} approved\n            </span>\n            <span className=\"text-foreground/45\">\n              {\" \"}\n              · {remaining} more needed · {pending} pending\n            </span>\n          </motion.span>\n        )}\n      </div>\n\n      <div className=\"mt-2.5\" onPointerLeave={() => setHot(null)}>\n        {approvers.map((a, i) => {\n          const on = approvals.has(i)\n          return (\n            /* the rows rise in once, 35ms apart; the wrapper owns the entrance so the\n               button keeps its own dim */\n            <motion.div\n              key={a.name}\n              initial={reduced ? false : { opacity: 0, y: 6 }}\n              animate={{ opacity: 1, y: 0 }}\n              transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: Math.min(i, 7) * 0.035 }}\n            >\n            <motion.button\n              type=\"button\"\n              aria-pressed={on}\n              aria-label={`${a.name}: ${on ? `approved${a.at ? ` at ${a.at}` : \"\"}, press to take back` : \"pending, press to approve\"}`}\n              onClick={() => toggle(i)}\n              onPointerEnter={() => setHot(i)}\n              onFocus={() => setHot(i)}\n              onBlur={() => setHot(null)}\n              initial={false}\n              animate=\"rest\"\n              whileTap={reduced ? undefined : \"lift\"}\n              /* 12 (the 24px round avatar) + 6 top padding = 18 */\n              className={cn(\n                \"flex w-full items-center gap-3 rounded-[18px] px-3 py-1.5 text-left outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none\",\n                hot !== null && hot !== i && \"opacity-50\",\n              )}\n            >\n              <motion.span\n                aria-hidden\n                variants={{ rest: { y: 0 }, lift: { y: -3 } }}\n                transition={reduced ? { duration: 0 } : LIFT_SPRING}\n                className={cn(\n                  \"grid h-6 w-6 shrink-0 place-items-center rounded-full text-[9px] font-semibold transition-colors duration-200 motion-reduce:transition-none\",\n                  on ? \"bg-foreground text-background\" : \"bg-foreground/[0.06] text-foreground/45\",\n                )}\n              >\n                {a.initials}\n              </motion.span>\n              <span className={cn(\"flex-1 text-[12px] transition-colors duration-200\", on ? \"font-medium text-foreground/90\" : \"text-foreground/70\")}>{a.name}</span>\n              <span className=\"text-[11px] transition-colors duration-200 motion-reduce:transition-none\" style={{ color: on ? GREEN : AMBER }}>\n                {on ? (a.at ? `Approved ${a.at}` : \"Approved\") : \"Pending\"}\n              </span>\n            </motion.button>\n            </motion.div>\n          )\n        })}\n      </div>\n\n      <div className=\"mt-1 flex justify-end px-3\">\n        <button\n          type=\"button\"\n          onClick={() => setApprovals(new Set(initial))}\n          className=\"-mr-2 rounded-full px-2 py-0.5 text-[10.5px] font-medium text-foreground/45 outline-none transition-[color,transform,translate,scale,rotate] duration-150 hover:text-foreground/90 focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:transition-none\"\n        >\n          Reset\n        </button>\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/approval-quorum.tsx"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useId, useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -20,7 +20,10 @@ import { cn } from "@/lib/utils"
    · added `asOf` (optional): the day the history ends on. With it the scrub reads real
      dates; without it the scrub reads weeks back from now. The original read the clock
      of the viewer, which made the sample differ from day to day
-   · `targets[n].color` still wins when it is passed; the default targets no longer set it */
+   · `targets[n].color` still wins when it is passed; the default targets no longer set it
+   Motion (2026-10-01): the entrance waits until the chart is in view, then the history sweeps
+   in left to right through a clip, the now dot lands and the fan sweeps out to the targets;
+   new prices or targets glide the line, the projections, the dots and the gridlines there */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -107,6 +110,11 @@ export function PriceTargetFan({
   const svgRef = useRef<SVGSVGElement>(null)
   const [scrub, setScrub] = useState<number | null>(null)
   const [hotT, setHotT] = useState<number | null>(null)
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  const histClipId = `${uid}-hist`
 
   const hist = useMemo(() => buildHistory(current), [current])
   /* the domain follows the data, so any history and targets fill the height */
@@ -207,9 +215,12 @@ export function PriceTargetFan({
     return { step, out }
   }, [yMin, yMax])
   const still = reduced ? { duration: 0 } : undefined
+  /** a change of data glides between the two states */
+  const morph = still ?? { duration: 0.35, ease: EASE }
+  const fanW = geo.endX - geo.nowX + 40
 
   return (
-    <div className={cn("w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
+    <div ref={rootRef} className={cn("w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
       {/* the headline is the readout: the pointed target, the scrubbed week, or the mean */}
       <div role="status" className="mb-1 flex items-baseline gap-2 px-1">
         {/* the readout swaps in place: a 4px rise through a 2px blur */}
@@ -247,15 +258,26 @@ export function PriceTargetFan({
               <stop offset="0.45" stopColor="var(--foreground)" stopOpacity={0.16} />
               <stop offset="1" stopColor="var(--foreground)" stopOpacity={0.16} />
             </linearGradient>
+            {/* the history sweeps in left to right through this clip, a few px past now for the round cap */}
+            <clipPath id={histClipId}>
+              <motion.rect
+                x={PAD.l - 4}
+                y={0}
+                height={H}
+                initial={reduced ? false : { width: 0 }}
+                animate={{ width: play ? geo.nowX - PAD.l + 8 : 0 }}
+                transition={still ?? { duration: 0.6, ease: EASE }}
+              />
+            </clipPath>
             {/* the fan reveals left to right through this clip, so the dashed projections draw as lines */}
             <clipPath id={clipId}>
               <motion.rect
                 x={geo.nowX}
                 y={0}
                 height={H}
-                initial={{ width: reduced ? geo.endX - geo.nowX + 40 : 0 }}
-                animate={{ width: geo.endX - geo.nowX + 40 }}
-                transition={still ?? { duration: 0.35, ease: EASE, delay: 0.3 }}
+                initial={reduced ? false : { width: 0 }}
+                animate={{ width: play ? fanW : 0 }}
+                transition={still ?? { duration: 0.4, ease: EASE, delay: 0.45 }}
               />
             </clipPath>
           </defs>
@@ -263,10 +285,29 @@ export function PriceTargetFan({
           {/* gridlines and the left price axis */}
           {grid.out.map((v) => (
             <g key={v}>
-              <line x1={PAD.l} y1={y(v)} x2={geo.endX} y2={y(v)} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} strokeDasharray="2 5" />
-              <text x={PAD.l - 7} y={y(v) + 3} textAnchor="end" fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
+              <motion.line
+                x1={PAD.l}
+                x2={geo.endX}
+                stroke="var(--foreground)"
+                strokeOpacity={0.05}
+                strokeWidth={1}
+                strokeDasharray="2 5"
+                initial={false}
+                animate={{ y1: y(v), y2: y(v) }}
+                transition={morph}
+              />
+              <motion.text
+                x={PAD.l - 7}
+                textAnchor="end"
+                fontSize={8.5}
+                fill="var(--foreground)"
+                fillOpacity={0.35}
+                initial={false}
+                animate={{ attrY: y(v) + 3 }}
+                transition={morph}
+              >
                 {grid.step >= 1 ? Math.round(v) : v.toFixed(1)}
-              </text>
+              </motion.text>
             </g>
           ))}
 
@@ -285,18 +326,18 @@ export function PriceTargetFan({
           {/* the now marker */}
           <line x1={geo.nowX} y1={PAD.t} x2={geo.nowX} y2={H - PAD.b} stroke={`url(#${fadeId})`} strokeWidth={1} strokeDasharray="3 3" />
 
-          {/* history draws itself to now */}
+          {/* history sweeps in to now; a new history glides into place */}
           <motion.path
-            d={geo.line}
             fill="none"
             stroke="var(--foreground)"
             strokeOpacity={0.9}
             strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
-            initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={still ?? { duration: 0.4, ease: EASE }}
+            clipPath={`url(#${histClipId})`}
+            initial={false}
+            animate={{ d: geo.line }}
+            transition={morph}
           />
 
           {/* projections */}
@@ -306,9 +347,11 @@ export function PriceTargetFan({
               const dim = hotT !== null && !on
               return (
                 <g key={p.key} style={{ opacity: dim ? 0.35 : 1, transition: reduced ? "none" : "opacity 160ms" }}>
-                  <path
-                    d={p.d}
+                  <motion.path
                     fill="none"
+                    initial={false}
+                    animate={{ d: p.d }}
+                    transition={morph}
                     stroke={p.color}
                     strokeWidth={on ? 2 : 1.4}
                     strokeOpacity={on ? 1 : p.strength}
@@ -329,13 +372,15 @@ export function PriceTargetFan({
                     />
                   )}
                   {/* the radius eases through CSS, as a plain attribute */}
-                  <circle
+                  <motion.circle
                     cx={geo.endX}
-                    cy={p.ty}
                     r={on ? 4 : 3}
                     fill={p.color}
                     fillOpacity={on ? 1 : p.strength}
                     style={{ transition: reduced ? undefined : "r 200ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+                    initial={false}
+                    animate={{ cy: p.ty }}
+                    transition={morph}
                   />
                 </g>
               )
@@ -345,12 +390,11 @@ export function PriceTargetFan({
           {/* the now dot lands as the history arrives */}
           <motion.circle
             cx={geo.nowX}
-            cy={geo.nowY}
             r={3}
             fill="var(--foreground)"
-            initial={{ opacity: reduced ? 1 : 0 }}
-            animate={{ opacity: 1 }}
-            transition={still ?? { duration: 0.2, ease: EASE, delay: 0.3 }}
+            initial={reduced ? false : { opacity: 0, cy: geo.nowY }}
+            animate={{ opacity: play ? 1 : 0, cy: geo.nowY }}
+            transition={still ?? { opacity: { duration: 0.2, ease: EASE, delay: 0.45 }, cy: morph }}
           />
 
           {/* the scrub crosshair glides along the history, so a slow drag reads as one readout */}
@@ -388,10 +432,10 @@ export function PriceTargetFan({
             <motion.div
               key={p.key}
               className="absolute"
-              style={{ left: `${((geo.endX + 7) / W) * 100}%`, top: `${(p.ty / H) * 100}%` }}
-              initial={{ opacity: reduced ? 1 : 0 }}
-              animate={{ opacity: 1 }}
-              transition={still ?? { duration: 0.2, ease: EASE, delay: 0.5 + i * 0.035 }}
+              style={{ left: `${((geo.endX + 7) / W) * 100}%` }}
+              initial={reduced ? false : { opacity: 0, top: `${(p.ty / H) * 100}%` }}
+              animate={{ opacity: play ? 1 : 0, top: `${(p.ty / H) * 100}%` }}
+              transition={still ?? { opacity: { duration: 0.2, ease: EASE, delay: 0.65 + i * 0.035 }, top: morph }}
             >
               <button
                 type="button"

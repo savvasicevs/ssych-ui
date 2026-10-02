@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "info-card",
+  "type": "registry:ui",
+  "title": "Info Card",
+  "description": "A quiet card with a title and one line; pointing at it opens its action row",
+  "categories": [
+    "cards"
+  ],
+  "dependencies": [
+    "clsx",
+    "lucide-react",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/info-card.tsx",
+      "content": "\"use client\"\n\nimport type { ReactNode } from \"react\"\nimport { Send } from \"lucide-react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* the ground is Dialog Stack's top card, value for value (user call, 2026-10-01): a solid\n   8% foreground over the page, no outline */\n/** the library's one card corner, copied from src/components/library/controls.ts (CARD_RADIUS) */\nconst CARD_RADIUS = \"rounded-[24px]\"\n\n/* Info Card, the rail's small card (shell primitives brief, 2026-09-30).\n   What it is for: one statement with one way to act on it: \"Need help?\", \"Request a free\n   component\", \"Generator\". Two or three of them sit under the Pro card in the right rail.\n   Read first: the title, then the line. At rest that is all there is, so a rail of them\n   reads as statements, not as statements with links under them.\n   The pointer: on the card (or the keyboard's focus inside it) the action row opens, its\n   height easing from nothing over 250ms and its label fading in; leaving closes it. A touch screen\n   has no pointer to wait for, so there the row is always open. The action itself is a\n   real link or button, in the tab order even while its row is shut.\n   Taken from: src/components/library/SidebarInfoMenu.tsx, boxClass, titleClass,\n   bodyClass, actionClass and Reveal, class for class. The corner is controls.ts (24px);\n   the text inset is React Bits' 20px.\n   Decided: nothing. The shell's three cards differ only in words and icon, so this is one\n   component with those as props. */\n\nexport interface InfoCardProps {\n  title?: string\n  line?: string\n  action?: string\n  /** the action's icon, a Phosphor glyph at 16px */\n  icon?: ReactNode\n  href?: string\n  onPress?: () => void\n  className?: string\n}\n\n/** The action row: shut until the card is pointed at or focused into, open on touch. */\nfunction Reveal({ children }: { children: ReactNode }) {\n  return (\n    <div className=\"grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-focus-within/box:grid-rows-[1fr] group-focus-within/box:opacity-100 group-hover/box:grid-rows-[1fr] group-hover/box:opacity-100 motion-reduce:transition-[opacity] [@media(hover:none)]:grid-rows-[1fr] [@media(hover:none)]:opacity-100\">\n      <div className=\"flex min-h-0 flex-col overflow-hidden\">{children}</div>\n    </div>\n  )\n}\n\n/** colour 150ms; a press gives to 0.97, dropped under reduced motion */\nconst ACTION = \"mt-3 inline-flex items-center gap-1.5 self-start text-[12px] font-semibold text-foreground/80 transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97] motion-reduce:active:scale-100\"\n\n/**\n * A quiet card with a title, one line, and an action that shows itself when the card\n * is pointed at.\n */\nexport function InfoCard({\n  title = \"Need help?\",\n  line = \"Ask about a component, an install or your own screen.\",\n  action = \"Send a message\",\n  icon = <Send className=\"h-4 w-4\" strokeWidth={1.75} />,\n  href = \"/contact\",\n  onPress,\n  className,\n}: InfoCardProps) {\n  return (\n    <div role=\"group\" aria-label={title} className={cn(\"group/box bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background))] px-5 pb-[18px] pt-[18px]\", CARD_RADIUS, className)}>\n      <div className=\"text-[14px] font-semibold leading-snug text-foreground\">{title}</div>\n      <p className=\"mt-1 text-[11.5px] font-medium leading-[1.55] text-foreground/50\">{line}</p>\n      <Reveal>\n        {onPress ? (\n          <button type=\"button\" onClick={onPress} className={ACTION}>\n            {icon}\n            {action}\n          </button>\n        ) : (\n          <a href={href} className={ACTION}>\n            {icon}\n            {action}\n          </a>\n        )}\n      </Reveal>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/info-card.tsx"
+    }
+  ]
+}

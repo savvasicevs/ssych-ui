@@ -1,7 +1,7 @@
 "use client"
 
 import { useId, useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -15,7 +15,10 @@ import { cn } from "@/lib/utils"
      pointer, and now the move from the open beside it, as one status line
    · the summary has no rule above it and the change is signed text, not a tinted chip
    · the scrub dot has no halo because there is no card colour under it
-   Props are unchanged. */
+   Props are unchanged.
+   Motion (2026-10-01): once the chart is in view the line and its dot field sweep in left to
+   right through one clip (0.9s; they drew on mount, off screen too); a new series morphs the
+   line and the field and glides the gridlines with their ticks */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -63,6 +66,12 @@ export function DottedAreaChart({ symbol = "BTC / USD", prices = DEFAULT_PRICES,
   const svgRef = useRef<SVGSVGElement>(null)
   const [hover, setHover] = useState<number | null>(null)
   const uid = useId().replace(/:/g, "")
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /** a change of data glides between the two states */
+  const morph = reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }
 
   const { data, n, min, max, x, y, line, area } = useMemo(() => {
     const data = prices.length ? prices : [0]
@@ -95,7 +104,7 @@ export function DottedAreaChart({ symbol = "BTC / USD", prices = DEFAULT_PRICES,
   const ticks = [max, max - (max - min) * 0.5, min]
 
   return (
-    <div className={cn("w-[480px] max-w-full tabular-nums", className)}>
+    <div ref={rootRef} className={cn("w-[480px] max-w-full tabular-nums", className)}>
       <div className="flex items-baseline justify-between">
         <span className="text-[12.5px] font-semibold text-foreground/90">{symbol}</span>
         <span className="text-[10px] text-foreground/35">{hover == null ? `${n} bars` : `bar ${hover + 1} of ${n}`}</span>
@@ -130,40 +139,68 @@ export function DottedAreaChart({ symbol = "BTC / USD", prices = DEFAULT_PRICES,
           <clipPath id={`past-${uid}`}>
             <rect x="0" y="0" width={hover == null ? W : x(hover)} height={H} />
           </clipPath>
+          {/* the one entrance: line and field sweep in left to right, a few px wider for the round caps */}
+          <clipPath id={`reveal-${uid}`}>
+            <motion.rect
+              x={-4}
+              y={0}
+              height={H}
+              initial={reduced ? false : { width: 0 }}
+              animate={{ width: play ? W - PAD.r + 8 : 0 }}
+              transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
+            />
+          </clipPath>
         </defs>
 
         {/* gridlines and right-edge price ticks */}
         {ticks.map((v, i) => (
           <g key={i}>
-            <line x1={0} y1={y(v)} x2={W - PAD.r} y2={y(v)} stroke={INK} strokeOpacity={0.05} strokeWidth={1} strokeDasharray="2 4" />
-            <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={8.5} fill={INK} fillOpacity={0.35} className="tabular-nums">
+            <motion.line
+              x1={0}
+              x2={W - PAD.r}
+              stroke={INK}
+              strokeOpacity={0.05}
+              strokeWidth={1}
+              strokeDasharray="2 4"
+              initial={false}
+              animate={{ y1: y(v), y2: y(v) }}
+              transition={morph}
+            />
+            <motion.text
+              x={W - PAD.r + 8}
+              fontSize={8.5}
+              fill={INK}
+              fillOpacity={0.35}
+              className="tabular-nums"
+              initial={false}
+              animate={{ attrY: y(v) + 3 }}
+              transition={morph}
+            >
               {v.toFixed(0)}
-            </text>
+            </motion.text>
           </g>
         ))}
 
         {/* resting state, and the bed the lit copy sits on while scrubbing; the group owns
-            the hover dim (160ms), the paths own the one draw-in on mount (under 400ms) */}
-        <g style={{ opacity: hover == null ? 1 : DIM, transition: "opacity 160ms ease-out" }}>
+            the hover dim (160ms), the clip owns the one sweep in, the paths morph on new data */}
+        <g clipPath={`url(#reveal-${uid})`} style={{ opacity: hover == null ? 1 : DIM, transition: "opacity 160ms ease-out" }}>
           <motion.path
-            d={area}
             fill={`url(#dots-${uid})`}
             mask={`url(#mask-${uid})`}
-            initial={reduced ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.1 }}
+            initial={false}
+            animate={{ d: area }}
+            transition={morph}
           />
           <motion.path
-            d={line}
             fill="none"
             stroke={INK}
             strokeOpacity={0.9}
             strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
-            initial={reduced ? false : { pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            initial={false}
+            animate={{ d: line }}
+            transition={morph}
           />
         </g>
 

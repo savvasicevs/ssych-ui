@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "radial-gauge",
+  "type": "registry:ui",
+  "title": "Radial Gauge",
+  "description": "A pass rate on a 270 degree dial over its bands; pointing at a band reads its range in percent and checks",
+  "categories": [
+    "charts"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/radial-gauge.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useRef, useState } from \"react\"\nimport { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Radial Gauge, promoted from a lab sketch through ssych-component (2026-09-29).\n   What it is for: a pass rate against the bands it is judged by. 18 of 25 checks.\n   Read first: the percent in the middle; the count it came from sits under it.\n   The pointer: pointing at a band, on the thin outer scale or in the list under the dial,\n   brings it to full strength, dims the others and reads that band's range above the dial, in\n   percent and in whole checks.\n   Sketch: lab/RadialGauge. Kept: the 270 degree dial open at the bottom, the draw from\n   the left shoulder, percent over count, the three bands.\n   Changed: the ring is a filled shape 7px deep, not an 8px stroke; the card, its header\n   band and inner shadow are gone; the arc is ink and only the band name carries colour\n   (green for the top band, red for the bottom one, the middle one is ink; amber is gone);\n   the bands are drawn on the dial as a scale, so the thresholds can be seen, not only\n   listed; the legend is sentence case.\n   Formulas:\n   · percent = value ÷ max, rounded                          18 ÷ 25 = 72%\n   · sweep of the arc = 270° × value ÷ max\n   · a band holds from its own start up to the next band's start\n   · first whole count of a band = ceil(start% × max)        ceil(0.70 × 25) = 18\n   · last whole count of a band = the next band's first − 1, or max for the top band\n   Colour given back (2026-09-30): landing in a band is a threshold crossed, so the arc\n   takes the tone of the band it reached (green in pass, red in fail, ink where the band\n   has no tone), and each band of the scale and its key carry their own tone, strongest for\n   the band reached. Pointing at a band brings it to full strength in its own colour.\n   Motion (2026-10-01): the arc sweeps from the left shoulder to the share once the dial is a\n   third in view (900ms); a new value sweeps on from where the arc stands (400ms); reduced\n   motion draws the arc at its share at once. */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-up)\"\nconst RED = \"var(--chart-down)\"\nconst ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`\n\nexport interface GaugeBand {\n  name: string\n  /** where the band starts, in percent; it runs to the start of the next one */\n  from: number\n  /** what landing here means: green, red or no colour */\n  tone?: \"up\" | \"down\" | \"none\"\n}\n\nexport interface RadialGaugeProps {\n  value?: number\n  max?: number\n  label?: string\n  /** what is being counted, written after the numbers */\n  noun?: string\n  /** lowest first */\n  bands?: GaugeBand[]\n  className?: string\n}\n\nconst DEFAULT_BANDS: GaugeBand[] = [\n  { name: \"Fail\", from: 0, tone: \"down\" },\n  { name: \"Watch\", from: 40, tone: \"none\" },\n  { name: \"Pass\", from: 70, tone: \"up\" },\n]\n\nconst SIZE = 180\nconst MID = SIZE / 2\nconst H = 150\nconst SWEEP = 270\nconst START = 135\nconst R_OUT = 66\nconst R_IN = 59\nconst CAP = (R_OUT - R_IN) / 2\nconst S_OUT = 74\nconst S_IN = 72\n/** the gap between two bands of the scale, in degrees */\nconst GAP = 2\n\nconst at = (deg: number, r: number) => {\n  const a = (deg * Math.PI) / 180\n  return `${(MID + r * Math.cos(a)).toFixed(2)} ${(MID + r * Math.sin(a)).toFixed(2)}`\n}\n\n/** a band of the ring as a closed shape, `from` to `to` degrees of sweep, round at both ends */\nfunction ring(from: number, to: number, rOut: number, rIn: number, cap: number) {\n  const a = START + from\n  const b = START + Math.max(from + 0.01, to)\n  const large = b - a > 180 ? 1 : 0\n  return `M ${at(a, rOut)} A ${rOut} ${rOut} 0 ${large} 1 ${at(b, rOut)} A ${cap} ${cap} 0 0 1 ${at(b, rIn)} A ${rIn} ${rIn} 0 ${large} 0 ${at(a, rIn)} A ${cap} ${cap} 0 0 1 ${at(a, rOut)} Z`\n}\n\n/** a band's range in words: \"40 to 69%\", \"70% and over\" */\nconst span = (b: { from: number; to: number }) => (b.to >= 100 ? `${b.from}% and over` : `${b.from} to ${b.to - 1}%`)\n\nconst toneOf = (t: GaugeBand[\"tone\"]) => (t === \"up\" ? GREEN : t === \"down\" ? RED : ink(90))\n/** a band's mark at a strength: its own hue mixed toward nothing, ink for a band with no tone */\nconst markOf = (t: GaugeBand[\"tone\"], pct: number) =>\n  t === \"up\" || t === \"down\" ? `color-mix(in srgb, ${toneOf(t)} ${pct}%, transparent)` : ink(Math.round(pct * 0.6))\n\n/**\n * A dial for a rate: the arc draws on from the left shoulder to the share reached, over a\n * thin scale of the bands it is judged by. Pointing at a band reads its range.\n */\nexport function RadialGauge({\n  value = 18,\n  max = 25,\n  label = \"Checks passed\",\n  noun = \"checks\",\n  bands = DEFAULT_BANDS,\n  className,\n}: RadialGaugeProps) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<number | null>(null)\n\n  const share = Math.min(1, Math.max(0, value / Math.max(1, max)))\n  const pct = Math.round(share * 100)\n\n  const dialRef = useRef<HTMLDivElement>(null)\n  /* the sweep waits until the dial is a third in view, then plays once */\n  const inView = useInView(dialRef, { once: true, amount: 0.3 })\n  /** the first sweep is the entrance; later ones follow a new value */\n  const swept = useRef(false)\n  const drawn = useMotionValue(reduced ? share : 0)\n  const d = useTransform(drawn, (v) => ring(0, SWEEP * v, R_OUT, R_IN, CAP))\n  useEffect(() => {\n    if (reduced) {\n      drawn.set(share)\n      return\n    }\n    if (!inView) return\n    const run = animate(drawn, share, {\n      duration: swept.current ? 0.4 : 0.9,\n      ease: EASE,\n      onComplete: () => {\n        swept.current = true\n      },\n    })\n    return () => run.stop()\n  }, [drawn, share, reduced, inView])\n\n  const sorted = [...bands].sort((a, b) => a.from - b.from)\n  const ranges = sorted.map((b, i) => {\n    const to = sorted[i + 1]?.from ?? 100\n    const first = Math.ceil((b.from / 100) * max)\n    const last = i === sorted.length - 1 ? max : Math.ceil((to / 100) * max) - 1\n    return { ...b, to, first, last }\n  })\n  /* the band the value has landed in: the last one whose start it has reached */\n  const mine = ranges.reduce((k, b, i) => (share * 100 >= b.from ? i : k), 0)\n  const shown = hot === null ? null : ranges[hot]\n\n  return (\n    <div role=\"group\" aria-label={label} className={cn(\"flex w-[320px] max-w-full flex-col items-center tabular-nums\", className)}>\n      {/* no visible title (2026-10-01): the count under the percent says what is counted */}\n      <div className=\"flex w-full items-baseline justify-center\">\n        <span role=\"status\" className=\"whitespace-nowrap text-[10.5px] text-foreground/45\">\n          {/* the line swaps in place: 4px and a 2px blur, 150ms */}\n          <motion.span\n            key={hot ?? -1}\n            className=\"inline-block\"\n            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: \"blur(2px)\" }}\n            animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n            transition={{ duration: 0.15, ease: EASE }}\n          >\n          {shown ? (\n            <>\n              <span className=\"font-medium text-foreground/90\">{shown.name}</span> · {span(shown)} · {shown.first} to {shown.last} {noun}\n            </>\n          ) : (\n            <span className=\"font-medium\" style={{ color: toneOf(ranges[mine]?.tone) }}>\n              {ranges[mine]?.name}\n            </span>\n          )}\n          </motion.span>\n        </span>\n      </div>\n\n      <div ref={dialRef} className=\"relative mt-3\" style={{ width: SIZE, height: H }}>\n        <svg\n          width={SIZE}\n          height={H}\n          viewBox={`0 0 ${SIZE} ${H}`}\n          role=\"img\"\n          aria-label={`${label}: ${pct} percent, ${value} of ${max} ${noun}, ${ranges[mine]?.name ?? \"\"}`}\n          onPointerLeave={() => setHot(null)}\n        >\n          <path d={ring(0, SWEEP, R_OUT, R_IN, CAP)} fill={ink(8)} />\n          <motion.path d={d} fill={markOf(ranges[mine]?.tone, 100)} style={{ transition: reduced ? \"none\" : \"fill 160ms\" }} />\n          {ranges.map((b, i) => {\n            const from = (b.from / 100) * SWEEP + (i === 0 ? 0 : GAP / 2)\n            const to = (b.to / 100) * SWEEP - (i === ranges.length - 1 ? 0 : GAP / 2)\n            return (\n              <g key={b.name} onPointerEnter={() => setHot(i)}>\n                {/* a wider band to land on: the scale itself is 2px deep */}\n                <path d={ring(from, to, S_OUT + 6, R_OUT + 1, 0.01)} fill=\"transparent\" />\n                <path\n                  d={ring(from, to, S_OUT, S_IN, (S_OUT - S_IN) / 2)}\n                  fill={markOf(b.tone, hot === i ? 100 : i === mine ? 70 : 35)}\n                  style={{ opacity: hot !== null && hot !== i ? 0.4 : 1, transition: reduced ? \"none\" : \"opacity 160ms, fill 160ms\" }}\n                />\n              </g>\n            )\n          })}\n        </svg>\n\n        <div className=\"pointer-events-none absolute inset-x-0 flex flex-col items-center\" style={{ top: MID - 20 }}>\n          <span className=\"text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90\">{pct}%</span>\n          <span className=\"mt-1.5 text-[10px] text-foreground/45\">\n            {value} of {max} {noun}\n          </span>\n        </div>\n      </div>\n\n      <div className=\"-mt-1 flex items-center gap-1\" onPointerLeave={() => setHot(null)}>\n        {ranges.map((b, i) => (\n          <button\n            key={b.name}\n            type=\"button\"\n            aria-label={`${b.name}: ${span(b)}, ${b.first} to ${b.last} ${noun}${i === mine ? \", the band reached\" : \"\"}`}\n            onPointerEnter={() => setHot(i)}\n            onFocus={() => setHot(i)}\n            onBlur={() => setHot(null)}\n            className={cn(\n              \"flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[10.5px] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.08]\",\n              hot !== null && hot !== i && \"opacity-40\",\n            )}\n          >\n            <span\n              aria-hidden\n              className=\"h-[2px] w-2.5 rounded-full\"\n              style={{ background: markOf(b.tone, hot === i ? 100 : i === mine ? 70 : 35), transition: reduced ? \"none\" : \"background-color 160ms\" }}\n            />\n            {/* the key is the band names only (2026-10-01): the ranges wrapped at this width; they stay in the\n                aria-label and in the readout above the dial when a band is pointed at */}\n            <span className={i === mine ? \"font-medium text-foreground/90\" : \"text-foreground/45\"}>{b.name}</span>\n          </button>\n        ))}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/radial-gauge.tsx"
+    }
+  ]
+}

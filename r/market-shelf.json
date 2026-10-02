@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "market-shelf",
+  "type": "registry:ui",
+  "title": "Market Shelf",
+  "description": "A shelf of market tiles with price, day change and week line; pointing at a tile reads its week",
+  "categories": [
+    "cards"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/market-shelf.tsx",
+      "content": "\"use client\"\n\nimport { useState, type ReactNode } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Market Shelf, promoted from a lab sketch through ssych-component (2026-09-29).\n   What it is for: a named shelf of markets (trending, top movers, newly listed) as small\n   pressable tiles: what each costs, how it moved today, and its week as a line.\n   Read first: the four prices.\n   The pointer: pointing at a tile steps the others back, brings its line to full strength\n   and writes its week under the shelf; pressing a tile opens that market; \"See all\" takes a\n   fill.\n   Sketch used: src/components/lab/MarketShelfPro.tsx. Kept: the titled shelf with a way\n   to see all, tiles of mark, name, price, the day's change and a 7 day line. Changed: no\n   outlined tiles, the flame beside the title is gone, the change is signed coloured text\n   with no chip, \"See all\" is ink (it was blue). Each week's line takes the direction of its\n   week, green up and red down (colour pass, 2026-09-30). Coin marks keep\n   their own colour: a disc in var(--coin-<symbol>) with white letters, or the real mark\n   through `renderIcon`; a symbol with no colour on file is two letters on ink.\n   Sample data fixed: the sketch priced BNB at $0.10 and XRP at $7.85 and listed Solana\n   twice at two prices. The four are now BNB, SOL, XRP and DOGE at plausible prices, and\n   each week's line ends on the price it is shown with.\n   Formulas:\n   · week's change   (last − first of the 7 day series) ÷ first × 100\n   · week's range    lowest and highest of the 7 day series\n   · up, down        count of tiles whose day's change is above or below zero */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-up)\"\nconst RED = \"var(--chart-down)\"\n/** A hue as text: its lightness is capped in the light theme so small figures stay readable. */\nconst ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`\n\n/** brand colours of the sample coins, each the fallback of its --coin-<symbol> property */\nconst COIN: Record<string, string> = {\n  BNB: \"var(--coin-bnb, #f3ba2f)\",\n  SOL: \"var(--coin-sol, #9945ff)\",\n  XRP: \"var(--coin-xrp, #23292f)\",\n  DOGE: \"var(--coin-doge, #c2a633)\",\n}\n\n/** a coin's mark: a disc in its own colour with its first letters in white; a symbol with no\n *  colour on file is two letters on ink. `renderIcon` draws the real mark instead. */\nfunction Mark({ symbol, size, renderIcon }: { symbol: string; size: number; renderIcon?: (symbol: string, size: number) => ReactNode }) {\n  if (renderIcon) return <>{renderIcon(symbol, size)}</>\n  const disc = COIN[symbol.toUpperCase()]\n  return (\n    <span\n      aria-hidden\n      className=\"grid shrink-0 place-items-center rounded-full font-semibold leading-none\"\n      style={{\n        width: size,\n        height: size,\n        background: disc ?? \"color-mix(in srgb, var(--foreground) 7%, transparent)\",\n        color: disc ? \"var(--coin-glyph, #fff)\" : \"color-mix(in srgb, var(--foreground) 70%, transparent)\",\n        fontSize: Math.max(8, Math.round(size * 0.36)),\n      }}\n    >\n      {symbol.slice(0, 2)}\n    </span>\n  )\n}\n\nexport interface ShelfMarket {\n  name: string\n  symbol: string\n  /** percent over 24 hours */\n  change: number\n  /** 7 days of prices, oldest to newest; the last one is the price shown */\n  week: number[]\n}\n\nexport interface MarketShelfProps {\n  title?: string\n  markets?: ShelfMarket[]\n  onSelect?: (symbol: string) => void\n  onSeeAll?: () => void\n  /** draws a coin's mark in place of the coloured disc */\n  renderIcon?: (symbol: string, size: number) => ReactNode\n  className?: string\n}\n\n/** a seeded path from one price to another; the wobble is pinned to nothing at both ends */\nfunction bridge(start: number, end: number, seed: number, n: number, wobble: number) {\n  let s = seed\n  let drift = 0\n  const out: number[] = []\n  for (let i = 0; i < n; i++) {\n    s = (s * 16807) % 2147483647\n    const t = i / (n - 1)\n    drift = drift * 0.82 + (s / 2147483647 - 0.5) * wobble\n    out.push(start + (end - start) * t + drift * Math.sin(Math.PI * t))\n  }\n  return out\n}\n\n/** four points a day for seven days, from the price a week ago to the price now */\nconst week = (price: number, weekChange: number, seed: number) => bridge(price / (1 + weekChange / 100), price, seed, 28, price * 0.05)\n\nconst DEFAULT_MARKETS: ShelfMarket[] = [\n  { name: \"BNB\", symbol: \"BNB\", change: 5.6, week: week(578, 4.1, 19) },\n  { name: \"Solana\", symbol: \"SOL\", change: -2.2, week: week(148.2, -6.3, 11) },\n  { name: \"XRP\", symbol: \"XRP\", change: -1.2, week: week(2.2, 2.4, 13) },\n  { name: \"Dogecoin\", symbol: \"DOGE\", change: 3.1, week: week(0.162, -3.8, 17) },\n]\n\nconst W = 56\nconst H = 22\n\nconst usd = (v: number) => `$${v.toLocaleString(\"en-US\", { minimumFractionDigits: v < 10 ? 4 : 2, maximumFractionDigits: v < 10 ? 4 : 2 })}`\nconst signedPct = (v: number) => `${v >= 0 ? \"+\" : \"−\"}${Math.abs(v).toFixed(1)}%`\n\n/**\n * A shelf of markets as tiles: price, the day's signed change and the week as a line.\n * Pointing at a tile writes its week under the shelf; pressing it opens the market.\n */\nexport function MarketShelf({ title = \"Trending\", markets = DEFAULT_MARKETS, onSelect, onSeeAll, renderIcon, className }: MarketShelfProps) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<string | null>(null)\n\n  const rows = markets.map((m) => {\n    const data = m.week.length ? m.week : [0]\n    const last = data.length - 1\n    const min = Math.min(...data)\n    const max = Math.max(...data)\n    const span = Math.max(1e-9, max - min)\n    const line = data.map((v, i) => `${i === 0 ? \"M\" : \"L\"} ${((i / Math.max(1, last)) * W).toFixed(2)} ${(2 + (1 - (v - min) / span) * (H - 4)).toFixed(2)}`).join(\" \")\n    return { ...m, price: data[last], min, max, line, weekChange: data[0] ? ((data[last] - data[0]) / data[0]) * 100 : 0 }\n  })\n  const shown = rows.find((r) => r.symbol === hot)\n  const ups = rows.filter((r) => r.change > 0).length\n  const downs = rows.filter((r) => r.change < 0).length\n\n  return (\n    <div className={cn(\"w-full max-w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]\", className)} role=\"group\" aria-label={`${title}, ${rows.length} markets`}>\n      <div className=\"mb-2 flex items-center justify-between px-1\">\n        <span className=\"text-[13px] font-medium text-foreground/90\">{title}</span>\n        <button\n          type=\"button\"\n          onClick={onSeeAll}\n          className=\"-mr-2 h-7 rounded-full px-2.5 text-[11px] font-medium text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] hover:bg-foreground/[0.08] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] focus-visible:text-foreground/90\"\n        >\n          See all\n        </button>\n      </div>\n\n      <div className=\"grid grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-1\" onPointerLeave={() => setHot(null)}>\n        {rows.map((r, i) => {\n          const on = hot === r.symbol\n          return (\n            <button\n              key={r.symbol}\n              type=\"button\"\n              aria-label={`${r.name}, ${usd(r.price)}, ${signedPct(r.change)} today, ${signedPct(r.weekChange)} over 7 days`}\n              onClick={() => onSelect?.(r.symbol)}\n              onPointerEnter={() => setHot(r.symbol)}\n              onFocus={() => setHot(r.symbol)}\n              onBlur={() => setHot(null)}\n              /* 12 (the 24px coin mark) + 12 padding = 24 */\n              className={cn(\n                \"flex min-w-0 flex-col gap-2 rounded-[24px] bg-foreground/[0.04] p-3 text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] active:scale-[0.98]\",\n                hot !== null && !on && \"opacity-50\",\n              )}\n            >\n              <span className=\"flex items-center gap-2\">\n                <Mark symbol={r.symbol} size={24} renderIcon={renderIcon} />\n                <span className=\"flex min-w-0 flex-col\">\n                  <span className=\"truncate text-[11.5px] font-medium leading-tight text-foreground/90\">{r.name}</span>\n                  {/* the ticker only when it says something the name does not (BNB, XRP are both) */}\n                  {r.symbol !== r.name && <span className=\"text-[9.5px] text-foreground/45\">{r.symbol}</span>}\n                </span>\n              </span>\n              <span className=\"text-[13px] font-semibold text-foreground/90\">{usd(r.price)}</span>\n              <span className=\"flex items-end justify-between gap-2\">\n                <span className=\"text-[10.5px] font-medium\" style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>\n                  {signedPct(r.change)}\n                </span>\n                <svg aria-hidden width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill=\"none\" className=\"shrink-0 overflow-visible\">\n                  <motion.path\n                    d={r.line}\n                    stroke={r.weekChange >= 0 ? GREEN : RED}\n                    strokeOpacity={on ? 1 : 0.7}\n                    strokeWidth=\"1.5\"\n                    strokeLinecap=\"round\"\n                    strokeLinejoin=\"round\"\n                    style={{ transition: reduced ? \"none\" : \"stroke-opacity 160ms\" }}\n                    initial={{ pathLength: reduced ? 1 : 0 }}\n                    animate={{ pathLength: 1 }}\n                    transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: Math.min(i, 7) * 0.035 }}\n                  />\n                </svg>\n              </span>\n            </button>\n          )\n        })}\n      </div>\n\n      <div role=\"status\" className=\"mt-2 truncate px-1 text-[10.5px] text-foreground/45\">\n        {/* the line swaps in place as the pointer moves (text swap: 4px, 2px blur, 150ms) from a\n            dimmed copy, so it never blinks out; reduced motion keeps the fade */}\n        <motion.span\n          key={hot ?? \"rest\"}\n          className=\"block truncate\"\n          initial={reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: \"blur(2px)\" }}\n          animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n          transition={{ duration: 0.15, ease: EASE }}\n        >\n        {shown ? (\n          <>\n            <span className=\"font-medium text-foreground/90\">{shown.symbol}</span> · 7 days{\" \"}\n            <span style={{ color: ink(shown.weekChange >= 0 ? GREEN : RED) }}>{signedPct(shown.weekChange)}</span> · between {usd(shown.min)} and {usd(shown.max)}\n          </>\n        ) : (\n          `${rows.length} markets · ${ups} up, ${downs} down today`\n        )}\n        </motion.span>\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/market-shelf.tsx"
+    }
+  ]
+}

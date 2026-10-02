@@ -1,7 +1,7 @@
 "use client"
 
 import { useId, useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -17,7 +17,11 @@ import { cn } from "@/lib/utils"
    · the change is written with a true minus sign, the amount too
    · the digits still roll in once, in 0.4s (it was 0.9s)
    · the chart names itself to a screen reader
-   Props are the same. `className="border-0"` no longer does anything: there is no outline. */
+   Props are the same. `className="border-0"` no longer does anything: there is no outline.
+   Motion (2026-10-01): nothing runs until the block first comes into view. Then the line and
+   its fill are wiped in from the left by one clip, 850ms, while the balance digits roll in
+   (the odometer was already here, 400ms, 35ms apart). A new `series` of the same length
+   morphs the line and the fill point for point in 380ms. Reduced motion draws it all at once. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -80,8 +84,8 @@ const stackedRules = (p: string) => `
 ${p}.abr-chart{top:auto;bottom:24px;height:var(--abr-band);width:100%;-webkit-mask-image:none;mask-image:none}
 ${p}.abr-block{padding-top:4px;padding-bottom:calc(var(--abr-band) + 38px)}`
 
-/** one rolling digit column: a 0 to 9 stack sliding into place */
-function OdometerDigit({ ch, order, animate }: { ch: string; order: number; animate: boolean }) {
+/** one rolling digit column: a 0 to 9 stack sliding into place once `go` turns on */
+function OdometerDigit({ ch, order, animate, go }: { ch: string; order: number; animate: boolean; go: boolean }) {
   const d = ch.charCodeAt(0) - 48
   if (!animate) return <span style={cell}>{ch}</span>
   return (
@@ -89,7 +93,7 @@ function OdometerDigit({ ch, order, animate }: { ch: string; order: number; anim
       <motion.span
         style={{ display: "block" }}
         initial={{ y: "0em" }}
-        animate={{ y: `${(-d * DIGIT_EM).toFixed(2)}em` }}
+        animate={{ y: go ? `${(-d * DIGIT_EM).toFixed(2)}em` : "0em" }}
         transition={{ duration: 0.4, ease: EASE, delay: order * 0.035 }}
       >
         {Array.from({ length: 10 }, (_, n) => (
@@ -144,6 +148,10 @@ export function AssetsBalanceCard({
   const frozen = !!reduced
   const gradientId = useId().replace(/:/g, "")
   const signal = up ? GREEN : RED
+  const rootRef = useRef<HTMLDivElement>(null)
+  /* the wipe and the roll wait until the block is on screen */
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const shown = seen || frozen
 
   const [scrub, setScrub] = useState<Scrub | null>(null)
   /** set on the first scrub, so the odometer rolls on mount only */
@@ -220,6 +228,7 @@ export function AssetsBalanceCard({
 
   return (
     <div
+      ref={rootRef}
       className={cn("abr-root relative tabular-nums", stacked && "abr-stacked", className)}
       style={{ minHeight: MIN_H + pull, ["--abr-band" as string]: `${BAND_H + pull}px` }}
       role="group"
@@ -248,8 +257,8 @@ ${stackedRules(".abr-root.abr-stacked ")}
           WebkitMaskImage: "linear-gradient(90deg, transparent 0%, black 26%)",
         }}
         initial={reduced ? false : { clipPath: "inset(-10% 100% -10% 0%)" }}
-        animate={{ clipPath: "inset(-10% 0% -10% 0%)" }}
-        transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+        animate={{ clipPath: shown ? "inset(-10% 0% -10% 0%)" : "inset(-10% 100% -10% 0%)" }}
+        transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -257,15 +266,19 @@ ${stackedRules(".abr-root.abr-stacked ")}
             <stop offset="100%" stopColor={signal} stopOpacity="0" />
           </linearGradient>
         </defs>
+        {/* keyed by length: a same-length series morphs point for point, another length is drawn at once */}
         <motion.path
-          d={areaPath}
+          key={`a${series.length}`}
+          initial={false}
+          animate={{ d: areaPath }}
+          transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
           fill={`url(#${gradientId})`}
-          initial={reduced ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.1 }}
         />
-        <path
-          d={linePath}
+        <motion.path
+          key={`l${series.length}`}
+          initial={false}
+          animate={{ d: linePath }}
+          transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
           fill="none"
           stroke={signal}
           strokeWidth="1.8"
@@ -311,7 +324,7 @@ ${stackedRules(".abr-root.abr-stacked ")}
                 >
                   {balanceChars.map((ch, i) =>
                     /\d/.test(ch) ? (
-                      <OdometerDigit key={i} ch={ch} order={++digitOrder} animate={!frozen && !scrubbed} />
+                      <OdometerDigit key={i} ch={ch} order={++digitOrder} animate={!frozen && !scrubbed} go={shown} />
                     ) : (
                       <span key={i} style={cell}>{ch}</span>
                     ),

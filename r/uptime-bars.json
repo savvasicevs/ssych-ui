@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "uptime-bars",
+  "type": "registry:ui",
+  "title": "Uptime Bars",
+  "description": "Ninety days of uptime as a bar a day, scrub to read any day's uptime and its incident",
+  "categories": [
+    "charts"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/uptime-bars.tsx",
+      "content": "\"use client\"\n\nimport { useMemo, useRef, useState } from \"react\"\nimport { motion, useInView, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Uptime Bars, written new through ssych-component (2026-09-29).\n   What it is for: ninety days of one service, a bar a day, so a bad day is found by eye.\n   Read first: the uptime percent for the window.\n   The pointer: scrub the bars (or focus them and use the arrow keys). The pointed day stays\n   full and the rest dim; the headline becomes that day's uptime with its date, and the line\n   under it names the incident, its severity and the time lost. Nothing floats.\n   Reference: browsable \"uptime\" (90 Day Uptime Bars, Uptime Status Page, Status Page). Only\n   the index descriptions were read, no source. Idea taken: one thin bar per day with the\n   day's record behind the pointer. Colour (2026-09-30, direction): a clean day is healthy,\n   so it is green, quiet at rest and full under the pointer; a minor incident is degraded,\n   amber; a major or critical one is red, deeper the worse it was.\n   Formulas:\n   · day uptime     = (1440 − minutes down that day) / 1440\n   · window uptime  = 1 − Σ minutes down / (days × 1440)\n                      sample: 1 − 205 / (90 × 1440) = 99.84%\n   · incidents      = count of days that carry an incident (sample: 6)\n   · time down      = Σ minutes down (sample: 6 + 41 + 4 + 118 + 9 + 27 = 205 min = 3 h 25 min)\n   Motion (2026-10-01): the bars grow from the floor once the strip is a third in view, left\n   to right with the stagger spread over 360ms and 400ms a bar (760ms in all), as CSS\n   transitions so ninety bars cost no script per frame; reduced motion shows them standing.\n   No data changes here, so nothing else moves. */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst CSS_EASE = \"cubic-bezier(0.16, 1, 0.3, 1)\"\nconst RED = \"var(--chart-down)\"\nconst GREEN = \"var(--chart-up)\"\nconst AMBER = \"var(--chart-amber)\"\nconst DAY_MINUTES = 1440\n\nexport type UptimeSeverity = \"minor\" | \"major\" | \"critical\"\n\nexport interface UptimeIncident {\n  title: string\n  severity: UptimeSeverity\n  /** minutes the service was down that day */\n  downMinutes: number\n}\n\nexport interface UptimeDay {\n  /** ISO day, 2026-09-28 */\n  date: string\n  incident?: UptimeIncident\n}\n\nexport interface UptimeBarsProps {\n  /** oldest first, one entry per day */\n  days?: UptimeDay[]\n  /** the service the bars belong to, written beside the window's uptime */\n  title?: string\n  className?: string\n}\n\nconst SAMPLE_INCIDENTS: Record<string, UptimeIncident> = {\n  \"2026-07-09\": { title: \"Elevated API error rate\", severity: \"minor\", downMinutes: 6 },\n  \"2026-07-23\": { title: \"Webhook deliveries delayed\", severity: \"major\", downMinutes: 41 },\n  \"2026-08-04\": { title: \"Dashboard slow to load\", severity: \"minor\", downMinutes: 4 },\n  \"2026-08-19\": { title: \"Database failover in eu-west\", severity: \"critical\", downMinutes: 118 },\n  \"2026-09-02\": { title: \"Token refresh failures\", severity: \"minor\", downMinutes: 9 },\n  \"2026-09-17\": { title: \"Inference queue backlog\", severity: \"major\", downMinutes: 27 },\n}\n\n/* 31 + 31 + 28 = 90 days, 2026-07-01 to 2026-09-28 */\nconst SAMPLE_MONTHS = [\n  { month: 7, days: 31 },\n  { month: 8, days: 31 },\n  { month: 9, days: 28 },\n]\n\nconst two = (v: number) => String(v).padStart(2, \"0\")\n\nconst DEFAULT_DAYS: UptimeDay[] = SAMPLE_MONTHS.flatMap(({ month, days }) =>\n  Array.from({ length: days }, (_, d): UptimeDay => {\n    const date = `2026-${two(month)}-${two(d + 1)}`\n    const incident = SAMPLE_INCIDENTS[date]\n    return incident ? { date, incident } : { date }\n  }),\n)\n\nconst MONTHS = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\n\n/** \"2026-08-19\" reads as \"Aug 19\": taken from the string, so no clock is involved */\nconst dayLabel = (iso: string) => {\n  const parts = iso.split(\"-\")\n  return `${MONTHS[Number(parts[1]) - 1] ?? \"\"} ${Number(parts[2])}`\n}\n\nconst downOf = (d: UptimeDay | undefined) => d?.incident?.downMinutes ?? 0\nconst dayUptime = (d: UptimeDay | undefined) => ((DAY_MINUTES - downOf(d)) / DAY_MINUTES) * 100\nconst span = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`)\n\n/** severity: degraded is amber, down is red, and the red deepens with how bad it was */\nconst SEVERITY: Record<UptimeSeverity, string> = {\n  minor: AMBER,\n  major: `color-mix(in srgb, ${RED} 68%, transparent)`,\n  critical: RED,\n}\nconst barFill = (d: UptimeDay, on: boolean) =>\n  d.incident ? SEVERITY[d.incident.severity] : `color-mix(in srgb, ${GREEN} ${on ? 100 : 45}%, transparent)`\n\nconst W = 460\nconst H = 40\n\n/**\n * Ninety days of uptime as thin bars. A clean day is quiet ink and a day with an incident\n * is red, deeper the worse it was. Scrubbing reads any day in place of the headline.\n */\nexport function UptimeBars({ days = DEFAULT_DAYS, title = \"API uptime\", className }: UptimeBarsProps) {\n  const reduced = useReducedMotion()\n  const boxRef = useRef<HTMLDivElement>(null)\n  /* the bars wait until the strip is a third in view, then grow once */\n  const play = useInView(boxRef, { once: true, amount: 0.3 }) || !!reduced\n  const [hot, setHot] = useState<number | null>(null)\n  /** the last move came from the arrow keys: the headline then changes at once */\n  const viaKey = useRef(false)\n\n  const n = days.length\n  const stats = useMemo(() => {\n    const down = days.reduce((s, d) => s + downOf(d), 0)\n    return {\n      down,\n      incidents: days.filter((d) => d.incident).length,\n      uptime: n ? (1 - down / (n * DAY_MINUTES)) * 100 : 100,\n    }\n  }, [days, n])\n\n  const step = W / Math.max(1, n)\n  const bar = Math.max(1, step - 2)\n  const clamp = (i: number) => Math.max(0, Math.min(n - 1, i))\n\n  const onMove = (e: React.PointerEvent) => {\n    const el = boxRef.current\n    if (!el || !n) return\n    const r = el.getBoundingClientRect()\n    viaKey.current = false\n    setHot(clamp(Math.floor(((e.clientX - r.left) / r.width) * n)))\n  }\n  const onKey = (e: React.KeyboardEvent) => {\n    viaKey.current = true\n    if (e.key === \"ArrowLeft\") setHot((h) => clamp((h ?? n) - 1))\n    else if (e.key === \"ArrowRight\") setHot((h) => clamp((h ?? -1) + 1))\n    else if (e.key === \"Escape\") setHot(null)\n    else return\n    e.preventDefault()\n  }\n\n  const day = hot === null ? undefined : days[hot]\n  const first = days[0]\n  const last = days[n - 1]\n  /* month starts that sit clear of both ends get a tick of their own */\n  const ticks = days\n    .map((d, i) => ({ d, i }))\n    .filter(({ d, i }) => d.date.endsWith(\"-01\") && i > 8 && i < n - 9)\n\n  return (\n    <div className={cn(\"w-[460px] max-w-full tabular-nums\", className)}>\n      {/* between the window and a scrubbed day the headline crosses over (4px, 2px blur,\n          150ms); while scrubbing it follows the pointer in place, and keys change it at once */}\n      <motion.div\n        key={day ? \"day\" : \"window\"}\n        role=\"status\"\n        initial={viaKey.current ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: \"blur(2px)\" }}\n        animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n        transition={{ duration: 0.15, ease: EASE }}\n      >\n        <div className=\"flex items-baseline gap-2\">\n          <span className=\"text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90\">\n            {(day ? dayUptime(day) : stats.uptime).toFixed(2)}%\n          </span>\n          <span className=\"text-[10px] text-foreground/45\">{day ? dayLabel(day.date) : title}</span>\n        </div>\n        <div className=\"mt-1.5 truncate text-[10.5px] text-foreground/45\">\n          {day ? (\n            day.incident ? (\n              <>\n                <span className=\"text-foreground/90\">{day.incident.title}</span> ·{\" \"}\n                <span style={{ color: SEVERITY[day.incident.severity] }}>{day.incident.severity}</span> · {span(day.incident.downMinutes)} down\n              </>\n            ) : (\n              \"No incident\"\n            )\n          ) : (\n            `${stats.incidents} incidents · ${span(stats.down)} down`\n          )}\n        </div>\n      </motion.div>\n\n      <div\n        ref={boxRef}\n        tabIndex={0}\n        role=\"group\"\n        aria-label={`${title} by day, arrow keys move between days`}\n        className=\"relative mt-3 cursor-crosshair touch-none rounded-[3px] outline-none focus-visible:bg-foreground/[0.04]\"\n        onPointerMove={onMove}\n        onPointerLeave={() => setHot(null)}\n        onKeyDown={onKey}\n        onBlur={() => setHot(null)}\n      >\n        <svg\n          viewBox={`0 0 ${W} ${H}`}\n          className=\"block w-full overflow-visible\"\n          role=\"img\"\n          aria-label={`${title}, ${stats.uptime.toFixed(2)}% uptime over ${n} days, ${stats.incidents} incidents, ${span(stats.down)} down`}\n        >\n          {days.map((d, i) => {\n            const on = hot === i\n            return (\n              /* the group owns the dim so it never fights the entrance inside */\n              <g key={d.date} style={{ opacity: hot !== null && !on ? 0.4 : 1, transition: \"opacity 150ms ease-out\" }}>\n                {/* each bar grows from the floor once; ninety bars share a 360ms stagger */}\n                <rect\n                  x={i * step + 1}\n                  y={0}\n                  width={bar}\n                  height={H}\n                  rx={1}\n                  fill={barFill(d, on)}\n                  style={{\n                    transformBox: \"fill-box\",\n                    transformOrigin: \"50% 100%\",\n                    transform: play ? \"none\" : \"scaleY(0)\",\n                    transition: reduced ? \"fill 150ms ease-out\" : `fill 150ms ease-out, transform 400ms ${CSS_EASE} ${((i / Math.max(1, n)) * 0.36).toFixed(3)}s`,\n                  }}\n                />\n              </g>\n            )\n          })}\n        </svg>\n      </div>\n\n      <div className=\"relative mt-1.5 h-3 text-[9px] text-foreground/35\" aria-hidden>\n        {first && <span className=\"absolute left-0\">{dayLabel(first.date)}</span>}\n        {ticks.map(({ d, i }) => (\n          <span key={d.date} className=\"absolute\" style={{ left: `${(i / n) * 100}%` }}>\n            {dayLabel(d.date)}\n          </span>\n        ))}\n        {last && n > 1 && <span className=\"absolute right-0\">{dayLabel(last.date)}</span>}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/uptime-bars.tsx"
+    }
+  ]
+}

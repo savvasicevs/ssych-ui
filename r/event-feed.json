@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "event-feed",
+  "type": "registry:ui",
+  "title": "Event Feed",
+  "description": "Market events grouped by day with price and move; point at one to read its move in dollars",
+  "categories": [
+    "data"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/event-feed.tsx",
+      "content": "\"use client\"\n\nimport { useState, type ReactNode } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Event Feed, promoted from a lab sketch through ssych-component (2026-09-29).\n   What it is for: what happened to the names being watched, grouped by day, with the\n   price each event left behind.\n   Read first: the headline of each event. The ticker and the time sit above it, the price\n   and the signed move to the right.\n   The pointer: point at an event, or tab to it, and the others dim; the readout at the top\n   turns the percent into dollars. Press an event to keep it read out while the\n   pointer moves on; press it again to let go.\n   Lab sketch: src/components/lab/EventFeed.tsx. Kept: days as groups, the data shape\n   (symbol, time, headline, price, delta) and the tabular price column. Changed: no card\n   around each day and no header band; the move is text in green or red, not a pill, and a\n   fall is red, not amber; the coin is a fill without a ring. Sample prices were not\n   plausible (one ticker at two far prices) and the headlines did not belong to their\n   tickers: both are rewritten, and the two AAPL prints now agree with each other.\n   Formulas:\n   · price before = price / (1 + delta / 100)      (228.02 / 0.987 = 231.02)\n   · move         = price − price before           (228.02 − 231.02 = −3.00)\n   · up and down  = count of events by the sign of delta (sample: 2 up, 2 down)    Marks (2026-09-30): a token shows its real mark (TokenIcon), a company or a wallet its\n   real logo (BrandIcon); two letters on an ink disc only where no mark exists.\n   Shipped alone: a mark is a disc in the brand's colour with the ticker's first letters in\n   white; pass `renderIcon` to draw the real marks instead. */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst GREEN = \"var(--chart-up)\"\nconst RED = \"var(--chart-down)\"\n\nexport type FeedEvent = {\n  symbol: string\n  time: string\n  headline: string\n  /** the price after the event */\n  price: number\n  /** the move on the event, in percent */\n  delta: number\n}\n\nexport type FeedDay = { day: string; events: FeedEvent[] }\n\nexport interface EventFeedProps {\n  days?: FeedDay[]\n  title?: string\n  /** draws a ticker's mark in place of the brand-coloured disc */\n  renderIcon?: (symbol: string, size: number) => ReactNode\n  className?: string\n}\n\n/** brand discs by ticker; the hex is only the fallback of the custom property */\nconst BRAND: Record<string, string> = {\n  AAPL: \"var(--coin-aapl, #7d7d82)\",\n  SMCI: \"var(--coin-smci, #151f6d)\",\n  MSFT: \"var(--coin-msft, #00a4ef)\",\n  NVDA: \"var(--coin-nvda, #76b900)\",\n  GOOGL: \"var(--coin-googl, #4285f4)\",\n  AMZN: \"var(--coin-amzn, #ff9900)\",\n  META: \"var(--coin-meta, #0467df)\",\n  TSLA: \"var(--coin-tsla, #cc0000)\",\n}\n\n/** a ticker's mark: the caller's drawing, the brand disc, or two letters on ink */\nfunction Mark({ symbol, size, renderIcon }: { symbol: string; size: number; renderIcon?: EventFeedProps[\"renderIcon\"] }) {\n  if (renderIcon) return <span className=\"mt-0.5 inline-flex shrink-0\">{renderIcon(symbol, size)}</span>\n  const disc = BRAND[symbol.toUpperCase()]\n  return (\n    <span\n      aria-hidden\n      className={cn(\"mt-0.5 grid shrink-0 place-items-center rounded-full text-[8.5px] font-semibold\", !disc && \"bg-foreground/[0.06] text-foreground/70\")}\n      // oxlint-disable-next-line shadcn/no-raw-colors -- the glyph on a brand disc is white in both themes\n      style={{ width: size, height: size, background: disc, color: disc ? \"white\" : undefined }}\n    >\n      {symbol.slice(0, 2)}\n    </span>\n  )\n}\n\nconst DEFAULT_DAYS: FeedDay[] = [\n  {\n    day: \"Today, September 1\",\n    events: [\n      { symbol: \"AAPL\", time: \"12:30\", headline: \"Hotel chains add room keys to phone wallets; 14% of guests at branded hotels now open the door with a phone.\", price: 228.02, delta: -1.3 },\n      { symbol: \"SMCI\", time: \"11:05\", headline: \"Server maker files its delayed annual report and clears the exchange's listing deadline.\", price: 41.86, delta: 6.4 },\n    ],\n  },\n  {\n    day: \"Yesterday, August 31\",\n    events: [\n      { symbol: \"AAPL\", time: \"16:10\", headline: \"Teardown shows the new desktop's power board is cut out to seat taller parts and save height.\", price: 231.02, delta: -0.6 },\n      { symbol: \"MSFT\", time: \"14:45\", headline: \"On-device models now rewrite text and sum up notifications without a round trip to the cloud.\", price: 441.2, delta: 0.8 },\n    ],\n  },\n]\n\nconst signed = (v: number, dp = 2) => `${v >= 0 ? \"+\" : \"−\"}${Math.abs(v).toFixed(dp)}`\nconst before = (e: FeedEvent) => e.price / (1 + e.delta / 100)\n\n/**\n * A market feed in the Ink register: events under their day, each a ticker, a two-line\n * headline and the price it left. Pointing at one dims the rest and reads its move in\n * dollars in the readout at the top.\n */\nexport function EventFeed({ days = DEFAULT_DAYS, title = \"What's happening\", renderIcon, className }: EventFeedProps) {\n  const reduced = useReducedMotion()\n  const [hover, setHover] = useState<string | null>(null)\n  const [pin, setPin] = useState<string | null>(null)\n  const hot = hover ?? pin\n\n  const all = days.flatMap((d, di) => d.events.map((e, ei) => ({ ...e, id: `${di}-${ei}` })))\n  const ups = all.filter((e) => e.delta >= 0).length\n  const shown = all.find((e) => e.id === hot)\n\n  let order = 0\n\n  return (\n    <div className={cn(\"w-full max-w-[520px] tabular-nums\", className)} role=\"group\" aria-label={`${title}, ${all.length} events, ${ups} up, ${all.length - ups} down`}>\n      {/* no visible title (2026-10-01): the name lives in the group's aria-label; the readout leads */}\n      <div className=\"flex items-baseline gap-3 px-3 pb-1\">\n        <span role=\"status\" className=\"truncate text-[10.5px] text-foreground/45\">\n          {/* the line crosses over when the event changes (4px, 2px blur, 150ms) */}\n          <motion.span\n          key={shown?.id ?? \"rest\"}\n          className=\"inline-block\"\n          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: \"blur(2px)\" }}\n          animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n          transition={{ duration: 0.15, ease: EASE }}\n        >\n          {shown ? (\n            <>\n              <span className=\"font-medium text-foreground/90\">{shown.symbol}</span> ${before(shown).toFixed(2)} to ${shown.price.toFixed(2)},{\" \"}\n              <span style={{ color: shown.delta >= 0 ? GREEN : RED }}>{signed(shown.price - before(shown))}</span>\n            </>\n          ) : (\n            `${all.length} events · ${ups} up, ${all.length - ups} down`\n          )}\n          </motion.span>\n        </span>\n      </div>\n\n      <div onPointerLeave={() => setHover(null)}>\n        {days.map((d, di) => (\n          <div key={d.day} role=\"group\" aria-label={`${d.day}, ${d.events.length} events`}>\n            <div className=\"px-3 pb-1.5 pt-4\">\n              <span className=\"text-[11px] text-foreground/45\">{d.day}</span>\n            </div>\n            {d.events.map((e, ei) => {\n              const id = `${di}-${ei}`\n              const i = order++\n              const up = e.delta >= 0\n              return (\n                /* the outer wrapper owns the dim so it never fights the entrance inside */\n                <div key={id} className=\"transition-opacity duration-200 motion-reduce:transition-none\" style={{ opacity: hot !== null && hot !== id ? 0.45 : 1 }}>\n                  <motion.button\n                    type=\"button\"\n                    aria-pressed={pin === id}\n                    aria-label={`${e.symbol}, ${e.time}, ${e.headline} $${e.price.toFixed(2)}, ${signed(e.delta)}%`}\n                    onPointerEnter={() => setHover(id)}\n                    onFocus={() => setHover(id)}\n                    onBlur={() => setHover(null)}\n                    onClick={() => setPin((p) => (p === id ? null : id))}\n                    className={cn(\n                      \"flex w-full items-start gap-3 border-t border-foreground/[0.05] px-3 py-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none\",\n                      pin === id && \"bg-foreground/[0.03]\",\n                    )}\n                    initial={reduced ? false : { opacity: 0, y: 4 }}\n                    animate={{ opacity: 1, y: 0 }}\n                    transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: i * 0.035 }}\n                  >\n                    <Mark symbol={e.symbol} size={24} renderIcon={renderIcon} />\n                    <span className=\"min-w-0 flex-1\">\n                      <span className=\"flex items-baseline gap-2\">\n                        <span className=\"text-[11.5px] font-semibold text-foreground/90\">{e.symbol}</span>\n                        <span className=\"text-[10px] text-foreground/35\">{e.time}</span>\n                      </span>\n                      <span className=\"mt-1 block text-[12px] leading-[1.5] text-foreground/70\">{e.headline}</span>\n                    </span>\n                    <span className=\"flex shrink-0 items-baseline gap-2.5 pt-px\">\n                      <span className=\"w-[52px] text-right text-[11.5px] text-foreground/90\">${e.price.toFixed(2)}</span>\n                      <span className=\"w-[46px] text-right text-[11px] font-medium\" style={{ color: up ? GREEN : RED }}>\n                        {signed(e.delta)}%\n                      </span>\n                    </span>\n                  </motion.button>\n                </div>\n              )\n            })}\n          </div>\n        ))}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/event-feed.tsx"
+    }
+  ]
+}

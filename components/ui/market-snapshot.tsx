@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -16,7 +16,14 @@ import { cn } from "@/lib/utils"
    · nothing moves for longer than 400ms and nothing overshoots: the settle is 360ms and
      the period fill 250ms, both on the house ease (they were 480ms and 380ms)
    · the price and the move are a status readout, so scrubbing is read out in place
-   Props are unchanged. */
+   Props are unchanged.
+   Motion (2026-10-01): the line wipes in from the left once, 850ms, when the block first
+   comes into view (each period used to wipe its own line in from blank). A period switch
+   or a landed refresh now carries the old view into the new one in 380ms: the new line
+   starts drawn at the old window's scale and position (the same prices sit where they sat)
+   and eases to its own, so a longer period opens outward and a refresh slides the new
+   price in from the right. The live dot rides the line's end. Reduced motion draws every
+   state at once. */
 
 const UP = "var(--chart-up)"
 const DOWN = "var(--chart-down)"
@@ -108,6 +115,10 @@ export function MarketSnapshot({
   const [pull, setPull] = useState(0)
   const [phase, setPhase] = useState<Phase>("idle")
   const plotRef = useRef<HTMLSpanElement>(null)
+  const lineRef = useRef<SVGPathElement>(null)
+  const dotRef = useRef<HTMLElement>(null)
+  const seen = useInView(plotRef, { once: true, amount: 0.3 })
+  const shown = seen || reduced
   const drag = useRef<{ id: number; x: number; y: number; axis: "none" | "x" | "y" } | null>(null)
   const timers = useRef<number[]>([])
   useEffect(() => {
@@ -124,8 +135,41 @@ export function MarketSnapshot({
     const lo = Math.min(...data)
     const hi = Math.max(...data)
     const pts = data.map((v, i) => ({ x: (i / Math.max(1, data.length - 1)) * VB_W, y: 4 + (1 - (v - lo) / (hi - lo || 1)) * (VB_H - 8) }))
-    return { pts, d: smoothPath(pts) }
+    return { pts, d: smoothPath(pts), lo, hi }
   }, [data])
+
+  /* the view morph. A window is the last `count` prices of a series `total` long, drawn
+     between `lo` and `hi`. The new line is first placed where the old view would have drawn
+     the same prices, x' = sx·x + tx and y' = sy·y + ty, then eased to no transform. The stroke
+     does not scale (non-scaling-stroke), so only the shape moves */
+  const view = { count: data.length, total: series.length, lo: plot.lo, hi: plot.hi, values }
+  const lastView = useRef(view)
+  useLayoutEffect(() => {
+    const a = lastView.current
+    lastView.current = view
+    const line = lineRef.current
+    const changed = a.count !== view.count || a.total !== view.total || a.lo !== view.lo || a.hi !== view.hi
+    if (reduced || !line || !changed || a.values !== view.values || typeof line.animate !== "function") return
+    const r0 = a.hi - a.lo || 1
+    const r1 = view.hi - view.lo || 1
+    const sx = (view.count - 1) / Math.max(1, a.count - 1)
+    const tx = (((view.total - view.count) - (a.total - a.count)) / Math.max(1, a.count - 1)) * VB_W
+    const sy = r1 / r0
+    const ty = VB_H - 4 - ((VB_H - 8) * (view.lo - a.lo + r1)) / r0 - 4 * sy
+    const opts = { duration: 380, easing: EASE_CSS }
+    line.animate([{ transform: `translate(${tx.toFixed(3)}px, ${ty.toFixed(3)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})` }, { transform: "none" }], opts)
+    /* the dot sits on the last price; it starts where the old view drew that price. Layout
+       pixels: the plot's own width, and the 92px band */
+    const dot = dotRef.current
+    const w = plotRef.current?.offsetWidth ?? 0
+    if (!dot || !w) return
+    const end = plot.pts[plot.pts.length - 1]
+    const dx = ((sx * end.x + tx - end.x) / VB_W) * w
+    const dy = ((sy * end.y + ty - end.y) / VB_H) * 92
+    dot.animate([{ translate: `${dx.toFixed(2)}px ${dy.toFixed(2)}px` }, { translate: "0 0" }], opts)
+    // the view is rebuilt every render; the layout effect only acts when its numbers move
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.count, view.total, view.lo, view.hi, view.values, reduced])
 
   const at = Math.min(hover ?? data.length - 1, data.length - 1)
   const price = data[at]
@@ -288,18 +332,17 @@ export function MarketSnapshot({
         <span
           ref={plotRef}
           className="relative mb-1.5 mt-5 block cursor-crosshair touch-pan-y"
-          style={{ color: lineHue, paddingBlock: PAD_Y }}
+          style={{ color: lineHue, paddingBlock: PAD_Y, transition: reduced ? undefined : "color 200ms" }}
           onPointerMove={(e) => e.pointerType === "mouse" && phase !== "pull" && scrubTo(e.clientX)}
           onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
         >
           {/* the line is stretched with a stroke that keeps its width, so it draws in by
-              a wipe from the left instead of a dash; each period draws its own line in */}
+              a wipe from the left instead of a dash, once; the view morph keeps inside it */}
           <motion.span
-            key={period}
             className="block"
-            initial={reduced ? false : { clipPath: "inset(-10% 100% -10% -10%)" }}
-            animate={{ clipPath: "inset(-10% -10% -10% -10%)" }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            initial={reduced ? false : { clipPath: "inset(-10% 100% -10% -2%)" }}
+            animate={{ clipPath: shown ? "inset(-10% -2% -10% -2%)" : "inset(-10% 100% -10% -2%)" }}
+            transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }}
           >
             <svg
               viewBox={`0 0 ${VB_W} ${VB_H}`}
@@ -308,7 +351,17 @@ export function MarketSnapshot({
               role="img"
               aria-label={`${name} price ${money(price)} dollars, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent over the ${WINDOW_LABEL[period]}`}
             >
-              <path d={plot.d} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              <path
+                ref={lineRef}
+                d={plot.d}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                style={{ transformOrigin: "0 0", transformBox: "view-box" }}
+              />
             </svg>
           </motion.span>
           {/* the guide and the dot are HTML over the stretched SVG, so they keep their shape */}
@@ -318,13 +371,16 @@ export function MarketSnapshot({
             style={{ top: PAD_Y, bottom: PAD_Y, left: `${point.x}%`, opacity: hover == null ? 0 : 0.28 }}
           />
           <i
+            ref={dotRef}
             aria-hidden
             className="pointer-events-none absolute -ml-[3.5px] -mt-[3.5px] h-[7px] w-[7px] rounded-full bg-current"
             style={{
               left: `${point.x}%`,
               top: `calc(${PAD_Y}px + (100% - ${PAD_Y * 2}px) * ${(point.y / VB_H).toFixed(4)})`,
               scale: hover == null ? 1 : 1.3,
-              transition: reduced ? "none" : `scale 160ms ${EASE_CSS}`,
+              /* it lights once the wipe has reached the end of the line */
+              opacity: shown ? 1 : 0,
+              transition: reduced ? "none" : `scale 160ms ${EASE_CSS}, opacity 250ms ${EASE_CSS} 350ms`,
             }}
           />
         </span>

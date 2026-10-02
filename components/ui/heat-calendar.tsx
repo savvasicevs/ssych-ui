@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -22,14 +22,17 @@ import { cn } from "@/lib/utils"
    · `color` takes any CSS colour and defaults to the foreground token (it was a hex
      string with a blue default). A hex still works
    · `endDate` defaults to a fixed day, 27 Sep 2026, not to the day of viewing, so the
-     sample is the same on every render. Pass `endDate` for a live calendar */
+     sample is the same on every render. Pass `endDate` for a live calendar
+   Motion (2026-10-01): the cells settle in on the diagonal once the grid is in view (it
+   played on mount, off screen too), over about 0.7s; a level filter or new values ease the
+   dim and the tint in place, nothing reflows */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /* the house lift spring: cells are physical objects, so they settle instead of easing */
 const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const ACCENT = "var(--chart-1)"
-/** per diagonal step of the entrance; 22 diagonals on 16 weeks land inside 300ms */
-const STAGGER = 0.012
+/** per diagonal step of the entrance; 22 diagonals on 16 weeks land inside 400ms */
+const STAGGER = 0.017
 
 /** Deterministic activity field so demo renders agree (quieter weekends). */
 const demoLevel = (w: number, d: number) => {
@@ -122,10 +125,15 @@ export function HeatCalendar({
   const [step, setStep] = useState<number | null>(null)
   /* the entrance owns the cells until it has landed; the hover lift takes over after */
   const [settled, setSettled] = useState(false)
+  /* the entrance plays once, when a third of the grid is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
   useEffect(() => {
+    if (!play) return
     const t = setTimeout(() => setSettled(true), reduced ? 0 : (weeks + 6) * STAGGER * 1000 + 320)
     return () => clearTimeout(t)
-  }, [weeks, reduced])
+  }, [weeks, reduced, play])
 
   const end = useMemo(() => startOfDay(endDate), [endDate])
   const start = useMemo(() => addDays(mondayOf(end), -(weeks - 1) * 7), [end, weeks])
@@ -200,6 +208,7 @@ export function HeatCalendar({
 
   return (
     <div
+      ref={rootRef}
       className={cn("w-fit tabular-nums", className)}
       role="group"
       aria-label={`${unit} per day, ${fmtRange.format(start)} to ${fmtRange.format(end)}, ${total} in total`}
@@ -293,11 +302,13 @@ export function HeatCalendar({
                     animate={
                       settled
                         ? { opacity: 1, scale: lift, transition: reduced ? { duration: 0 } : LIFT_SPRING }
-                        : {
-                            opacity: 1,
-                            scale: 1,
-                            transition: reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: STAGGER * (w + d) },
-                          }
+                        : !play
+                          ? { opacity: 0, scale: 0.8 }
+                          : {
+                              opacity: 1,
+                              scale: 1,
+                              transition: reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: STAGGER * (w + d) },
+                            }
                     }
                   />
                 </motion.button>

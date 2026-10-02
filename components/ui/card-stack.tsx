@@ -59,7 +59,7 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveIndex((prev) => (prev - 1 + cards.length) % cards.length)}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,0.7)] transition-colors duration-300 hover:text-foreground/85"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,calc(0.7*var(--shadow-k,1)))] transition-colors duration-300 hover:text-foreground/85"
             style={CIRCLE_STYLE}
             aria-label="Previous project"
           >
@@ -67,7 +67,7 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
           </button>
           <button
             onClick={() => setActiveIndex((prev) => (prev + 1) % cards.length)}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,0.7)] transition-colors duration-300 hover:text-foreground/85"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,calc(0.7*var(--shadow-k,1)))] transition-colors duration-300 hover:text-foreground/85"
             style={CIRCLE_STYLE}
             aria-label="Next project"
           >
@@ -100,7 +100,7 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
                     open(card.id)
                   }}
                   className={cn(
-                    "group absolute inset-0 cursor-pointer overflow-hidden rounded-[28px] shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]",
+                    "group absolute inset-0 cursor-pointer overflow-hidden rounded-[28px] shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]",
                     isTop && "cursor-grab active:cursor-grabbing"
                   )}
                 >

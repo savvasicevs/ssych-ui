@@ -209,9 +209,9 @@ function AddressBar({
   // compositor layer and bought nothing visible — §5 says glass has to be earned.
   const variantStyles = {
     chrome:
-      "bg-foreground/[0.04] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset]",
+      "bg-foreground/[0.04] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,calc(0.03*var(--shadow-k,1)))_inset]",
     safari:
-      "bg-foreground/[0.03] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)_inset]",
+      "bg-foreground/[0.03] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,calc(0.03*var(--shadow-k,1)))_inset]",
   }
   // mobile: anchor to the right edge so the bar can't clip off-screen (sidebar sits on the
   // left, so this also sits it over the content area); desktop (sm+): centered.
@@ -426,7 +426,7 @@ export function BrowserWindow({
   }
 
   const frameClass = `
-        relative overflow-hidden rounded-2xl border shadow-[0_24px_70px_-24px_rgba(0,0,0,0.75)] light:shadow-[0_16px_44px_-26px_rgba(15,23,42,0.25)]
+        relative overflow-hidden rounded-2xl border shadow-[0_24px_70px_-24px_rgba(0,0,0,calc(0.75*var(--shadow-k,1)))] light:shadow-[0_16px_44px_-26px_rgba(15,23,42,0.25)]
         h-full w-full ${themeClasses} ${className} flex flex-col
       `
 

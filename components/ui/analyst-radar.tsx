@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -23,6 +23,10 @@ const DEFAULT_AXES = ["Value", "Growth", "Profit", "Momentum", "Health", "Qualit
 const DEFAULT_PRIMARY = [78, 64, 82, 55, 71, 68]
 const DEFAULT_SECONDARY = [60, 58, 65, 62, 55, 60]
 
+/* Motion (2026-10-01): once the chart is in view the sector shape, then the company shape,
+   fades and settles from 0.9 about the centre (it was 0.6 on mount, off screen too), landed
+   by 0.7s; the legend now fades a series out and back instead of remounting it, and new
+   scores morph each shape in place */
 export interface AnalystRadarProps {
   title?: string
   /** Sits in the header until a spoke is hovered, then the read-out takes over. */
@@ -61,6 +65,10 @@ export function AnalystRadar({
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<number | null>(null)
   const [show, setShow] = useState({ primary: true, secondary: true })
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
 
   const n = axes.length
   const angle = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / n
@@ -70,9 +78,39 @@ export function AnalystRadar({
     return [CX + r * Math.cos(a), CY + r * Math.sin(a)] as const
   }
   const poly = (vals: number[]) => vals.map((v, i) => pt(v, i).join(",")).join(" ")
+  /** the same polygon as a path, so a change of scores can morph it */
+  const shapeOf = (vals: number[]) => `M${vals.map((v, i) => pt(v, i).map((c) => c.toFixed(2)).join(",")).join(" L")} Z`
+  /** the chart centre as a fraction of the shape's own box, so the settle scales about it */
+  const originOf = (vals: number[]) => {
+    const ps = vals.map((v, i) => pt(v, i))
+    const xs = ps.map((p) => p[0])
+    const ys = ps.map((p) => p[1])
+    const x0 = Math.min(...xs)
+    const y0 = Math.min(...ys)
+    return {
+      originX: (CX - x0) / (Math.max(...xs) - x0 || 1),
+      originY: (CY - y0) / (Math.max(...ys) - y0 || 1),
+    }
+  }
+  /** settle in on view, fade on a legend toggle, morph on new scores */
+  const shapeMotion = (vals: number[], on: boolean, delay: number) => {
+    const d = shapeOf(vals)
+    return {
+      style: { ...originOf(vals), pointerEvents: on ? undefined : ("none" as const) },
+      initial: reduced ? (false as const) : { opacity: 0, scale: 0.9, d },
+      animate: { opacity: play && on ? 1 : 0, scale: play ? 1 : 0.9, d },
+      transition: reduced
+        ? { duration: 0 }
+        : {
+            opacity: { duration: 0.4, ease: EASE, delay },
+            scale: { duration: 0.6, ease: EASE, delay },
+            d: { duration: 0.35, ease: EASE },
+          },
+    }
+  }
 
   return (
-    <div className={cn("w-[300px]", className)}>
+    <div ref={rootRef} className={cn("w-[300px]", className)}>
       <div className="mb-1 flex items-baseline justify-between px-1">
         <span className="text-[13px] font-medium" style={{ color: TEXT }}>
           {title}
@@ -121,35 +159,23 @@ export function AnalystRadar({
           )
         })}
 
-        {/* comparison series — dashed outline, sits behind */}
-        {show.secondary && (
-          <motion.polygon
-            points={poly(secondary)}
-            fill={`color-mix(in srgb, ${secondaryColor} 8%, transparent)`}
-            stroke={secondaryColor}
-            strokeOpacity={0.7}
-            strokeWidth={1.4}
-            strokeDasharray="3 2"
-            initial={{ opacity: reduced ? 1 : 0, scale: reduced ? 1 : 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.5, ease: EASE }}
-            style={{ transformOrigin: `${CX}px ${CY}px` }}
-          />
-        )}
+        {/* comparison series — dashed outline, sits behind; muting fades it rather than removing it */}
+        <motion.path
+          fill={`color-mix(in srgb, ${secondaryColor} 8%, transparent)`}
+          stroke={secondaryColor}
+          strokeOpacity={0.7}
+          strokeWidth={1.4}
+          strokeDasharray="3 2"
+          {...shapeMotion(secondary, show.secondary, 0)}
+        />
 
         {/* subject series — filled */}
-        {show.primary && (
-          <motion.polygon
-            points={poly(primary)}
-            fill={`color-mix(in srgb, ${primaryColor} 16%, transparent)`}
-            stroke={primaryColor}
-            strokeWidth={1.8}
-            initial={{ opacity: reduced ? 1 : 0, scale: reduced ? 1 : 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.55, ease: EASE, delay: 0.08 }}
-            style={{ transformOrigin: `${CX}px ${CY}px` }}
-          />
-        )}
+        <motion.path
+          fill={`color-mix(in srgb, ${primaryColor} 16%, transparent)`}
+          stroke={primaryColor}
+          strokeWidth={1.8}
+          {...shapeMotion(primary, show.primary, 0.08)}
+        />
 
         {/* vertex dots on the hovered axis */}
         {hot !== null && (

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "allocation-treemap",
+  "type": "registry:ui",
+  "title": "Allocation Treemap",
+  "description": "Holdings as tiles sized by their share of the book; point at a tile to read its weight and value",
+  "categories": [
+    "charts"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/allocation-treemap.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useMemo, useRef, useState } from \"react\"\nimport { motion, useInView, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Allocation Treemap, new through ssych-component (2026-09-29).\n   What it is for: seeing how a book is split, where the area of a tile is the share of\n   the book it holds.\n   Read first: the largest tile, top left, the strongest ink.\n   The pointer: pointing at a tile, or tabbing to it, turns it the accent, dims the rest\n   and reads its weight and its value in the line above the map.\n   Sketch: lab/AllocationTreemap. Kept from it: the holdings and their weights, the book,\n   the squarified layout that measures its own box so tiles stay near square at any\n   shape, the `height` prop for a plot band, the eased re-tiling when the weights change,\n   and the readout in the header.\n   Rebuilt: the per-holding colour is dropped from the data (it was blue, green, amber and\n   purple by position). Tiles are one ink at several strengths, strongest for the largest\n   weight, and only the pointed tile takes var(--chart-1). The outlined, filled frame\n   around the map and the text shadow are gone. Tiles are laid out largest first, which\n   is what the squarifier needs to keep them near square.\n   Formulas, all from `holdings` and `book`:\n   · tile area = weight / sum of weights × area of the map\n   · share     = weight / sum of weights × 100\n   · value     = weight / sum of weights × book\n   · strength  = the tile's rank by weight picks a step of STEPS, largest first\n   Motion (2026-10-01): once the map first comes into view the tiles settle in largest first,\n   a fade and 0.96 to full size, 40ms apart, done by about 700ms (it ran on mount, in 280ms).\n   New weights or a new box re-tile in one 320ms glide, still by layout transforms. Reduced\n   motion draws the end state and does not glide. */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst ACCENT = \"var(--chart-1)\"\n\nexport interface TreemapHolding {\n  name: string\n  /** any unit: weights are taken against their own sum */\n  weight: number\n}\n\nexport interface AllocationTreemapProps {\n  holdings?: TreemapHolding[]\n  /** dollars under management; a tile's value is its share of this */\n  book?: number\n  /** the map's name, read to assistive tech only */\n  title?: string\n  /** map height in px; left out, the map keeps a 100:62 frame */\n  height?: number\n  className?: string\n}\n\nconst DEFAULT_BOOK = 128400\n\nconst DEFAULT_HOLDINGS: TreemapHolding[] = [\n  { name: \"AAPL\", weight: 24.8 },\n  { name: \"MSFT\", weight: 18.2 },\n  { name: \"NVDA\", weight: 15.6 },\n  { name: \"AMZN\", weight: 11.3 },\n  { name: \"GOOGL\", weight: 9.1 },\n  { name: \"Other\", weight: 8.4 },\n  { name: \"META\", weight: 7.4 },\n  { name: \"TSLA\", weight: 5.2 },\n]\n\n/** the ink of a tile by its rank, largest first; past the end tiles stay at the last step.\n *  Kept low so the name on the tile reads in the foreground in both themes. */\nconst STEPS = [32, 26, 21, 17, 14, 11, 9, 7]\nconst inkAt = (rank: number) => `color-mix(in srgb, var(--foreground) ${STEPS[Math.min(rank, STEPS.length - 1)]}%, transparent)`\n\nconst RATIO = 100 / 62\n\n/** tile geometry in percent of the box on both axes */\ntype Tile = TreemapHolding & { x: number; y: number; w: number; h: number; rank: number }\n\n/** Squarified layout in a box `ratio` wide and 1 tall, so square means square on screen. */\nfunction squarify(items: TreemapHolding[], ratio: number): Tile[] {\n  const sorted = [...items].filter((it) => it.weight > 0).sort((a, b) => b.weight - a.weight)\n  const total = sorted.reduce((s, it) => s + it.weight, 0) || 1\n  const queue = sorted.map((it, rank) => ({ ...it, rank, area: (it.weight / total) * ratio }))\n  const sum = (row: { area: number }[]) => row.reduce((s, r) => s + r.area, 0)\n  const worst = (row: { area: number }[], side: number) => {\n    const s = sum(row)\n    const areas = row.map((r) => r.area)\n    return Math.max((side * side * Math.max(...areas)) / (s * s), (s * s) / (side * side * Math.min(...areas)))\n  }\n\n  const out: Tile[] = []\n  let box = { x: 0, y: 0, w: ratio, h: 1 }\n  let i = 0\n  while (i < queue.length) {\n    const side = Math.min(box.w, box.h)\n    const row = [queue[i]]\n    let k = i + 1\n    while (k < queue.length && worst([...row, queue[k]], side) <= worst(row, side)) {\n      row.push(queue[k])\n      k += 1\n    }\n    const depth = sum(row) / side\n    let run = 0\n    for (const r of row) {\n      const len = r.area / depth\n      const tile = box.w >= box.h ? { x: box.x, y: box.y + run, w: depth, h: len } : { x: box.x + run, y: box.y, w: len, h: depth }\n      out.push({ name: r.name, weight: r.weight, rank: r.rank, x: (tile.x / ratio) * 100, y: tile.y * 100, w: (tile.w / ratio) * 100, h: tile.h * 100 })\n      run += len\n    }\n    box = box.w >= box.h ? { x: box.x + depth, y: box.y, w: box.w - depth, h: box.h } : { x: box.x, y: box.y + depth, w: box.w, h: box.h - depth }\n    i = k\n  }\n  return out\n}\n\nconst usd = (v: number) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`)\n\n/**\n * Holdings as a treemap: the area of a tile is its share of the book, in one ink that is\n * strongest for the largest. Pointing at a tile turns it the accent and reads its weight\n * and value above the map.\n */\nexport function AllocationTreemap({ holdings = DEFAULT_HOLDINGS, book = DEFAULT_BOOK, title = \"Allocation\", height, className }: AllocationTreemapProps) {\n  const reduced = useReducedMotion()\n  const [hot, setHot] = useState<string | null>(null)\n\n  /* the box measures itself, so the layout is made for the shape the tiles land in */\n  const boxRef = useRef<HTMLDivElement>(null)\n  const seen = useInView(boxRef, { once: true, amount: 0.3 })\n  const entered = seen || !!reduced\n  const [box, setBox] = useState<{ w: number; h: number } | null>(null)\n  useEffect(() => {\n    const el = boxRef.current\n    if (!el || typeof ResizeObserver === \"undefined\") return\n    const ro = new ResizeObserver(([e]) => {\n      const { width, height: h } = e.contentRect\n      if (width > 0 && h > 0) setBox((b) => (b && b.w === width && b.h === h ? b : { w: width, h }))\n    })\n    ro.observe(el)\n    return () => ro.disconnect()\n  }, [])\n\n  const ratio = box ? box.w / box.h : RATIO\n  const tiles = useMemo(() => squarify(holdings, ratio), [holdings, ratio])\n  const total = tiles.reduce((s, t) => s + t.weight, 0) || 1\n  const shareOf = (t: Tile) => (t.weight / total) * 100\n  const shown = tiles.find((t) => t.name === hot) ?? null\n  const largest = tiles[0]\n\n  return (\n    <div className={cn(\"w-full max-w-[480px] tabular-nums\", className)}>\n      <div className=\"mb-2.5 flex items-baseline gap-4\">\n        <span role=\"status\" className=\"text-[10.5px] text-foreground/45\">\n          {/* the readout swaps in place: 4px and a 2px blur, 150ms */}\n          <motion.span\n            key={hot ?? \"\"}\n            className=\"inline-block\"\n            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: \"blur(2px)\" }}\n            animate={{ opacity: 1, y: 0, filter: \"blur(0px)\" }}\n            transition={{ duration: 0.15, ease: EASE }}\n          >\n          {shown ? (\n            <>\n              <span className=\"font-medium text-foreground/90\">{shown.name}</span> · {shareOf(shown).toFixed(1)}% · <span className=\"font-medium text-foreground/90\">{usd((shown.weight / total) * book)}</span>\n            </>\n          ) : (\n            `${tiles.length} positions · ${usd(book)} book`\n          )}\n          </motion.span>\n        </span>\n      </div>\n\n      <div\n        ref={boxRef}\n        role=\"group\"\n        aria-label={`${title}, ${tiles.length} positions in a ${usd(book)} book${largest ? `. Largest: ${largest.name} ${shareOf(largest).toFixed(1)}%` : \"\"}`}\n        className=\"relative w-full\"\n        style={height ? { height } : { aspectRatio: \"100 / 62\" }}\n        onPointerLeave={() => setHot(null)}\n      >\n        {tiles.map((t) => {\n          const on = hot === t.name\n          const dim = hot !== null && !on\n          /* the label prints only where two lines of type and the padding fit */\n          const big = box ? (t.w / 100) * box.w > 54 && (t.h / 100) * box.h > 40 : t.w > 15 && t.h > 13\n          return (\n            <motion.button\n              key={t.name}\n              type=\"button\"\n              aria-label={`${t.name} ${shareOf(t).toFixed(1)}%, ${usd((t.weight / total) * book)}`}\n              onPointerEnter={() => setHot(t.name)}\n              onFocus={() => setHot(t.name)}\n              onBlur={() => setHot(null)}\n              className=\"absolute outline-none\"\n              /* a board that moves its weights re-tiles in one 320ms glide, done by layout\n                 transforms (never a left, top, width or height tween); still when they are fixed */\n              layout={!reduced}\n              style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%` }}\n              initial={reduced ? false : { opacity: 0, scale: 0.96 }}\n              animate={entered ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.96 }}\n              transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: t.rank * 0.04, layout: { duration: 0.32, ease: EASE } }}\n            >\n              <motion.span\n                layout={!reduced}\n                transition={{ layout: { duration: 0.32, ease: EASE } }}\n                className=\"absolute inset-[1px] flex flex-col justify-end p-2 text-left\"\n                style={{\n                  borderRadius: 3,\n                  background: on ? ACCENT : inkAt(t.rank),\n                  opacity: dim ? 0.4 : 1,\n                  transition: reduced ? \"none\" : \"background-color 160ms, opacity 160ms\",\n                }}\n              >\n                {big && (\n                  <>\n                    <span className=\"text-[11px] font-semibold leading-none text-foreground/90\">{t.name}</span>\n                    <span className={cn(\"mt-1 text-[9.5px] leading-none\", on ? \"text-foreground/90\" : \"text-foreground/45\")}>{shareOf(t).toFixed(1)}%</span>\n                  </>\n                )}\n              </motion.span>\n            </motion.button>\n          )\n        })}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/allocation-treemap.tsx"
+    }
+  ]
+}

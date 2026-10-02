@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -16,7 +16,12 @@ import { cn } from "@/lib/utils"
    · nothing moves for longer than 400ms and nothing overshoots: the settle is 360ms and
      the window fill 250ms, both on the house ease (they were 480ms and 380ms)
    · the price and the move are a status readout, so scrubbing is read out in place
-   Props are unchanged. */
+   Props are unchanged.
+   Motion (2026-10-01): the line wipes in from the left once, 850ms, when the block first
+   comes into view (it ran on mount, in 400ms). A window switch or a refresh morphs the line
+   from the old walk into the new one in 380ms (every walk is 60 samples, so the path tweens
+   point for point; it used to cross-fade), and the live dot rides the line's end down or up
+   to its new place on the same curve. Reduced motion draws every state at once. */
 
 const UP = "var(--chart-up)"
 const DOWN = "var(--chart-down)"
@@ -108,6 +113,9 @@ export function SimpleChart({
   const [pull, setPull] = useState(0)
   const [phase, setPhase] = useState<Phase>("idle")
   const plotRef = useRef<HTMLSpanElement>(null)
+  const dotRef = useRef<HTMLElement>(null)
+  const seen = useInView(plotRef, { once: true, amount: 0.3 })
+  const shown = seen || reduced
   const drag = useRef<{ id: number; x: number; y: number; axis: "none" | "x" | "y" } | null>(null)
   const timers = useRef<number[]>([])
   useEffect(() => {
@@ -223,6 +231,18 @@ export function SimpleChart({
 
   const progress = phase === "work" ? 1 : Math.min(1, pull / PULL_AT)
 
+  /* the live dot rides the morph: when a new walk lands it starts where the old line ended
+     and slides to the new end on the line's own timing. The plot is 92px tall in layout pixels */
+  const endY = series.pts[N - 1].y
+  const lastEnd = useRef(endY)
+  useLayoutEffect(() => {
+    const from = lastEnd.current
+    lastEnd.current = endY
+    const el = dotRef.current
+    if (reduced || !el || from === endY || typeof el.animate !== "function") return
+    el.animate([{ translate: `0 ${(((from - endY) / VB_H) * 92).toFixed(2)}px` }, { translate: "0 0" }], { duration: 380, easing: EASE_CSS })
+  }, [endY, reduced])
+
   return (
     <div className={cn("relative w-full max-w-[320px] overflow-hidden tabular-nums", className)}>
       {/* the refresh ring: it gathers with the pull in the room the block leaves, and spins while the block holds */}
@@ -292,7 +312,7 @@ export function SimpleChart({
         <span
           ref={plotRef}
           className="relative mb-1.5 mt-5 block cursor-crosshair touch-pan-y"
-          style={{ color: lineHue, paddingBlock: PAD_Y }}
+          style={{ color: lineHue, paddingBlock: PAD_Y, transition: reduced ? undefined : "color 200ms" }}
           onPointerMove={(e) => e.pointerType === "mouse" && phase !== "pull" && scrubTo(e.clientX)}
           onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
         >
@@ -301,8 +321,8 @@ export function SimpleChart({
           <motion.span
             className="block"
             initial={reduced ? false : { clipPath: "inset(-10% 100% -10% -10%)" }}
-            animate={{ clipPath: "inset(-10% -10% -10% -10%)" }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            animate={{ clipPath: shown ? "inset(-10% -10% -10% -10%)" : "inset(-10% 100% -10% -10%)" }}
+            transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }}
           >
             <svg
               viewBox={`0 0 ${VB_W} ${VB_H}`}
@@ -311,19 +331,17 @@ export function SimpleChart({
               role="img"
               aria-label={`${symbol} price ${money(point.val)} dollars, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent over the ${w.label}`}
             >
-              {/* a new window or a refresh cross-fades the line in, 200ms; the wipe above runs once on mount */}
+              {/* a new window or a refresh morphs the line into the new walk, 380ms; the wipe above runs once */}
               <motion.path
-                key={`${win}-${tick}`}
-                d={series.d}
+                initial={false}
+                animate={{ d: series.d }}
+                transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={1.8}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.2, ease: EASE }}
               />
             </svg>
           </motion.span>
@@ -334,13 +352,16 @@ export function SimpleChart({
             style={{ top: PAD_Y, bottom: PAD_Y, left: `${point.x}%`, opacity: hover == null ? 0 : 0.28 }}
           />
           <i
+            ref={dotRef}
             aria-hidden
             className="pointer-events-none absolute -ml-[3.5px] -mt-[3.5px] h-[7px] w-[7px] rounded-full bg-current"
             style={{
               left: `${point.x}%`,
               top: `calc(${PAD_Y}px + (100% - ${PAD_Y * 2}px) * ${(point.y / VB_H).toFixed(4)})`,
               scale: hover == null ? 1 : 1.3,
-              transition: reduced ? "none" : `scale 160ms ${EASE_CSS}`,
+              /* it lights once the wipe has reached the end of the line */
+              opacity: shown ? 1 : 0,
+              transition: reduced ? "none" : `scale 160ms ${EASE_CSS}, opacity 250ms ${EASE_CSS} 350ms`,
             }}
           />
         </span>

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "agent-run-timeline",
+  "type": "registry:ui",
+  "title": "Agent Run Timeline",
+  "description": "The steps of one agent run with tool, time and state; press a step to open its input and output",
+  "categories": [
+    "data"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/agent-run-timeline.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useState } from \"react\"\nimport { motion, useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* Agent Run Timeline, new through ssych-component (2026-09-29).\n   What it is for: the steps of one agent run, in the order they ran.\n   Read first: the step that is running. Its mark beats once a second and its state is\n   the only one at full ink; under reduced motion the mark holds still.\n   What the pointer does: pointing at a step dims the others; pressing it opens its\n   input and output, which are literal code and so the only text set in mono.\n   Sketch: src/components/lab/AgentRunTicker.tsx. Kept: one row per unit with the state\n   as a mark and a word at the right end, the run id, the four-state vocabulary. Changed:\n   it shows the steps of one run and not a rotating queue of runs, so the ticker, the\n   live and calm chip and the hover expansion are gone; no outline, no capitals, no blue\n   (done is green, waiting amber, a failure red, running full ink); the fixed progress hints per\n   status are gone because nothing derived them.\n   Reference: browsable \"agent run\". Ideas only, from the catalogue description of motiq\n   \"Agent Run Timeline\", no code opened: an ordered rail of steps, each with its tool\n   call and its output.\n   Formulas:\n   · done = steps whose state is done\n   · so far = Σ durationMs of done, failed and running steps (1210 + 840 + 2310 + 4600\n     = 8960 ms = 8.96 s); a running step carries the time elapsed when it was sampled */\n\nconst EASE = [0.16, 1, 0.3, 1] as const\nconst RED = \"var(--chart-down)\"\nconst GREEN = \"var(--chart-up)\"\nconst AMBER = \"var(--chart-amber)\"\nconst COLS = \"grid-cols-[14px_minmax(0,1fr)_auto_60px_52px]\"\n\nexport type StepState = \"done\" | \"running\" | \"waiting\" | \"failed\"\n\nexport interface AgentStep {\n  id: string\n  /** what the step does */\n  step: string\n  /** the tool it calls */\n  tool: string\n  /** time taken; for a running step the time elapsed so far; none while waiting */\n  durationMs?: number\n  state: StepState\n  /** literal input, as sent */\n  input?: string\n  /** literal output, as returned */\n  output?: string\n}\n\nexport interface AgentRunTimelineProps {\n  runId?: string\n  task?: string\n  steps?: AgentStep[]\n  /** id of the step that starts open; null starts closed */\n  defaultOpen?: string | null\n  className?: string\n}\n\nconst DEFAULT_STEPS: AgentStep[] = [\n  {\n    id: \"s1\",\n    step: \"Plan\",\n    tool: \"planner.plan\",\n    durationMs: 1210,\n    state: \"done\",\n    input: '{ \"goal\": \"reconcile fills with the ledger\", \"date\": \"2026-09-28\" }',\n    output: '{ \"steps\": 5 }',\n  },\n  {\n    id: \"s2\",\n    step: \"Fetch fills\",\n    tool: \"broker.get_fills\",\n    durationMs: 840,\n    state: \"done\",\n    input: '{ \"account\": \"DESK-7\", \"date\": \"2026-09-28\" }',\n    output: '{ \"fills\": 1284 }',\n  },\n  {\n    id: \"s3\",\n    step: \"Match against ledger\",\n    tool: \"sql.query\",\n    durationMs: 2310,\n    state: \"done\",\n    input: \"select f.id from fills f\\nleft join ledger l on l.fill_id = f.id\\nwhere l.id is null\",\n    output: '{ \"rows\": 17, \"scanned\": 1284 }',\n  },\n  {\n    id: \"s4\",\n    step: \"Draft exceptions report\",\n    tool: \"llm.generate\",\n    durationMs: 4600,\n    state: \"running\",\n    input: '{ \"model\": \"claude-sonnet-4-5\", \"rows\": 17, \"max_tokens\": 1200 }',\n  },\n  {\n    id: \"s5\",\n    step: \"Send to review queue\",\n    tool: \"queue.push\",\n    state: \"waiting\",\n    input: '{ \"queue\": \"ops-review\", \"items\": 17 }',\n  },\n]\n\nconst took = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`)\nconst ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`\n\n/* state is a direction (2026-09-30): done is green, failed red, waiting amber; the running\n   step stays full ink and carries the beat */\nconst MARK: Record<StepState, string> = { done: GREEN, running: ink(100), waiting: AMBER, failed: RED }\nconst WORD: Record<StepState, string> = { done: \"Done\", running: \"Running\", waiting: \"Waiting\", failed: \"Failed\" }\n\nfunction Code({ label, children }: { label: string; children: string }) {\n  return (\n    <div>\n      <div className=\"text-[10.5px] text-foreground/45\">{label}</div>\n      <pre className=\"mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[4px] bg-foreground/[0.04] px-2.5 py-2 font-mono text-[11px] leading-[1.5] text-foreground/80\">\n        {children}\n      </pre>\n    </div>\n  )\n}\n\n/**\n * One run as a rail of steps: the step, its tool, how long it took and where it stands.\n * The running step beats once a second; any step opens to what went in and what came out.\n */\nexport function AgentRunTimeline({\n  runId = \"run-4821\",\n  task = \"Reconcile fills with the ledger\",\n  steps = DEFAULT_STEPS,\n  defaultOpen = \"s3\",\n  className,\n}: AgentRunTimelineProps) {\n  const reduced = useReducedMotion()\n  const [open, setOpen] = useState<string | null>(defaultOpen)\n  const [hot, setHot] = useState<string | null>(null)\n  /* steps rise in once, 40ms apart; after that the hover dim is quick */\n  const [landed, setLanded] = useState(false)\n  useEffect(() => {\n    const t = setTimeout(() => setLanded(true), reduced ? 0 : Math.min(steps.length, 8) * 40 + 320)\n    return () => clearTimeout(t)\n  }, [reduced, steps.length])\n\n  const done = steps.filter((s) => s.state === \"done\").length\n  const soFar = steps.reduce((sum, s) => (s.state === \"waiting\" ? sum : sum + (s.durationMs ?? 0)), 0)\n  const running = steps.find((s) => s.state === \"running\")\n\n  return (\n    <div\n      className={cn(\"w-full max-w-[480px] tabular-nums\", className)}\n      role=\"group\"\n      aria-label={`${runId}, ${task}. ${done} of ${steps.length} steps done, ${took(soFar)} so far${running ? `, running: ${running.step}` : \"\"}`}\n    >\n      <div className=\"flex items-baseline justify-between gap-3 px-3 pb-2\">\n        {/* the run id is the one name (2026-10-01); the task is read out in the group's aria-label */}\n        <span className=\"min-w-0 truncate text-[13px] font-medium text-foreground/90\">{runId}</span>\n        <span role=\"status\" className=\"shrink-0 text-[10.5px] text-foreground/45\">\n          <span className=\"font-medium text-foreground/90\">\n            {done} of {steps.length} done\n          </span>{\" \"}\n          · {took(soFar)} so far\n        </span>\n      </div>\n\n      <div role=\"list\" onPointerLeave={() => setHot(null)}>\n        {steps.map((s, i) => {\n          const on = open === s.id\n          const live = s.state === \"running\"\n          return (\n            <motion.div\n              key={s.id}\n              role=\"listitem\"\n              className=\"relative\"\n              initial={reduced ? false : { opacity: 0, y: 6 }}\n              animate={{ opacity: hot !== null && hot !== s.id ? 0.5 : 1, y: 0 }}\n              transition={\n                reduced\n                  ? { duration: 0.2 }\n                  : landed\n                    ? { duration: 0.2, ease: EASE }\n                    : { duration: 0.3, ease: EASE, delay: Math.min(i, 7) * 0.04 }\n              }\n            >\n              {/* the rail runs between the marks and never under them, so it needs no ground to hide behind */}\n              {i > 0 && <span aria-hidden className=\"absolute left-[18.5px] top-0 h-[11px] w-px bg-foreground/[0.08]\" />}\n              {i < steps.length - 1 && <span aria-hidden className=\"absolute bottom-0 left-[18.5px] top-[25px] w-px bg-foreground/[0.08]\" />}\n\n              <button\n                type=\"button\"\n                aria-expanded={on}\n                aria-label={`Step ${i + 1}, ${s.step}, ${s.tool}, ${s.durationMs === undefined ? \"\" : `${took(s.durationMs)}, `}${WORD[s.state].toLowerCase()}`}\n                onClick={() => setOpen(on ? null : s.id)}\n                onPointerEnter={() => setHot(s.id)}\n                onFocus={() => setHot(s.id)}\n                onBlur={() => setHot(null)}\n                className={cn(\n                  \"grid h-9 w-full items-center gap-x-2.5 rounded-lg px-3 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.99] motion-reduce:active:scale-100\",\n                  COLS,\n                )}\n              >\n                <span aria-hidden className=\"grid h-3.5 w-3.5 place-items-center\">\n                  <motion.span\n                    className=\"block h-1.5 w-1.5 rounded-full\"\n                    style={{ background: MARK[s.state] }}\n                    animate={live && !reduced ? { opacity: [1, 0.25, 1] } : { opacity: 1 }}\n                    transition={live && !reduced ? { duration: 1, repeat: Infinity, ease: \"easeInOut\" } : { duration: 0 }}\n                  />\n                </span>\n                <span className={cn(\"truncate text-[12.5px]\", s.state === \"waiting\" ? \"text-foreground/45\" : \"font-medium text-foreground/90\")}>{s.step}</span>\n                <span className=\"text-[11px] text-foreground/45\">{s.tool}</span>\n                <span className=\"text-right text-[11px] text-foreground/70\">{s.durationMs === undefined ? \"\" : took(s.durationMs)}</span>\n                <span\n                  className={cn(\"text-right text-[11px]\", live ? \"font-medium text-foreground/90\" : \"text-foreground/45\")}\n                  style={live ? undefined : { color: MARK[s.state] }}\n                >\n                  {WORD[s.state]}\n                </span>\n              </button>\n\n              {/* the detail opens on grid rows, 0fr to 1fr in 250ms, and fades with it */}\n              <div\n                inert={!on}\n                className=\"grid transition-[grid-template-rows,opacity] duration-[250ms] motion-reduce:transition-none\"\n                style={{ gridTemplateRows: on ? \"1fr\" : \"0fr\", opacity: on ? 1 : 0, transitionTimingFunction: \"cubic-bezier(0.22, 1, 0.36, 1)\" }}\n              >\n                <div className=\"min-h-0 overflow-hidden\">\n                    <div className=\"flex flex-col gap-2 pb-3 pl-9 pr-3 pt-1\">\n                      {s.input !== undefined && <Code label=\"Input\">{s.input}</Code>}\n                      {s.output !== undefined ? (\n                        <Code label=\"Output\">{s.output}</Code>\n                      ) : (\n                        <div className=\"text-[10.5px] text-foreground/45\">{live ? \"Output still arriving\" : s.state === \"waiting\" ? \"Not started\" : \"No output\"}</div>\n                      )}\n                    </div>\n                </div>\n              </div>\n            </motion.div>\n          )\n        })}\n      </div>\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/agent-run-timeline.tsx"
+    }
+  ]
+}

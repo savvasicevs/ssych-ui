@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -12,7 +12,11 @@ import { cn } from "@/lib/utils"
    · every figure is tabular, the one in the caption included
    · pointing at a row, or tabbing to it, keeps it full and dims the others, and the
      caption turns into that row's readout: its value and how far it sits from the subject
-   · the comparison names itself to a screen reader, every row carries its own label */
+   · the comparison names itself to a screen reader, every row carries its own label
+   Motion (2026-10-01): once the rows first come into view they settle in 4px apart by 40ms
+   and their ticks grow out of the middle line left to right, 4ms apart, all in about 800ms.
+   A new value walks the cursor tick: heights and inks tween over 300ms. The ticks are CSS
+   transitions on transform, not 230 motion nodes. Reduced motion draws the end state. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const ACCENT = "var(--chart-1)"
@@ -32,6 +36,9 @@ const DEFAULT_ROWS: CombRow[] = [
 ]
 
 const TICKS = 46
+const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)"
+/** every tick is drawn at the cursor height and scaled down to its own, so a height change is a transform */
+const TALL = 13
 
 /**
  * A comparison in the Ink register: every row is a ruler of ticks, the cursor tick
@@ -57,6 +64,16 @@ export function CombRows({
   className?: string
 }) {
   const reduced = useReducedMotion()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const shown = seen || !!reduced
+  /* once the grow-in has landed, a value change tweens at once instead of on the stagger */
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (!seen) return
+    const t = setTimeout(() => setSettled(true), 900)
+    return () => clearTimeout(t)
+  }, [seen])
   const [hot, setHot] = useState<string | null>(null)
 
   const base = rows.find((r) => r.label === subject)
@@ -70,7 +87,7 @@ export function CombRows({
   })()
 
   return (
-    <div className={cn("w-[320px] tabular-nums", className)} role="group" aria-label={`${title}, ${rows.length} rows${base ? `, ${subject} ${base.value}` : ""}`}>
+    <div ref={rootRef} className={cn("w-[320px] tabular-nums", className)} role="group" aria-label={`${title}, ${rows.length} rows${base ? `, ${subject} ${base.value}` : ""}`}>
       <div className="text-center">
         <div className="text-[13px] font-medium text-foreground/90">{title}</div>
         <div role="status" className="mt-0.5 text-[10.5px] text-foreground/45">
@@ -107,21 +124,23 @@ export function CombRows({
             >
               <motion.div
                 className="flex items-center gap-3 px-2 py-[7px]"
-                initial={reduced ? false : { opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: ri * 0.035 }}
+                initial={reduced ? false : { opacity: 0, y: 4 }}
+                animate={shown ? { opacity: 1, y: 0 } : { opacity: 0, y: 4 }}
+                transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: ri * 0.04 }}
               >
                 <span className={cn("w-[52px] shrink-0 text-[11.5px] font-medium transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/45")}>{r.label}</span>
                 <span className="flex h-4 flex-1 items-center gap-[2.5px]" aria-hidden>
                   {Array.from({ length: TICKS }, (_, t) => {
                     const isCursor = t === cursor
                     const filled = t < cursor
+                    const h = isCursor ? TALL : filled ? 8 : 5
                     return (
-                      <motion.span
+                      <span
                         key={t}
                         className="w-px rounded-full"
                         style={{
-                          height: isCursor ? 13 : filled ? 8 : 5,
+                          height: TALL,
+                          transform: `scaleY(${shown ? h / TALL : 0})`,
                           background: isCursor
                             ? active
                               ? ACCENT
@@ -131,11 +150,13 @@ export function CombRows({
                                 ? `color-mix(in srgb, ${ACCENT} 55%, transparent)`
                                 : ink(28)
                               : ink(10),
-                          transition: "background 150ms",
+                          /* the grow-in carries the stagger; after it lands a value change tweens at once */
+                          transition: reduced
+                            ? "none"
+                            : settled
+                              ? `transform 0.3s ${EASE_CSS}, background 150ms`
+                              : `transform 0.45s ${EASE_CSS} ${(ri * 0.04 + t * 0.004).toFixed(3)}s, background 150ms`,
                         }}
-                        initial={{ scaleY: reduced ? 1 : 0 }}
-                        animate={{ scaleY: 1 }}
-                        transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: ri * 0.035 + t * 0.003 }}
                       />
                     )
                   })}

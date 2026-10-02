@@ -278,6 +278,194 @@
     {
       "name": "mouse-trail-cta",
       "type": "registry:ui"
+    },
+    {
+      "name": "account-dropdown",
+      "type": "registry:ui"
+    },
+    {
+      "name": "agent-run-timeline",
+      "type": "registry:ui"
+    },
+    {
+      "name": "allocation-treemap",
+      "type": "registry:ui"
+    },
+    {
+      "name": "automation-builder",
+      "type": "registry:ui"
+    },
+    {
+      "name": "cross-chain-swap",
+      "type": "registry:ui"
+    },
+    {
+      "name": "date-range-picker",
+      "type": "registry:ui"
+    },
+    {
+      "name": "depth-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "dialog-stack",
+      "type": "registry:ui"
+    },
+    {
+      "name": "event-feed",
+      "type": "registry:ui"
+    },
+    {
+      "name": "execution-controls",
+      "type": "registry:ui"
+    },
+    {
+      "name": "flow-bars",
+      "type": "registry:ui"
+    },
+    {
+      "name": "gantt-mini",
+      "type": "registry:ui"
+    },
+    {
+      "name": "graph-comparison",
+      "type": "registry:ui"
+    },
+    {
+      "name": "info-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "inline-slider",
+      "type": "registry:ui"
+    },
+    {
+      "name": "kanban-board",
+      "type": "registry:ui"
+    },
+    {
+      "name": "leverage-ticket",
+      "type": "registry:ui"
+    },
+    {
+      "name": "market-shelf",
+      "type": "registry:ui"
+    },
+    {
+      "name": "modal",
+      "type": "registry:ui"
+    },
+    {
+      "name": "model-comparison",
+      "type": "registry:ui"
+    },
+    {
+      "name": "morph-disclosure",
+      "type": "registry:ui"
+    },
+    {
+      "name": "order-book",
+      "type": "registry:ui"
+    },
+    {
+      "name": "order-ticket",
+      "type": "registry:ui"
+    },
+    {
+      "name": "payment-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "performance-chart",
+      "type": "registry:ui"
+    },
+    {
+      "name": "positions-table",
+      "type": "registry:ui"
+    },
+    {
+      "name": "quick-ticket",
+      "type": "registry:ui"
+    },
+    {
+      "name": "radial-gauge",
+      "type": "registry:ui"
+    },
+    {
+      "name": "release-feed",
+      "type": "registry:ui"
+    },
+    {
+      "name": "scatter-plot",
+      "type": "registry:ui"
+    },
+    {
+      "name": "series-spotlight",
+      "type": "registry:ui"
+    },
+    {
+      "name": "setup-stepper",
+      "type": "registry:ui"
+    },
+    {
+      "name": "stacked-bars",
+      "type": "registry:ui"
+    },
+    {
+      "name": "stat-tile",
+      "type": "registry:ui"
+    },
+    {
+      "name": "swap-confirm",
+      "type": "registry:ui"
+    },
+    {
+      "name": "tape-flow",
+      "type": "registry:ui"
+    },
+    {
+      "name": "tool-call-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "top-coins",
+      "type": "registry:ui"
+    },
+    {
+      "name": "total-balance",
+      "type": "registry:ui"
+    },
+    {
+      "name": "uptime-bars",
+      "type": "registry:ui"
+    },
+    {
+      "name": "view-switch",
+      "type": "registry:ui"
+    },
+    {
+      "name": "vitals-strip",
+      "type": "registry:ui"
+    },
+    {
+      "name": "volume-profile",
+      "type": "registry:ui"
+    },
+    {
+      "name": "wallet-drawer",
+      "type": "registry:ui"
+    },
+    {
+      "name": "watchlist-stack",
+      "type": "registry:ui"
+    },
+    {
+      "name": "amount-slider",
+      "type": "registry:ui"
+    },
+    {
+      "name": "approval-quorum",
+      "type": "registry:ui"
     }
   ]
 }

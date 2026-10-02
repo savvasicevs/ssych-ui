@@ -357,7 +357,7 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
                 style={{
                   x: align === "center" ? "-50%" : 0,
                   background: "var(--card)",
-                  boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))",
+                  boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,calc(0.35 * var(--shadow-k, 1))))",
                 }}
                 initial={reduced ? false : { opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}

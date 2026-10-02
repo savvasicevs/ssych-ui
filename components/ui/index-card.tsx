@@ -1,7 +1,7 @@
 "use client"
 
 import { useId, useMemo, useRef, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -16,7 +16,12 @@ import { cn } from "@/lib/utils"
    · the index switcher is a row of quiet pills with one fill that slides to the chosen
      one (it was an underline on a rule)
    · the line is 1.8px with round joins; the change is printed with a true minus sign
-   · the chart names itself to a screen reader, with the index and its close */
+   · the chart names itself to a screen reader, with the index and its close
+   Motion (2026-10-01): once the plot first comes into view the line and its fill are wiped
+   in from the left by one clip, 850ms. Changing index morphs the line and the fill from the
+   old session into the new one in 380ms (both walks are 48 samples, so the paths tween
+   point for point) and the hue crosses over; it used to wipe out and redraw. Reduced
+   motion draws every state at once. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -157,6 +162,8 @@ export function IndexCard({
 
   // the rule snaps to the NEAREST sample and drives the readout at once
   const svgRef = useRef<SVGSVGElement>(null)
+  const seen = useInView(svgRef, { once: true, amount: 0.3 })
+  const shown = seen || reduced
   const [hover, setHover] = useState<number | null>(null)
   const onMove = (e: React.PointerEvent) => {
     const el = svgRef.current
@@ -227,9 +234,20 @@ export function IndexCard({
       >
         <defs>
           <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={hue} stopOpacity="0.14" />
-            <stop offset="100%" stopColor={hue} stopOpacity="0" />
+            <stop offset="0%" stopColor={hue} stopOpacity="0.14" style={{ transition: reduced ? "none" : "stop-color 200ms" }} />
+            <stop offset="100%" stopColor={hue} stopOpacity="0" style={{ transition: reduced ? "none" : "stop-color 200ms" }} />
           </linearGradient>
+          {/* the entrance: one clip wipes the line and its fill in from the left, once */}
+          <clipPath id={`${uid}-wipe`}>
+            <motion.rect
+              x={-4}
+              y={-4}
+              height={H + 8}
+              initial={{ width: reduced ? W + 8 : 0 }}
+              animate={{ width: shown ? W + 8 : 0 }}
+              transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }}
+            />
+          </clipPath>
           <clipPath id={`${uid}-left`}>
             <rect x={0} y={0} width={crossX} height={H} />
           </clipPath>
@@ -239,25 +257,24 @@ export function IndexCard({
           <line key={f} x1={0} x2={W} y1={f * H} y2={f * H} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
         ))}
 
-        {/* the whole line, which steps back while scrubbing; re-keyed so a new index draws in */}
-        <g key={idx.label} opacity={hover == null ? 1 : 0.35} style={{ transition: reduced ? "none" : "opacity 200ms" }}>
+        {/* the whole line, which steps back while scrubbing; a new index morphs it in place */}
+        <g clipPath={`url(#${uid}-wipe)`} opacity={hover == null ? 1 : 0.35} style={{ transition: reduced ? "none" : "opacity 200ms" }}>
           <motion.path
-            d={`M${line} L ${W},${H} L 0,${H} Z`}
+            initial={false}
+            animate={{ d: `M${line} L ${W},${H} L 0,${H} Z` }}
+            transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
             fill={`url(#${uid}-fill)`}
-            initial={{ opacity: reduced ? 1 : 0 }}
-            animate={{ opacity: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.25 }}
           />
           <motion.path
-            d={`M${line}`}
+            initial={false}
+            animate={{ d: `M${line}` }}
+            transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
             fill="none"
             stroke={hue}
             strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
-            initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            style={{ transition: reduced ? "none" : "stroke 200ms" }}
           />
         </g>
 

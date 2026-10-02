@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useId, useMemo, useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -21,7 +21,11 @@ import { cn } from "@/lib/utils"
    Colour pass (2026-09-30): the sources have to be told apart as their money runs through
    the hub, so each source takes its own colour in the house order (chart 1, 5, 3, amber,
    2, 4; past six one Other) and every band and strand it feeds carries that colour. The
-   uses stay ink at their strengths; the readout swaps in place and dots the source */
+   uses stay ink at their strengths; the readout swaps in place and dots the source
+   Motion (2026-10-01): once the diagram is in view the ribbons sweep in left to right
+   through one clip, sources to hub to uses, in 0.9s (they faded in on mount, off screen
+   too); the nodes and the hub are there on arrival. New amounts morph every ribbon and
+   glide each node, hub band and label to its new place and depth */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /** the house order for things that must be told apart; nothing on this surface means up */
@@ -139,6 +143,13 @@ export function SankeyFlow({
     if (!pin) setHover(id)
   }
   const toggle = (id: string) => setPin((p) => (p === id ? null : id))
+  const uid = useId().replace(/:/g, "")
+  /* the entrance plays once, when a third of the diagram is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /** a change of data glides between the two states */
+  const morph = reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }
 
   const { total, left, right, mid, inFlows, outFlows, bands, seams } = useMemo(() => {
     const total = sources.reduce((a, b) => a + b.value, 0)
@@ -219,12 +230,14 @@ export function SankeyFlow({
   const fillFade = reduced ? "none" : "fill 160ms"
   /* a strand is its source's colour, stronger while it is the one pointed through */
   const ribbonFill = (hue: string, lit: boolean) => mixAt(hue, lit && hot !== null ? 55 : 32)
-  /* in once: inbound 30ms apart, outbound 20ms apart after them, the whole run under 300ms */
-  const inStep = Math.min(0.03, 0.12 / Math.max(1, inFlows.length))
-  const outStep = Math.min(0.02, 0.16 / Math.max(1, outFlows.length))
+  /* the dim and the morph run on their own clocks */
+  const ribbonTransition = reduced ? { duration: 0 } : { opacity: { duration: 0.16, ease: EASE }, d: morph }
+  /* the sweep covers the ribbons only, from the source faces to the use faces */
+  const sweepX = leftX + NODE_W
 
   return (
     <div
+      ref={rootRef}
       className={cn("w-[540px] max-w-full tabular-nums", className)}
       onKeyDown={(e) => {
         if (e.key === "Escape") setPin(null)
@@ -273,50 +286,69 @@ export function SankeyFlow({
           role="img"
           aria-label={`${title}: ${sources.length} sources into ${uses.length} uses, ${usd(total)} through`}
         >
-          {inFlows.map((l, i) => (
-            <motion.path
-              key={l.id}
-              d={ribbon(leftX + NODE_W, l.y0, midX, l.y1, l.w)}
-              fill={ribbonFill(l.hue, inOn(l))}
-              style={{ transition: fillFade }}
-              initial={{ opacity: reduced ? 1 : 0 }}
-              animate={{ opacity: inOn(l) ? 1 : 0.35 }}
-              transition={reduced ? { duration: 0 } : { duration: hot === null ? 0.3 : 0.16, ease: EASE, delay: hot === null ? i * inStep : 0 }}
-            />
-          ))}
+          <defs>
+            <clipPath id={`${uid}-sweep`}>
+              <motion.rect
+                x={sweepX}
+                y={0}
+                height={H}
+                initial={reduced ? false : { width: 0 }}
+                animate={{ width: play ? rightX - sweepX : 0 }}
+                transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
+              />
+            </clipPath>
+          </defs>
 
-          {outFlows.map((f, i) => (
-            <motion.path
-              key={f.id}
-              d={ribbon(midX + NODE_W, f.y0, rightX, f.y1, f.w)}
-              fill={ribbonFill(f.hue, outOn(f))}
-              style={{ transition: fillFade }}
-              initial={{ opacity: reduced ? 1 : 0 }}
-              animate={{ opacity: outOn(f) ? 1 : 0.35 }}
-              transition={
-                reduced
-                  ? { duration: 0 }
-                  : { duration: hot === null ? 0.3 : 0.16, ease: EASE, delay: hot === null ? 0.12 + i * outStep : 0 }
-              }
-            />
-          ))}
+          <g clipPath={`url(#${uid}-sweep)`}>
+            {inFlows.map((l) => (
+              <motion.path
+                key={l.id}
+                fill={ribbonFill(l.hue, inOn(l))}
+                style={{ transition: fillFade }}
+                initial={false}
+                animate={{ opacity: inOn(l) ? 1 : 0.35, d: ribbon(leftX + NODE_W, l.y0, midX, l.y1, l.w) }}
+                transition={ribbonTransition}
+              />
+            ))}
+
+            {outFlows.map((f) => (
+              <motion.path
+                key={f.id}
+                fill={ribbonFill(f.hue, outOn(f))}
+                style={{ transition: fillFade }}
+                initial={false}
+                animate={{ opacity: outOn(f) ? 1 : 0.35, d: ribbon(midX + NODE_W, f.y0, rightX, f.y1, f.w) }}
+                transition={ribbonTransition}
+              />
+            ))}
+          </g>
 
           {/* the hub: one band per source, scored where it divides between uses */}
           <g>
             {bands.map((b) => (
-              <rect
+              <motion.rect
                 key={b.id}
                 x={midX}
-                y={b.y}
                 width={NODE_W}
-                height={b.h}
                 fill={b.hue}
                 opacity={nodeOn(b.id) ? 1 : 0.35}
                 style={{ transition: fade }}
+                initial={false}
+                animate={{ attrY: b.y, height: b.h }}
+                transition={morph}
               />
             ))}
             {seams.map((s) => (
-              <rect key={s.id} x={midX} y={s.y - 0.5} width={NODE_W} height={1} fill="var(--background)" />
+              <motion.rect
+                key={s.id}
+                x={midX}
+                width={NODE_W}
+                height={1}
+                fill="var(--background)"
+                initial={false}
+                animate={{ attrY: s.y - 0.5 }}
+                transition={morph}
+              />
             ))}
             {pin === "mid" && (
               <rect
@@ -331,9 +363,11 @@ export function SankeyFlow({
                 strokeWidth={1}
               />
             )}
-            <text
+            <motion.text
               x={midX + NODE_W / 2}
-              y={mid.top - 6}
+              initial={false}
+              animate={{ attrY: mid.top - 6 }}
+              transition={morph}
               textAnchor="middle"
               fontSize={9.5}
               fontWeight={600}
@@ -341,7 +375,7 @@ export function SankeyFlow({
               fillOpacity={0.9}
             >
               Cash
-            </text>
+            </motion.text>
           </g>
 
           {nodes.map(({ n, side }) => {
@@ -364,21 +398,41 @@ export function SankeyFlow({
                     strokeWidth={1}
                   />
                 )}
-                <rect
+                <motion.rect
                   x={x}
-                  y={n.top}
                   width={NODE_W}
-                  height={n.h}
                   rx={2}
                   fill={side === "l" ? n.hue : inkAt(hot === n.id ? 90 : n.ink)}
                   style={{ transition: fade }}
+                  initial={false}
+                  animate={{ attrY: n.top, height: n.h }}
+                  transition={morph}
                 />
-                <text x={tx} y={n.mid - 3} textAnchor={anchor} fontSize={10} fontWeight={500} fill="var(--foreground)" fillOpacity={0.9}>
+                <motion.text
+                  x={tx}
+                  textAnchor={anchor}
+                  fontSize={10}
+                  fontWeight={500}
+                  fill="var(--foreground)"
+                  fillOpacity={0.9}
+                  initial={false}
+                  animate={{ attrY: n.mid - 3 }}
+                  transition={morph}
+                >
                   {n.label}
-                </text>
-                <text x={tx} y={n.mid + 9} textAnchor={anchor} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
+                </motion.text>
+                <motion.text
+                  x={tx}
+                  textAnchor={anchor}
+                  fontSize={9}
+                  fill="var(--foreground)"
+                  fillOpacity={0.45}
+                  initial={false}
+                  animate={{ attrY: n.mid + 9 }}
+                  transition={morph}
+                >
                   {usd(n.value)}
-                </text>
+                </motion.text>
               </g>
             )
           })}

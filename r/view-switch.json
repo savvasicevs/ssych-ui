@@ -1,0 +1,68 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "view-switch",
+  "type": "registry:ui",
+  "title": "View Switch",
+  "description": "Desktop, mobile and code switcher. Only the chosen option shows its name, one thumb slides between them",
+  "categories": [
+    "controls"
+  ],
+  "dependencies": [
+    "clsx",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/view-switch.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from \"react\"\nimport { useReducedMotion } from \"motion/react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* copied from src/components/library/controls.ts, so the file ships alone */\nconst TRACK = \"rounded-full border border-foreground/[0.04] p-0.5\"\nconst THUMB = \"bg-foreground/[0.08] shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--foreground)_6%,transparent)]\"\nconst SEGMENT_OFF = \"text-foreground/45 hover:text-foreground/75\"\n\n/* View Switch, the library shell's part as a primitive (2026-09-30).\n   What it is for: the switcher above a preview: Desktop, Mobile, Code, or the sizes of a\n   screen. One of the options is on; the rest wait as icons.\n   Read first: the option that is on, the only one that shows its name.\n   The pointer: an off option's icon brightens under it; a press slides the ONE thumb\n   from the option that was on to the one that is, the names fading across on the\n   control's 250ms tween. Arrow keys move the choice; Home and End go to the ends.\n   Taken from: src/components/library/ViewSwitch.tsx, value for value: the TRACK and the\n   THUMB from controls.ts, 32px options (36px with `tall`), the measured fixed width\n   (every option as an icon, less one, plus one option at the longest name), the narrow\n   fall-back under 640px where no name shows. The device icons are the shell's own\n   strokes (ComponentShowcase.tsx) and Code is the Phosphor glyph it imports, inlined here.\n   Added: arrow keys, and a default set of options so it renders with no props.\n   Motion (2026-09-30): the thumb slides on transform, not `left`, 250ms both ways; a choice\n   made with the arrow keys lands at once (keys repeat), only a press gets the tween.\n   No figures are derived here. */\n\nexport interface ViewOption<T extends string> {\n  id: T\n  /** what the button is called for assistive tech and the tooltip */\n  label: string\n  /** what it says on the button while it is on */\n  short: string\n  icon: ReactNode\n}\n\n/** the track's own padding and the gap between options, in px (p-0.5, gap-0.5) */\nconst PAD = 2\nconst GAP = 2\n/** the control's tween (segmented-control.tsx): 250ms, smooth-out */\nconst EASE = \"cubic-bezier(0.22, 1, 0.36, 1)\"\nconst MS = 250\n\n/* the shell's device glyphs: 1.6px strokes, drawn by hand so they sit at 13 and 14px */\nconst STROKE = { fill: \"none\", stroke: \"currentColor\", strokeWidth: 1.6 } as const\n\nexport function DesktopIcon() {\n  return (\n    <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" {...STROKE} aria-hidden>\n      <rect x=\"3\" y=\"4\" width=\"18\" height=\"12\" rx=\"2\" />\n      <line x1=\"9\" y1=\"20\" x2=\"15\" y2=\"20\" />\n      <line x1=\"12\" y1=\"16\" x2=\"12\" y2=\"20\" />\n    </svg>\n  )\n}\n\nexport function MobileIcon() {\n  return (\n    <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" {...STROKE} aria-hidden>\n      <rect x=\"7\" y=\"3\" width=\"10\" height=\"18\" rx=\"2.5\" />\n      <line x1=\"11\" y1=\"18\" x2=\"13\" y2=\"18\" />\n    </svg>\n  )\n}\n\n/* Phosphor's Code glyph (regular), inlined so the file carries no icon package */\nfunction CodeIcon({ className }: { className?: string }) {\n  return (\n    <svg width=\"1em\" height=\"1em\" viewBox=\"0 0 256 256\" fill=\"currentColor\" className={className} aria-hidden>\n      <path d=\"M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z\" />\n    </svg>\n  )\n}\n\nexport type PreviewView = \"desktop\" | \"mobile\" | \"code\"\n\n/** the component page's three views, as the shell names them */\nexport const PREVIEW_VIEWS: ViewOption<PreviewView>[] = [\n  { id: \"desktop\", label: \"Desktop · full width\", short: \"Desktop\", icon: <DesktopIcon /> },\n  { id: \"mobile\", label: \"Mobile · 390px\", short: \"Mobile\", icon: <MobileIcon /> },\n  { id: \"code\", label: \"Code\", short: \"Code\", icon: <CodeIcon className=\"h-3.5 w-3.5\" /> },\n]\n\nexport interface ViewSwitchProps<T extends string> {\n  options?: ViewOption<T>[]\n  /** controlled value; omit to let the switch keep its own */\n  value?: T\n  defaultValue?: T\n  onChange?: (v: T) => void\n  /** something that sits in the track ahead of the options and is not one of them (an expand link) */\n  leading?: ReactNode\n  /** 36px options, for a toolbar that is the page's main control; 32px otherwise */\n  tall?: boolean\n  /** what the group is called */\n  label?: string\n  className?: string\n}\n\n/**\n * The Segmented Control's parts, a hairline track and one thumb, with only the option\n * that is on showing its name. The row is one fixed width, so nothing jumps.\n */\nexport function ViewSwitch<T extends string = PreviewView>({\n  options = PREVIEW_VIEWS as unknown as ViewOption<T>[],\n  value,\n  defaultValue,\n  onChange,\n  leading,\n  tall = false,\n  label = \"View\",\n  className,\n}: ViewSwitchProps<T>) {\n  const reduced = useReducedMotion()\n  const off = tall ? 36 : 32\n  const measureRef = useRef<HTMLDivElement>(null)\n  const leadRef = useRef<HTMLSpanElement>(null)\n  const buttons = useRef<(HTMLButtonElement | null)[]>([])\n  const [inner, setInner] = useState<T>(() => defaultValue ?? options[0].id)\n  const current = value ?? inner\n  /** the width of the option that is on: the longest name, measured */\n  const [on, setOn] = useState<number | null>(null)\n  const [lead, setLead] = useState(0)\n  const [narrow, setNarrow] = useState(false)\n  /** the last choice came from the keyboard: it lands at once */\n  const [byKey, setByKey] = useState(false)\n\n  const select = (v: T) => {\n    setInner(v)\n    onChange?.(v)\n  }\n\n  useEffect(() => {\n    if (typeof matchMedia !== \"function\") return\n    const mq = matchMedia(\"(max-width: 639px)\")\n    const read = () => setNarrow(mq.matches)\n    read()\n    mq.addEventListener(\"change\", read)\n    return () => mq.removeEventListener(\"change\", read)\n  }, [])\n\n  const names = options.map((o) => o.short).join(\"|\")\n  useLayoutEffect(() => {\n    const measure = () => {\n      const box = measureRef.current\n      // layout pixels (offsetWidth), not the drawn box: inside a scaled preview stage a\n      // getBoundingClientRect width comes back scaled and the thumb clipped the name\n      if (box) setOn(Math.ceil(Math.max(0, ...[...box.children].map((c) => (c as HTMLElement).offsetWidth))))\n      setLead(leadRef.current ? leadRef.current.offsetWidth + GAP : 0)\n    }\n    measure()\n    // the name is set in the page's face, which can land after the first measure\n    document.fonts?.ready.then(measure).catch(() => {})\n  }, [names, tall, leading != null])\n\n  const widthOn = narrow ? off : on\n  const index = Math.max(0, options.findIndex((o) => o.id === current))\n  const still = reduced || byKey\n  const slide = still ? \"none\" : `transform ${MS}ms ${EASE}`\n  const pad = tall ? 14 : 12\n\n  /* arrow keys walk the options and choose as they go, Home and End jump to the ends */\n  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {\n    const last = options.length - 1\n    let next = -1\n    if (e.key === \"ArrowRight\" || e.key === \"ArrowDown\") next = Math.min(last, index + 1)\n    else if (e.key === \"ArrowLeft\" || e.key === \"ArrowUp\") next = Math.max(0, index - 1)\n    else if (e.key === \"Home\") next = 0\n    else if (e.key === \"End\") next = last\n    if (next < 0 || next === index) return\n    e.preventDefault()\n    setByKey(true)\n    select(options[next].id)\n    buttons.current[next]?.focus()\n  }\n\n  return (\n    <div role=\"group\" aria-label={label} className={cn(\"relative inline-flex items-center gap-0.5\", TRACK, className)}>\n      {/* every option as it looks when it is on, out of sight, to find the longest */}\n      <div ref={measureRef} aria-hidden className=\"pointer-events-none invisible absolute left-0 top-0 flex h-0 overflow-hidden whitespace-nowrap\">\n        {options.map((o) => (\n          <span key={o.id} className=\"flex shrink-0 items-center gap-1.5 text-[13px] font-medium\" style={{ paddingInline: pad }}>\n            {o.icon}\n            {o.short}\n          </span>\n        ))}\n      </div>\n\n      {/* the thumb: one, for the whole row */}\n      {widthOn != null && (\n        <span\n          aria-hidden\n          className={cn(\"pointer-events-none absolute rounded-full\", THUMB)}\n          style={{ top: PAD, bottom: PAD, left: PAD + lead, width: widthOn, transform: `translateX(${index * (off + GAP)}px)`, transition: slide }}\n        />\n      )}\n\n      {leading && (\n        <span ref={leadRef} className=\"relative flex\">\n          {leading}\n        </span>\n      )}\n      {options.map((o, i) => {\n        const active = o.id === current\n        return (\n          <button\n            key={o.id}\n            ref={(el) => {\n              buttons.current[i] = el\n            }}\n            type=\"button\"\n            onClick={() => {\n              setByKey(false)\n              select(o.id)\n            }}\n            onKeyDown={onKeyDown}\n            aria-pressed={active}\n            aria-label={o.label}\n            title={o.label}\n            className={cn(\n              \"relative flex shrink-0 items-center justify-center overflow-hidden rounded-full text-[13px] transition-colors duration-200\",\n              tall ? \"h-9\" : \"h-8\",\n              active ? \"text-foreground\" : SEGMENT_OFF,\n            )}\n            style={{\n              // before the measure lands an option is as wide as what it holds, so nothing is clipped\n              width: widthOn == null ? undefined : active ? widthOn : off,\n              transition: still ? \"color 200ms\" : `width ${MS}ms ${EASE}, color 200ms`,\n            }}\n          >\n            {/* icon and name are centred in the option; the name's own width closes to\n                nothing when the option is off, which leaves the icon alone in the middle */}\n            <span className=\"flex shrink-0 items-center justify-center\">{o.icon}</span>\n            <span\n              aria-hidden={!active}\n              className=\"overflow-hidden whitespace-nowrap font-medium\"\n              style={{\n                maxWidth: active && !narrow ? 96 : 0,\n                paddingLeft: active && !narrow ? 6 : 0,\n                opacity: active && !narrow ? 1 : 0,\n                transition: still\n                  ? reduced\n                    ? \"opacity 150ms\"\n                    : \"none\"\n                  : `max-width ${MS}ms ${EASE}, padding-left ${MS}ms ${EASE}, opacity ${active ? MS : 120}ms ease-out ${active ? 60 : 0}ms`,\n              }}\n            >\n              {o.short}\n            </span>\n          </button>\n        )\n      })}\n    </div>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/view-switch.tsx"
+    }
+  ]
+}

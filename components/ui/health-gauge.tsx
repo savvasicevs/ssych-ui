@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { animate, motion, useReducedMotion } from "motion/react"
+import { animate, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -16,7 +16,10 @@ import { cn } from "@/lib/utils"
      no ring around them. Pointing at a dot reads that metric and its score in the line
      above before you press
    · every figure is tabular; the sweep takes 0.4s (it was 1.1s), the line under the dial
-     swaps in place when it changes */
+     swaps in place when it changes
+   Motion (2026-10-01): the first sweep from 0 waits until the dial is in view (it ran on
+   mount, off screen too) and takes 0.8s with the count; switching metric still sweeps
+   from the old mark to the new one in 0.4s */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -115,6 +118,10 @@ export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaug
   const zone = zoneOf(target)
   const [v, setV] = useState(reduced ? target : 0)
   const shown = useRef(reduced ? target : 0)
+  /* the first sweep plays once, when a third of the dial is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const entered = useRef(false)
 
   useEffect(() => {
     if (reduced) {
@@ -122,8 +129,12 @@ export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaug
       setV(target)
       return
     }
+    if (!seen) return
+    /* the entrance is the long sweep up from 0; every later change is the quick one */
+    const first = !entered.current
+    entered.current = true
     const controls = animate(shown.current, target, {
-      duration: 0.4,
+      duration: first ? 0.8 : 0.4,
       ease: EASE,
       onUpdate: (n) => {
         shown.current = n
@@ -131,13 +142,13 @@ export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaug
       },
     })
     return () => controls.stop()
-  }, [reduced, target])
+  }, [reduced, target, seen])
 
   const [ex, ey] = polar(at(v))
   const read = hot !== null && hot !== mi ? metrics[hot] : null
 
   return (
-    <div className={cn("w-[220px] tabular-nums", className)}>
+    <div ref={rootRef} className={cn("w-[220px] tabular-nums", className)}>
       <button
         type="button"
         onClick={() => setMi((m) => (m + 1) % metrics.length)}

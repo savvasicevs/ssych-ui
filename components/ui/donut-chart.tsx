@@ -1,7 +1,7 @@
 "use client"
 
-import { useId, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useId, useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils"
    · reduced motion is honoured, the ring fades in once on mount
    · every figure is tabular, the centre is a status readout, the chart says its total
    Props: `color` on a datum is now optional and is no longer drawn. Callers that pass it
-   keep compiling. Nothing else changed. */
+   keep compiling. Nothing else changed.
+   Motion (2026-10-01): the ring sweeps open clockwise from the top once, 800ms, when the
+   chart first comes into view (it used to run on mount, in 400ms). Reduced motion starts it whole. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -106,6 +108,9 @@ export function DonutChart({
   className,
 }: DonutChartProps) {
   const reduced = useReducedMotion()
+  const rootRef = useRef<HTMLDivElement>(null)
+  /* the sweep waits until the chart is on screen, so a page of charts does not spend it out of sight */
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
   const maskId = `donut-sweep-${useId().replace(/:/g, "")}`
   const [hot, setHot] = useState<string | null>(null)
   const sorted = [...data].sort((a, b) => b.value - a.value)
@@ -152,8 +157,8 @@ export function DonutChart({
             strokeWidth={R_OUT - R_IN + 4}
             transform={`rotate(-90 ${MID} ${MID})`}
             initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            animate={{ pathLength: seen || reduced ? 1 : 0 }}
+            transition={reduced ? { duration: 0 } : { duration: 0.8, ease: EASE }}
           />
         </mask>
         <g mask={`url(#${maskId})`}>
@@ -235,7 +240,7 @@ export function DonutChart({
   )
 
   return (
-    <div className={cn("tabular-nums", stacked ? "flex w-full flex-col items-center gap-4" : "flex items-center gap-8", className)}>
+    <div ref={rootRef} className={cn("tabular-nums", stacked ? "flex w-full flex-col items-center gap-4" : "flex items-center gap-8", className)}>
       {ring}
       {legend}
     </div>

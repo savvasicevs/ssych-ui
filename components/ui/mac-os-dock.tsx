@@ -198,7 +198,7 @@ function DockItem({
       {active && (
         <span
           aria-hidden
-          className="absolute -bottom-[1px] left-1/2 z-10 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-foreground/80 shadow-[0_0_4px_var(--card-shadow,rgba(0,0,0,0.3))]"
+          className="absolute -bottom-[1px] left-1/2 z-10 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-foreground/80 shadow-[0_0_4px_var(--card-shadow,rgba(0,0,0,calc(0.3*var(--shadow-k,1))))]"
         />
       )}
       {/* soft floor reflection — the icon mirrored + faded under the tray lip */}
@@ -217,7 +217,7 @@ function DockItem({
             exit={{ opacity: 0, y: 10, scaleY: 0.5, x: "-50%" }}
             transition={{ duration: 0.22, ease: EASE }}
             style={{ transformOrigin: "bottom center", background: "var(--surface, var(--card))" }}
-            className="pointer-events-none absolute -top-9 left-1/2 z-20 whitespace-nowrap rounded-md border border-foreground/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-foreground/70 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+            className="pointer-events-none absolute -top-9 left-1/2 z-20 whitespace-nowrap rounded-md border border-foreground/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-foreground/70 shadow-[0_8px_24px_rgba(0,0,0,calc(0.5*var(--shadow-k,1)))]"
           >
             {label}
             <span
@@ -339,7 +339,7 @@ export function MacOsDock({
             style={{
               transformOrigin: "bottom right",
               background: "var(--surface, var(--card))",
-              boxShadow: "0 16px 40px var(--card-shadow, rgba(0,0,0,0.5))",
+              boxShadow: "0 16px 40px var(--card-shadow, rgba(0,0,0,calc(0.5 * var(--shadow-k, 1))))",
             }}
             className="absolute bottom-full right-0 z-30 mb-3 w-[190px] rounded-xl border border-foreground/[0.05] p-1"
           >

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useRef, useState } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -14,7 +14,10 @@ import { cn } from "@/lib/utils"
      forecast, reported and surprise where the growth figures are, as plain text
    · the whole column answers the pointer, not only the two thin bars
    · growth figures carry + or − with a true minus, the axis too
-   · every figure is tabular, the chart names itself to a screen reader */
+   · every figure is tabular, the chart names itself to a screen reader
+   Motion (2026-10-01): the bars grow out of the zero line once the chart is in view (it
+   played on mount, off screen too), 30ms apart per quarter, all landed by 0.7s; new data
+   tweens every bar's top and height and glides the gridlines with their figures */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const RED = "var(--chart-down)"
@@ -70,6 +73,12 @@ export function HistoricalEps({
 }) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<number | null>(null)
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /** a change of data glides between the two states */
+  const morph = reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }
   const colW = (W - PAD.l - PAD.r) / Math.max(1, data.length)
 
   const max = Math.max(...data.flatMap((q) => [q.forecast, q.reported]), 0.1) * 1.1
@@ -93,7 +102,7 @@ export function HistoricalEps({
   const hue = (v: number) => (v >= 0 ? GREEN : RED)
 
   return (
-    <div className={cn("w-full max-w-[620px] tabular-nums", className)}>
+    <div ref={rootRef} className={cn("w-full max-w-[620px] tabular-nums", className)}>
       <div className="flex items-baseline justify-between gap-4">
         <div className="flex items-baseline gap-4">
           <span className="text-[13px] font-medium text-foreground/90">{title}</span>
@@ -168,21 +177,37 @@ export function HistoricalEps({
         }
         onPointerLeave={() => setHot(null)}
       >
-        {[max * 0.98, max * 0.49, 0].map((v) => (
-          <g key={v}>
-            <line
+        {(
+          [
+            ["top", max * 0.98],
+            ["mid", max * 0.49],
+            ["zero", 0],
+          ] as const
+        ).map(([place, v]) => (
+          /* keyed by place, not value, so new data glides each line and its figure */
+          <g key={place}>
+            <motion.line
               x1={PAD.l}
-              y1={y(v)}
               x2={W - PAD.r}
-              y2={y(v)}
               stroke="var(--foreground)"
               strokeOpacity={0.05}
               strokeWidth={1}
               strokeDasharray={v === 0 ? undefined : "2 4"}
+              initial={false}
+              animate={{ y1: y(v), y2: y(v) }}
+              transition={morph}
             />
-            <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={9} fill="var(--foreground)" fillOpacity={0.35}>
+            <motion.text
+              x={W - PAD.r + 8}
+              fontSize={9}
+              fill="var(--foreground)"
+              fillOpacity={0.35}
+              initial={false}
+              animate={{ attrY: y(v) + 3 }}
+              transition={morph}
+            >
               {level(v)}
-            </text>
+            </motion.text>
           </g>
         ))}
 
@@ -198,20 +223,21 @@ export function HistoricalEps({
               {/* the whole column is the target, so the pointer never falls between two bars */}
               <rect x={cx - colW / 2} y={0} width={colW} height={H} fill="transparent" />
               <g style={{ opacity: dim ? 0.35 : 1, transition: "opacity 160ms ease-out" }}>
-                {/* each bar grows out of the zero line once on mount, 30ms apart per quarter */}
+                {/* each bar grows out of the zero line once in view, 30ms apart per quarter;
+                    new data tweens its top and height */}
                 <motion.rect
-                  x={cx - BAR_W - 2} y={fTop} width={BAR_W} height={Math.max(2, fH)} rx={2} fill={FORECAST}
+                  x={cx - BAR_W - 2} width={BAR_W} rx={2} fill={FORECAST}
                   style={{ originY: d.forecast >= 0 ? 1 : 0 }}
-                  initial={reduced ? false : { scaleY: 0 }}
-                  animate={{ scaleY: 1 }}
-                  transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: i * 0.03 }}
+                  initial={reduced ? false : { scaleY: 0, attrY: fTop, height: Math.max(2, fH) }}
+                  animate={{ scaleY: play ? 1 : 0, attrY: fTop, height: Math.max(2, fH) }}
+                  transition={reduced ? { duration: 0 } : { scaleY: { duration: 0.4, ease: EASE, delay: i * 0.03 }, default: morph }}
                 />
                 <motion.rect
-                  x={cx + 2} y={rTop} width={BAR_W} height={Math.max(2, rH)} rx={2} fill={REPORTED}
+                  x={cx + 2} width={BAR_W} rx={2} fill={REPORTED}
                   style={{ originY: d.reported >= 0 ? 1 : 0 }}
-                  initial={reduced ? false : { scaleY: 0 }}
-                  animate={{ scaleY: 1 }}
-                  transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: i * 0.03 + 0.015 }}
+                  initial={reduced ? false : { scaleY: 0, attrY: rTop, height: Math.max(2, rH) }}
+                  animate={{ scaleY: play ? 1 : 0, attrY: rTop, height: Math.max(2, rH) }}
+                  transition={reduced ? { duration: 0 } : { scaleY: { duration: 0.4, ease: EASE, delay: i * 0.03 + 0.015 }, default: morph }}
                 />
               </g>
               <text

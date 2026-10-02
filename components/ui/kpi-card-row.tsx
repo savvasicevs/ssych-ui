@@ -1,7 +1,7 @@
 "use client"
 
 import { useId, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -14,7 +14,10 @@ import { cn } from "@/lib/utils"
      re-rendered the card sixty times a second
    · pointing at the line puts that point's value and date where the headline is, as plain
      text, so nothing floats over the chart
-   · each chart names itself to a screen reader */
+   · each chart names itself to a screen reader
+   Motion (2026-10-01): once a column is in view its line and fill sweep in left to right
+   through one clip, 50ms apart per column, landed by 0.9s (they drew on mount, off screen
+   too); a new series morphs the line and the fill in place */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -60,6 +63,12 @@ function Kpi({ item, labels, index }: { item: KpiItem; labels: string[]; index: 
   const uid = useId().replace(/:/g, "")
   const boxRef = useRef<HTMLDivElement>(null)
   const [hi, setHi] = useState<number | null>(null)
+  /* the entrance plays once, when a third of the column is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /** a change of data glides between the two states */
+  const morph = reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }
 
   const data = item.data.length ? item.data : [0]
   const format = item.format ?? fallbackFormat
@@ -83,7 +92,7 @@ function Kpi({ item, labels, index }: { item: KpiItem; labels: string[]; index: 
   const hue = item.up === false ? RED : GREEN
 
   return (
-    <div className="w-[160px]">
+    <div ref={rootRef} className="w-[160px]">
       <div className="text-[11.5px] font-medium text-foreground/45">{item.label}</div>
       <div role="status" className="mt-1.5 flex items-baseline gap-2">
         {/* the figure swaps in place as the pointer moves: a 4px rise through a 2px blur */}
@@ -118,25 +127,31 @@ function Kpi({ item, labels, index }: { item: KpiItem; labels: string[]; index: 
               <stop offset="0%" stopColor="var(--foreground)" stopOpacity="0.1" />
               <stop offset="100%" stopColor="var(--foreground)" stopOpacity="0" />
             </linearGradient>
+            {/* the line and its fill sweep in left to right, a few px wider than the plot for the round caps */}
+            <clipPath id={`kpi-reveal-${uid}`}>
+              <motion.rect
+                x={-4}
+                y={-4}
+                height={H + 8}
+                initial={reduced ? false : { width: 0 }}
+                animate={{ width: play ? W + 8 : 0 }}
+                transition={reduced ? { duration: 0 } : { duration: 0.8, ease: EASE, delay: index * 0.05 }}
+              />
+            </clipPath>
           </defs>
-          <motion.path
-            d={area}
-            fill={`url(#kpi-${uid})`}
-            initial={{ opacity: reduced ? 1 : 0 }}
-            animate={{ opacity: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.2 + index * 0.035 }}
-          />
-          <motion.path
-            d={line}
-            stroke="var(--foreground)"
-            strokeOpacity={0.9}
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            initial={{ pathLength: reduced ? 1 : 0 }}
-            animate={{ pathLength: 1 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: index * 0.035 }}
-          />
+          <g clipPath={`url(#kpi-reveal-${uid})`}>
+            <motion.path fill={`url(#kpi-${uid})`} initial={false} animate={{ d: area }} transition={morph} />
+            <motion.path
+              stroke="var(--foreground)"
+              strokeOpacity={0.9}
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              initial={false}
+              animate={{ d: line }}
+              transition={morph}
+            />
+          </g>
           {hi !== null && (
             <g pointerEvents="none">
               <line x1={x(hi)} y1={0} x2={x(hi)} y2={H} stroke="var(--foreground)" strokeOpacity={0.28} strokeWidth="1" />

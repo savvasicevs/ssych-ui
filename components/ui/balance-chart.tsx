@@ -220,7 +220,7 @@ export function BalanceChart({
               top: `clamp(2px, calc(${(hovered.y / H) * 100}% - 18px), calc(100% - 78px))`,
               transform: cardRight ? "translateX(14px)" : "translateX(calc(-100% - 14px))",
               background: "var(--card)",
-              boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))",
+              boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,calc(0.35 * var(--shadow-k, 1))))",
               transition: reduced ? undefined : "top 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
           >

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useId, useMemo, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
@@ -17,7 +17,10 @@ import { cn } from "@/lib/utils"
      outside it is the same line at a lower strength, not a veil of the page colour
    · the detail line is 1.8px and draws in once; it no longer flickers on every pan
    · both charts name themselves to a screen reader, and the window can be moved from the
-     keyboard: arrows pan, shift + arrows pan by ten, + and − zoom */
+     keyboard: arrows pan, shift + arrows pan by ten, + and − zoom
+   Motion (2026-10-01): once the chart is in view the detail line and its fill sweep in left
+   to right through one clip (0.9s); a new series glides both lines into place; panning and
+   zooming the window stay 1:1 with the pointer, a tween there would trail the grip */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -111,6 +114,17 @@ export function RangeNavigator({
   const navRef = useRef<SVGSVGElement>(null)
   const mainRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ mode: "move" | "left" | "right"; startIdx: number; s: number; e: number } | null>(null)
+  /* the entrance plays once, when a third of the chart is in view; reduced motion lands at once */
+  const rootRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(rootRef, { once: true, amount: 0.3 })
+  const play = !!reduced || seen
+  /* a new series glides; a moved window follows the hand at once */
+  const lastWin = useRef(win)
+  const windowMoved = lastWin.current !== win
+  useEffect(() => {
+    lastWin.current = win
+  }, [win])
+  const morph = reduced || windowMoved ? { duration: 0 } : { duration: 0.35, ease: EASE }
 
   /** Currency with a true minus (U+2212). */
   const money = useMemo(() => {
@@ -255,7 +269,7 @@ export function RangeNavigator({
   const span = `${fmtDay(win.start, crossesYear)} to ${fmtDay(win.end, crossesYear)}`
 
   return (
-    <div className={cn("w-[560px] tabular-nums", className)}>
+    <div ref={rootRef} className={cn("w-[560px] tabular-nums", className)}>
       <div className="mb-1 flex items-baseline justify-between gap-4 px-1">
         <span className="text-[13px] font-medium text-foreground/90">{title}</span>
         {/* going between the window's close and the pointed day, the readout crosses over
@@ -297,6 +311,17 @@ export function RangeNavigator({
             <stop offset="0%" stopColor={color} stopOpacity="0.1" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
+          {/* the line and its fill sweep in left to right, a few px wide of the plot for the round caps */}
+          <clipPath id={`${uid}-reveal`}>
+            <motion.rect
+              x={0}
+              y={0}
+              height={MAIN_H}
+              initial={reduced ? false : { width: 0 }}
+              animate={{ width: play ? W - PAD.r + 4 : 0 }}
+              transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
+            />
+          </clipPath>
         </defs>
 
         {/* price axis: ticks derived from the windowed min and max */}
@@ -320,24 +345,19 @@ export function RangeNavigator({
           )
         })}
 
-        <motion.path
-          d={detail.area}
-          fill={`url(#${uid}-fill)`}
-          initial={reduced ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: 0.1 }}
-        />
-        <motion.path
-          d={detail.line}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={reduced ? false : { pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
-        />
+        <g clipPath={`url(#${uid}-reveal)`}>
+          <motion.path fill={`url(#${uid}-fill)`} initial={false} animate={{ d: detail.area }} transition={morph} />
+          <motion.path
+            fill="none"
+            stroke={color}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={false}
+            animate={{ d: detail.line }}
+            transition={morph}
+          />
+        </g>
 
         {hv && (
           <g pointerEvents="none">
@@ -378,7 +398,16 @@ export function RangeNavigator({
             </clipPath>
           </defs>
           {/* the history outside the window is the same line, a step back */}
-          <path d={nav.line} fill="none" stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} strokeLinejoin="round" />
+          <motion.path
+            fill="none"
+            stroke="var(--foreground)"
+            strokeOpacity={0.18}
+            strokeWidth={1}
+            strokeLinejoin="round"
+            initial={false}
+            animate={{ d: nav.line }}
+            transition={morph}
+          />
           {/* the window itself: grab anywhere inside to pan */}
           <rect
             x={wx0}
@@ -392,8 +421,7 @@ export function RangeNavigator({
             onPointerEnter={point("move")}
             style={{ cursor: "grab", transition: "fill-opacity 150ms ease-out" }}
           />
-          <path
-            d={nav.line}
+          <motion.path
             fill="none"
             stroke="var(--foreground)"
             strokeOpacity={0.9}
@@ -401,6 +429,9 @@ export function RangeNavigator({
             strokeLinejoin="round"
             clipPath={`url(#${uid}-win)`}
             pointerEvents="none"
+            initial={false}
+            animate={{ d: nav.line }}
+            transition={morph}
           />
           {/* grips: pull to zoom */}
           {[

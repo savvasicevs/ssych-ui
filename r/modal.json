@@ -1,0 +1,69 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "modal",
+  "type": "registry:ui",
+  "title": "Modal",
+  "description": "The library's dialog with title, body and actions; Tab stays inside and Escape closes it",
+  "categories": [
+    "flows"
+  ],
+  "dependencies": [
+    "clsx",
+    "lucide-react",
+    "motion",
+    "tailwind-merge"
+  ],
+  "cssVars": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0b0e15",
+      "card": "#ffffff",
+      "card-foreground": "#0b0e15",
+      "muted-foreground": "#5a636b",
+      "border": "rgba(0,0,0,0.08)",
+      "surface": "#f8fafc",
+      "surface-soft": "#fcfdfe",
+      "panel": "#ffffff",
+      "card-raised": "#ffffff",
+      "card-shadow": "rgba(0, 0, 0, 0.22)",
+      "chart-1": "#2b7fd6",
+      "chart-2": "#2f9e70",
+      "chart-3": "#a85f3b",
+      "chart-4": "#9a9d00",
+      "chart-5": "#9c5ba6",
+      "chart-up": "#1a9e6a",
+      "chart-down": "#d0433f",
+      "chart-amber": "#b8862f"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "card": "#080b12",
+      "card-foreground": "#ffffff",
+      "muted-foreground": "#868f97",
+      "border": "rgba(255,255,255,0.05)",
+      "surface": "#0a0e16",
+      "surface-soft": "#070a12",
+      "panel": "#0e121b",
+      "card-raised": "#10141e",
+      "card-shadow": "rgba(0, 0, 0, 0.8)",
+      "chart-1": "#489ffa",
+      "chart-2": "#4dbe95",
+      "chart-3": "#c27c58",
+      "chart-4": "#e9ec89",
+      "chart-5": "#c88fcf",
+      "chart-up": "#34c28a",
+      "chart-down": "#e06a6a",
+      "chart-amber": "#e8b45a"
+    }
+  },
+  "meta": {},
+  "files": [
+    {
+      "path": "components/ui/modal.tsx",
+      "content": "\"use client\"\n\nimport { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from \"react\"\nimport { AnimatePresence, motion, useReducedMotion } from \"motion/react\"\nimport { X } from \"lucide-react\"\n\nimport { cn } from \"@/lib/utils\"\n\n/* the library's controls, copied from src/components/library/controls.ts so this file ships alone */\nconst BUTTON =\n  \"rounded-full bg-foreground/[0.08] shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--foreground)_6%,transparent)] text-foreground/80 transition-colors duration-200 hover:bg-foreground/[0.12] hover:text-foreground\"\nconst BUTTON_PRIMARY =\n  \"rounded-full bg-foreground/[0.92] text-background shadow-[inset_0_1px_0_0_var(--foreground),inset_0_-1px_0_0_color-mix(in_srgb,var(--background)_16%,transparent)] transition-colors duration-200 hover:bg-foreground\"\nconst ICON_BUTTON = \"text-foreground/45 transition-colors duration-200 hover:bg-foreground/[0.06] hover:text-foreground/80\"\n/* top: 16 (the 32px icon disc) + 20 padding + 1 border = 37;\n   bottom: 18 (the 36px action pills) + 20 padding + 1 border = 39 */\nconst CARD_RADIUS = \"rounded-t-[37px] rounded-b-[39px]\"\n\n/* Modal, extracted from the library shell (2026-09-30).\n   What it is for: the library's dialog. A title, a body, a row of\n   actions with the loud one on the right, and a close in the corner.\n   Read first: the title, then the white button.\n   The pointer: the buttons are the library's controls (the secondary lifts its fill, the\n   primary brightens, the close gains a faint disc). Tab stays inside the dialog and wraps\n   at both ends; Escape closes it. Focus lands on the first control when it opens and goes\n   back to what opened it when it closes.\n   Taken from: src/components/library/FeedbackModal.tsx and RequestComponentModal.tsx\n   (the shell: 420px wide, the header row with its 32px mark and 15px title, the 12px line\n   under the title, the close button top right, the 20px side padding, the entrance\n   opacity 0 → 1 with y 14 and scale 0.97 over 200ms on [0.4, 0, 0.2, 1]). Their forms are\n   not here.\n   Changed, because controls.ts wins over the shell: the buttons are BUTTON and\n   BUTTON_PRIMARY (36px pills), not the black/white pills with an opacity hover; the\n   header's mark is the thumb's material, not a blue disc; the corner is the card's 24px,\n   not 16; the header's hairline divider is spacing instead (fills, not lines), so the\n   panel's own 8% hairline is the one outline; the title is plain text, not an <h2>, since\n   the page owns the headings; the close is 28px, the compact control; the 12px line under the title is gone\n   (2026-10-01), the title and the body say it.\n   Decided: it renders open and in the flow, with no backdrop and no portal, so it can be\n   looked at on a page. `aria-modal` is only set when `backdrop` is on, since in the flow\n   the rest of the page is still there.\n   Motion (2026-09-30): the dialog opens from 0.96 and a fade in 250ms and closes in 150ms,\n   both on the smooth-out (the shell's [0.4, 0, 0.2, 1] eased in); the scrim follows the\n   same pair; every button sinks 0.97 on press. Reduced motion keeps the fade alone. */\n\nconst SMOOTH = [0.22, 1, 0.36, 1] as const\n/** press feedback on the library's controls: colour as before, plus a 0.97 sink */\nconst PRESS = \"transition-[color,background-color,scale] duration-200 active:scale-[0.97] motion-reduce:active:scale-100\"\n\nexport interface ModalAction {\n  label: string\n  /** the white one; one per dialog */\n  primary?: boolean\n  onClick?: () => void\n  disabled?: boolean\n}\n\nexport interface ModalProps {\n  open?: boolean\n  onClose?: () => void\n  title?: string\n  /** an icon for the 32px mark left of the title; omit for no mark */\n  icon?: ReactNode\n  children?: ReactNode\n  actions?: ModalAction[]\n  /** dim the page and centre the dialog on it, the way the shell shows it */\n  backdrop?: boolean\n  className?: string\n}\n\nconst FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])'\n\nconst DEFAULT_ACTIONS: ModalAction[] = [{ label: \"Not now\" }, { label: \"Remove\", primary: true }]\n\n/**\n * The library's dialog: title, body, actions, focus kept inside, Escape to close. In the\n * flow by default; `backdrop` centres it over a dimmed page.\n */\nexport function Modal({\n  open = true,\n  onClose,\n  title = \"Remove this component?\",\n  icon,\n  children = (\n    <p className=\"text-[13px] leading-relaxed text-foreground/55\">\n      Copies already installed keep working. The registry entry and its preview clip are taken down within the hour.\n    </p>\n  ),\n  actions = DEFAULT_ACTIONS,\n  backdrop = false,\n  className,\n}: ModalProps) {\n  const reduced = useReducedMotion()\n  const uid = useId()\n  const panel = useRef<HTMLDivElement>(null)\n  const opener = useRef<Element | null>(null)\n\n  /* focus: the first control on open, back to the opener on close */\n  useEffect(() => {\n    if (!open) return\n    opener.current = document.activeElement\n    const first = panel.current?.querySelector<HTMLElement>(FOCUSABLE)\n    first?.focus({ preventScroll: true })\n    return () => {\n      const back = opener.current\n      if (back instanceof HTMLElement && document.contains(back)) back.focus({ preventScroll: true })\n    }\n  }, [open])\n\n  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {\n    if (e.key === \"Escape\") {\n      e.stopPropagation()\n      onClose?.()\n      return\n    }\n    if (e.key !== \"Tab\" || !panel.current) return\n    const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)]\n    if (!items.length) return\n    const first = items[0]\n    const last = items[items.length - 1]\n    const active = document.activeElement\n    if (e.shiftKey && (active === first || !panel.current.contains(active))) {\n      e.preventDefault()\n      last.focus()\n    } else if (!e.shiftKey && active === last) {\n      e.preventDefault()\n      first.focus()\n    }\n  }\n\n  const dialog = (\n    <motion.div\n      ref={panel}\n      role=\"dialog\"\n      aria-modal={backdrop || undefined}\n      aria-labelledby={`${uid}-title`}\n      aria-describedby={children ? `${uid}-body` : undefined}\n      onKeyDown={onKey}\n      initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}\n      animate={{ opacity: 1, scale: 1 }}\n      exit={reduced ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, scale: 0.96, transition: { duration: 0.15, ease: SMOOTH } }}\n      transition={{ duration: 0.25, ease: SMOOTH }}\n      className={cn(\"relative w-full max-w-[420px] overflow-hidden border border-foreground/[0.08] bg-[var(--surface)] text-foreground\", CARD_RADIUS, className)}\n    >\n      <div className=\"flex items-start gap-2.5 px-5 pt-5\">\n        {icon && <span className=\"flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground/[0.08] text-foreground/80\">{icon}</span>}\n        <p id={`${uid}-title`} className=\"min-w-0 flex-1 text-[15px] font-semibold text-foreground/90\">\n          {title}\n        </p>\n        <button\n          type=\"button\"\n          onClick={onClose}\n          aria-label=\"Close\"\n          className={cn(\"-mr-1.5 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full\", ICON_BUTTON, PRESS)}\n        >\n          <X className=\"h-[17px] w-[17px]\" strokeWidth={1.75} />\n        </button>\n      </div>\n      <div id={`${uid}-body`} className=\"px-5 pb-4 pt-3\">\n        {children}\n      </div>\n      {actions.length > 0 && (\n        <div className=\"flex items-center justify-end gap-1 px-5 pb-5\">\n          {actions.map((a) => (\n            <button\n              key={a.label}\n              type=\"button\"\n              disabled={a.disabled}\n              onClick={a.onClick ?? onClose}\n              className={cn(\n                \"h-9 px-4 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40\",\n                a.primary ? BUTTON_PRIMARY : BUTTON,\n                PRESS,\n              )}\n            >\n              {a.label}\n            </button>\n          ))}\n        </div>\n      )}\n    </motion.div>\n  )\n\n  return (\n    <AnimatePresence>\n      {open &&\n        (backdrop ? (\n          <motion.div\n            key=\"scrim\"\n            className=\"fixed inset-0 z-[100] flex items-center justify-center p-4\"\n            initial={{ opacity: 0 }}\n            animate={{ opacity: 1 }}\n            exit={{ opacity: 0, transition: { duration: 0.15, ease: SMOOTH } }}\n            transition={{ duration: 0.25, ease: SMOOTH }}\n          >\n            {/* blur: the page the dialog opened over, dimmed and softened behind the scrim */}\n            <div className=\"absolute inset-0 bg-background/70 backdrop-blur-sm\" onClick={onClose} aria-hidden=\"true\" />\n            {dialog}\n          </motion.div>\n        ) : (\n          dialog\n        ))}\n    </AnimatePresence>\n  )\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/modal.tsx"
+    }
+  ]
+}
