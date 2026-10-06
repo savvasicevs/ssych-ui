@@ -1,8 +1,12 @@
 "use client"
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
+import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronRight, Copy, QrCode, SendHorizontal, SlidersHorizontal, Sparkles } from "lucide-react"
 
+import { BUTTON, FIELD, ICON_BUTTON, SURFACE } from "@/components/ui/control-classes"
+import { SegmentedControl } from "@/components/ui/segmented-control"
+import { PrimaryButton, RowField } from "@/components/ui/swap-ticket-field"
 import { cn } from "@/lib/utils"
 
 /* Wallet Drawer, promoted from a lab sketch through ssych-component (2026-09-29).
@@ -28,7 +32,8 @@ import { cn } from "@/lib/utils"
    blocks in place of values and now carries each network's value; event values are
    amount × price.
    Shipped alone: a coin's mark is a disc in its own colour with white letters; pass
-   `renderIcon` to draw the real marks instead. The wallet itself stays two letters on ink.
+   `renderIcon` to draw the real marks instead. The wallet itself is a generated avatar
+   (2026-10-02).
    2026-09-30: the copied address answers with a green check and a green "Copied" (a done
    state); a view change slides 8px through a 2px blur; the readout under the list swaps in
    place; every button sinks 0.97 on press.
@@ -39,17 +44,42 @@ import { cn } from "@/lib/utils"
    · total          Σ value of the holdings
    · share          value ÷ total × 100
    · network value  Σ value of the holdings on that network
-   · staked         Σ value of the positions; average yield Σ(value × yield) ÷ Σ value
-   · net moved      Σ received − Σ sent (a swap moves nothing in or out)
    · send, worth    amount × price of the chosen asset
-   · can be sent    0 < amount ≤ quantity held, and an address is typed */
+   · can be sent    0 < amount ≤ quantity held, and an address is typed
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit (his list: "a proper icon for the account holder"; "Send, Receive and AI
+   chat get their icons"; every dead button does something):
+   · the holder is a generated avatar (a glass orb seeded from the address, the family of the
+     dashboards' AccountMenu picture) through the new `avatar` prop, which takes any node; it
+     was two letters on an ink disc
+   · Send, Receive and AI chat are the control material at 36px with an arrow up, an arrow
+     down and a sparkle before the word
+   · AI chat opens a small chat view: suggestions, a prompt field, and answers worked from the
+     wallet's own figures (largest holding, total, yearly yield, last move). `onChat` still
+     fires when it opens
+   · settings: Currency opens a pane that really changes the display currency (new `rates`
+     prop), Connected apps opens a pane where each app can be disconnected (new `apps`
+     prop); Language is gone, since nothing in the wallet could change with it. The rows are
+     17px round like the switches above them, with no rule between
+   · the total is the three-tier header (spec 14.1): "Total" /45 and the network /90, the
+     26px figure with its cents at /35, the 24h move in hue with the window at /45
+   · the lists are the shared Segmented Control; Accounts is gone from it, since it summed
+     the Crypto rows again (a `defaultTab` of "accounts" opens Crypto)
+   · Send's fields are the ticket family's 48px round field, its button the 48px white
+     primary; the address pattern sits in a 12px frame; readable text is /60
+   Not done: the audit asked for the drawer to rest as a chip that opens it in a sheet. The
+   component is the drawer's content and the library card shows it; a host puts it in its
+   own sheet.
+   Formulas (added):
+   · 24h move       Σ value × change ÷ (100 + change), the dollars a holding moved in a day
+   · 24h move, %    move ÷ (total − move) × 100
+   · shown money    dollar value × the chosen currency's rate (sample rates, `rates`)
+   · yearly yield   Σ stake value × yield ÷ 100 (chat answer) */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const TAB_EASE = [0.22, 1, 0.36, 1] as const
-const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
-const PRESS = "transition-[color,background-color,scale] duration-150 active:scale-[0.97] motion-reduce:active:scale-100"
 /** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
 const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
 
@@ -60,6 +90,8 @@ export interface WalletHolding {
   network: string
   quantity: number
   price: number
+  /** percent over 24 hours; the header's move is worked from it */
+  change?: number
 }
 
 export interface WalletWatch {
@@ -88,8 +120,9 @@ export interface WalletEvent {
   value: number
 }
 
+/** "accounts" is kept for callers; since the 2026-10-02 audit it opens Crypto */
 export type WalletTab = "crypto" | "accounts" | "watchlist" | "defi" | "activity"
-export type WalletView = "home" | "send" | "receive" | "settings"
+export type WalletView = "home" | "send" | "receive" | "settings" | "chat"
 
 export interface WalletDrawerProps {
   name?: string
@@ -103,18 +136,25 @@ export interface WalletDrawerProps {
   defaultTab?: WalletTab
   defaultView?: WalletView
   onSend?: (order: { symbol: string; amount: number; to: string }) => void
+  /** fired when the AI chat view opens */
   onChat?: () => void
   /** draws a coin's mark in place of the coin-coloured disc */
   renderIcon?: (symbol: string, size: number) => ReactNode
+  /** the account holder's picture; a glass orb generated from the address when left out */
+  avatar?: ReactNode
+  /** dollars to one unit of each display currency; the first is the default */
+  rates?: Record<string, number>
+  /** apps connected to the wallet, each can be disconnected in Settings */
+  apps?: string[]
   className?: string
 }
 
 const DEFAULT_HOLDINGS: WalletHolding[] = [
-  { name: "Bitcoin", symbol: "BTC", network: "Bitcoin", quantity: 0.42, price: 64619 },
-  { name: "Ethereum", symbol: "ETH", network: "Ethereum", quantity: 4.1, price: 3050 },
-  { name: "Solana", symbol: "SOL", network: "Solana", quantity: 28, price: 148 },
-  { name: "BNB", symbol: "BNB", network: "BNB Chain", quantity: 3.7, price: 578 },
-  { name: "USD Coin", symbol: "USDC", network: "Ethereum", quantity: 1500, price: 1 },
+  { name: "Bitcoin", symbol: "BTC", network: "Bitcoin", quantity: 0.42, price: 64619, change: 1.8 },
+  { name: "Ethereum", symbol: "ETH", network: "Ethereum", quantity: 4.1, price: 3050, change: -0.9 },
+  { name: "Solana", symbol: "SOL", network: "Solana", quantity: 28, price: 148, change: 3.2 },
+  { name: "BNB", symbol: "BNB", network: "BNB Chain", quantity: 3.7, price: 578, change: 0.4 },
+  { name: "USD Coin", symbol: "USDC", network: "Ethereum", quantity: 1500, price: 1, change: 0 },
 ]
 
 const DEFAULT_WATCHLIST: WalletWatch[] = [
@@ -126,7 +166,7 @@ const DEFAULT_WATCHLIST: WalletWatch[] = [
 ]
 
 const DEFAULT_STAKES: WalletStake[] = [
-  { name: "ETH · stETH", protocol: "Lido staking", symbol: "ETH", value: 6405, yield: 3.1 },
+  { name: "ETH, stETH", protocol: "Lido staking", symbol: "ETH", value: 6405, yield: 3.1 },
   { name: "SOL", protocol: "Marinade staking", symbol: "SOL", value: 2072, yield: 6.2 },
   { name: "USDC", protocol: "Aave v3 supply", symbol: "USDC", value: 1500, yield: 4.8 },
   { name: "ETH / USDC", protocol: "Uniswap v3 pool", symbol: "ETH", value: 980, yield: 11.4 },
@@ -140,34 +180,22 @@ const DEFAULT_ACTIVITY: WalletEvent[] = [
   { kind: "Sent", symbol: "ETH", detail: "0.4 ETH to 0x52fE…c81d", time: "Sun", value: 1220 },
 ]
 
-const TABS: { key: WalletTab; label: string }[] = [
+/** sample rates: units of each currency per dollar */
+const DEFAULT_RATES: Record<string, number> = { USD: 1, EUR: 0.92, GBP: 0.79 }
+const SYMBOL: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" }
+const DEFAULT_APPS = ["Uniswap", "Aave", "Lido"]
+/** the token an app is known by, so its row can show the real mark */
+const APP_MARK: Record<string, string> = { Uniswap: "UNI", Aave: "AAVE", Lido: "LDO" }
+
+const TABS: { key: Exclude<WalletTab, "accounts">; label: string }[] = [
   { key: "crypto", label: "Crypto" },
-  { key: "accounts", label: "Accounts" },
   { key: "watchlist", label: "Watchlist" },
   { key: "defi", label: "DeFi" },
   { key: "activity", label: "Activity" },
 ]
 
-const usd = (n: number, dp = 2) => `$${n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}`
 const amountOf = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 4 })
 const signedPct = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`
-
-const GLYPHS = {
-  back: "M19 12H5M11 6l-6 6 6 6",
-  code: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5z",
-  setup: "M4 7h9M19 7h1M4 17h1M11 17h9M16 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 19.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
-  copy: "M9 9h11v11H9zM5 15V5h10",
-  check: "m5 12.5 4.5 4.5L19 7.5",
-  next: "m9 6 6 6-6 6",
-} as const
-
-function Glyph({ name, size = 14 }: { name: keyof typeof GLYPHS; size?: number }) {
-  return (
-    <svg aria-hidden width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-      <path d={GLYPHS[name]} />
-    </svg>
-  )
-}
 
 /** coin discs by symbol; the hex is only the fallback of the custom property */
 const COIN: Record<string, string> = {
@@ -186,10 +214,10 @@ const COIN: Record<string, string> = {
 
 type RenderIcon = (symbol: string, size: number) => ReactNode
 
-/** a coin's mark: the caller's drawing, the coin disc, or two letters on ink (always ink for the wallet itself) */
-function Mark({ text, size = 26, plain = false, renderIcon }: { text: string; size?: number; plain?: boolean; renderIcon?: RenderIcon }) {
-  if (!plain && renderIcon) return <span className="inline-flex shrink-0">{renderIcon(text, size)}</span>
-  const disc = plain ? undefined : COIN[text.toUpperCase()]
+/** a coin's mark: the caller's drawing, or the coin disc with its letters behind the renderIcon slot */
+function Mark({ text, size = 26, renderIcon }: { text: string; size?: number; renderIcon?: RenderIcon }) {
+  if (renderIcon) return <span className="inline-flex shrink-0">{renderIcon(text, size)}</span>
+  const disc = COIN[text.toUpperCase()]
   return (
     <span
       aria-hidden
@@ -199,6 +227,48 @@ function Mark({ text, size = 26, plain = false, renderIcon }: { text: string; si
     >
       {text.slice(0, 2)}
     </span>
+  )
+}
+
+/** a small seeded generator, so one address always draws the same picture */
+const seeded = (text: string) => {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619)
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507)
+    h = Math.imul(h ^ (h >>> 13), 3266489909)
+    return ((h ^= h >>> 16) >>> 0) / 4294967296
+  }
+}
+
+/** The holder's picture: a glass orb (a hue ground and two soft light shapes turned by the
+ *  seed), the look of the dashboards' account picture, drawn from the address so it ships
+ *  with no asset file. */
+export function WalletAvatar({ seed, size = 32 }: { seed: string; size?: number }) {
+  const id = useId().replace(/:/g, "")
+  const r = seeded(seed)
+  const hue = Math.round(r() * 360)
+  const a = Math.round(r() * 360)
+  const b = Math.round(r() * 360)
+  const light = "var(--coin-glyph, #fff)"
+  return (
+    <svg aria-hidden width={size} height={size} viewBox="0 0 100 100" className="shrink-0 rounded-full">
+      <defs>
+        <clipPath id={`${id}-c`}>
+          <circle cx="50" cy="50" r="50" />
+        </clipPath>
+        <filter id={`${id}-b`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="9" />
+        </filter>
+      </defs>
+      <g clipPath={`url(#${id}-c)`}>
+        <rect width="100" height="100" fill={`oklch(0.66 0.16 ${hue})`} />
+        <g filter={`url(#${id}-b)`} opacity="0.65" style={{ mixBlendMode: "screen" }}>
+          <rect x="-10" y="18" width="120" height="30" rx="15" fill={light} transform={`rotate(${a} 50 50)`} />
+          <circle cx="68" cy="70" r="20" fill={`oklch(0.78 0.14 ${(hue + 60) % 360})`} transform={`rotate(${b} 50 50)`} />
+        </g>
+      </g>
+    </svg>
   )
 }
 
@@ -237,10 +307,14 @@ function AddressPattern({ label }: { label: string }) {
 }
 
 type Row = { key: string; mark: string; title: string; sub: string; right: string; rightSub?: string; hue?: string; subHue?: string; read: string }
+type Message = { from: "you" | "ai"; text: string }
+
+const SUGGESTIONS = ["What is my largest holding?", "How much do I earn a year?", "What moved last?"]
 
 /**
- * The wallet as one column: total, three actions, five lists behind pills, and the send,
- * receive and settings views. Pointing at a row works it out in the line under the list.
+ * The wallet as one column: the holder, the total, three actions, four lists behind a
+ * switch, and the send, receive, chat and settings views. Pointing at a row works it out in
+ * the line under the list.
  */
 export function WalletDrawer({
   name = "Demo wallet",
@@ -255,23 +329,51 @@ export function WalletDrawer({
   onSend,
   onChat,
   renderIcon,
+  avatar,
+  rates = DEFAULT_RATES,
+  apps: apps0 = DEFAULT_APPS,
   className,
 }: WalletDrawerProps) {
   const reduced = useReducedMotion()
-  const uid = useId().replace(/:/g, "")
-  const [tab, setTab] = useState<WalletTab>(defaultTab)
+  const [tab, setTab] = useState<WalletTab>(defaultTab === "accounts" ? "crypto" : defaultTab)
   const [view, setView] = useState<WalletView>(defaultView)
+  const [pane, setPane] = useState<null | "currency" | "apps">(null)
   const [hot, setHot] = useState<string | null>(null)
+  /* the tab panel never shrinks below the tallest tab it has shown, so switching tabs never
+     resizes the drawer or shifts it inside a centred stage (his report, 2026-10-02). Measured,
+     since the tabs' rows are not all one height. Up here with the other hooks: the other panes
+     return early below, and a hook after them would change the hook order */
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [floor, setFloor] = useState(0)
+  useLayoutEffect(() => {
+    const h = panelRef.current?.offsetHeight ?? 0
+    if (h > floor) setFloor(h)
+  })
   const [copied, setCopied] = useState(false)
   const [asset, setAsset] = useState(holdings[0]?.symbol ?? "")
   const [to, setTo] = useState("")
   const [amountStr, setAmountStr] = useState("")
   const [prefs, setPrefs] = useState({ hide: false, testnets: false, alerts: true })
+  const [currency, setCurrency] = useState(Object.keys(rates)[0] ?? "USD")
+  const [apps, setApps] = useState(apps0)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [prompt, setPrompt] = useState("")
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const chatEnd = useRef<HTMLDivElement>(null)
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ block: "nearest" })
+  }, [messages])
+
+  const rate = rates[currency] ?? 1
+  const cur = SYMBOL[currency] ?? `${currency} `
+  /** a dollar figure in the display currency */
+  const money = (n: number, dp = 2) => `${cur}${(n * rate).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}`
 
   const valued = holdings.map((h) => ({ ...h, value: h.quantity * h.price }))
   const total = valued.reduce((s, h) => s + h.value, 0)
+  const move = valued.reduce((s, h) => s + (h.change ? (h.value * h.change) / (100 + h.change) : 0), 0)
+  const movePct = total - move > 0 ? (move / (total - move)) * 100 : 0
   const share = (v: number) => (total > 0 ? (v / total) * 100 : 0)
   const shown = (text: string) => (prefs.hide ? "••••" : text)
 
@@ -280,7 +382,9 @@ export function WalletDrawer({
   const go = (v: WalletView) => {
     setMoved(true)
     setView(v)
+    setPane(null)
     setHot(null)
+    if (v === "chat") onChat?.()
   }
   /* a view slides in 8px from the side it lies on (a sub-view from the right, home from the
      left) through a 2px blur, 250ms; reduced motion keeps the fade */
@@ -292,15 +396,10 @@ export function WalletDrawer({
 
   const root = cn("w-[360px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)
 
-  const header = (title: string) => (
+  const header = (title: string, back: () => void = () => go("home")) => (
     <div className="mb-4 flex items-center gap-2">
-      <button
-        type="button"
-        aria-label="Back to the wallet"
-        onClick={() => go("home")}
-        className="-ml-1.5 grid h-7 w-7 place-items-center rounded-full text-foreground/45 outline-none transition-colors duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:text-foreground/90"
-      >
-        <Glyph name="back" />
+      <button type="button" aria-label="Back" onClick={back} className={cn("-ml-1.5 h-8 w-8", ICON_BUTTON)}>
+        <ArrowLeft size={15} aria-hidden />
       </button>
       <span className="text-[13px] font-medium text-foreground/90">{title}</span>
     </div>
@@ -319,11 +418,11 @@ export function WalletDrawer({
             ? "Enter an amount"
             : state === "short"
               ? `More than the ${picked.symbol} held`
-              : `Send ${amountOf(amount)} ${picked.symbol}`
+              : `Send ${picked.symbol}`
     return (
       <motion.div key="send" {...slide} className={root} role="group" aria-label={`Send from ${name}, ${verdict}`}>
         {header("Send")}
-        <div className="px-1 pb-1 text-[10.5px] text-foreground/45">Asset</div>
+        <div className="px-2 pb-1 text-[12px] text-foreground/60">Asset</div>
         <div role="radiogroup" aria-label="Asset to send" className="flex flex-col">
           {valued.slice(0, 3).map((h) => {
             const on = h.symbol === picked?.symbol
@@ -341,54 +440,34 @@ export function WalletDrawer({
                 )}
               >
                 <Mark text={h.symbol} renderIcon={renderIcon} />
-                <span className="text-[12px] font-medium text-foreground/90">{h.name}</span>
-                <span className="ml-auto text-[11px] text-foreground/45">
+                <span className="text-[12.5px] font-medium text-foreground/90">{h.name}</span>
+                <span className="ml-auto text-[12px] text-foreground/60">
                   {amountOf(h.quantity)} {h.symbol}
                 </span>
               </button>
             )
           })}
         </div>
-        <div className="mt-3 flex flex-col gap-1">
-          <label className="flex h-10 items-center gap-2 rounded-lg bg-foreground/[0.04] px-3 transition-colors duration-150 focus-within:bg-foreground/[0.07]">
-            <span className="shrink-0 text-[11px] text-foreground/45">To</span>
-            <input
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="Address or name"
-              aria-label="Address to send to"
-              className="min-w-0 flex-1 bg-transparent text-right text-[12px] text-foreground/90 caret-foreground outline-none placeholder:text-foreground/35"
-            />
-          </label>
-          <label className="flex h-10 items-center gap-2 rounded-lg bg-foreground/[0.04] px-3 transition-colors duration-150 focus-within:bg-foreground/[0.07]">
-            <span className="shrink-0 text-[11px] text-foreground/45">Amount</span>
-            <input
-              value={amountStr}
-              onChange={(e) => {
-                if (/^\d*\.?\d{0,6}$/.test(e.target.value)) setAmountStr(e.target.value)
-              }}
-              placeholder="0"
-              inputMode="decimal"
-              aria-label={`Amount in ${picked?.symbol ?? "units"}`}
-              className="min-w-0 flex-1 bg-transparent text-right text-[13px] font-semibold text-foreground/90 caret-foreground outline-none placeholder:text-foreground/35"
-            />
-            <span className="w-9 shrink-0 text-[11px] text-foreground/45">{picked?.symbol}</span>
-          </label>
+        <div className="mt-3 flex flex-col gap-1.5">
+          <RowField label="To" value={to} onChange={setTo} inputMode="text" placeholder="Address or name" ariaLabel="Address to send to" />
+          <RowField label="Amount" value={amountStr} onChange={setAmountStr} places={6} unit={picked?.symbol} ariaLabel={`Amount in ${picked?.symbol ?? "units"}`} />
         </div>
-        <div role="status" className="mt-3 flex items-baseline justify-between px-1 text-[11px]">
-          <span className="text-foreground/45">Worth</span>
-          <span className="text-foreground/90">{usd(amount * (picked?.price ?? 0))}</span>
+        <div role="status" className="mt-3 flex items-baseline justify-between px-2 text-[12px]">
+          <span className="text-foreground/60">Worth</span>
+          <span className="text-foreground/90">{money(amount * (picked?.price ?? 0))}</span>
         </div>
-        <motion.button
-          type="button"
+        <PrimaryButton
+          className="mt-4"
+          state={state}
           disabled={state !== "ready"}
           onClick={() => picked && onSend?.({ symbol: picked.symbol, amount, to: to.trim() })}
-          whileTap={state === "ready" && !reduced ? { scale: 0.97 } : undefined}
-          transition={reduced ? { duration: 0 } : LIFT_SPRING}
-          className="mt-4 h-11 w-full rounded-full bg-foreground/[0.92] text-[13px] font-semibold text-background outline-none transition-[background-color,opacity] duration-200 enabled:cursor-pointer enabled:hover:bg-foreground enabled:focus-visible:bg-foreground disabled:cursor-not-allowed disabled:opacity-35"
-        >
-          {verdict}
-        </motion.button>
+          label={
+            <>
+              {state === "ready" && <ArrowUp size={15} aria-hidden />}
+              {verdict}
+            </>
+          }
+        />
       </motion.div>
     )
   }
@@ -398,7 +477,8 @@ export function WalletDrawer({
       <motion.div key="receive" {...slide} className={root} role="group" aria-label={`Receive to ${name}, ${address}`}>
         {header("Receive")}
         <div className="flex flex-col items-center gap-3 py-2">
-          <span className="rounded-lg bg-foreground/[0.04] p-3">
+          {/* 12, an inner block */}
+          <span className={cn("rounded-[12px] p-3", SURFACE)}>
             <AddressPattern label={`Sample pattern standing for the address ${address}`} />
           </span>
           <button
@@ -410,22 +490,22 @@ export function WalletDrawer({
               if (timer.current) clearTimeout(timer.current)
               timer.current = setTimeout(() => setCopied(false), 1400)
             }}
-            className={cn("flex h-8 items-center gap-2 rounded-full bg-foreground/[0.06] px-3.5 text-[12px] font-medium text-foreground/90 outline-none hover:bg-foreground/[0.1] focus-visible:bg-foreground/[0.1]", PRESS)}
+            className={cn("h-9 gap-2 px-4 text-[12.5px] font-medium", BUTTON)}
           >
             {address}
             {/* copy and check swap in one slot through a blur; the check is a done state, so green */}
             <motion.span
               key={copied ? "check" : "copy"}
-              className={copied ? undefined : "text-foreground/45"}
+              className={copied ? undefined : "text-foreground/60"}
               style={copied ? { color: ink(GREEN) } : undefined}
               initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.9, filter: "blur(2px)" }}
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ duration: 0.25, ease: TAB_EASE }}
             >
-              <Glyph name={copied ? "check" : "copy"} size={13} />
+              {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
             </motion.span>
           </button>
-          <span role="status" className="h-4 text-[10.5px] text-foreground/45">
+          <span role="status" className="h-4 text-[12px] text-foreground/60">
             <motion.span
               key={copied ? "copied" : "rest"}
               className="inline-block"
@@ -442,16 +522,116 @@ export function WalletDrawer({
     )
   }
 
+  if (view === "chat") {
+    /* answers worked from the wallet's own figures, so every number in them can be checked */
+    const answer = (q: string): string => {
+      const t = q.toLowerCase()
+      const top = [...valued].sort((x, y) => y.value - x.value)[0]
+      if (/large|big|most|top/.test(t) && top) return `${top.name}: ${amountOf(top.quantity)} ${top.symbol} worth ${money(top.value)}, ${share(top.value).toFixed(1)}% of the wallet.`
+      if (/earn|yield|stak|year/.test(t)) {
+        const yearly = stakes.reduce((s, p) => s + (p.value * p.yield) / 100, 0)
+        return `About ${money(yearly)} a year from ${stakes.length} positions, each value × its yield, summed.`
+      }
+      if (/move|last|recent|activity/.test(t) && activity[0]) return `${activity[0].kind}, ${activity[0].detail}, ${activity[0].time}.`
+      if (/total|worth|balance/.test(t)) return `${money(total)} across ${valued.length} assets, ${signedPct(movePct)} over 24 hours.`
+      return "I can answer about your holdings, your total, what you earn from staking and what moved last."
+    }
+    const ask = (q: string) => {
+      if (!q.trim()) return
+      setMessages((m) => [...m, { from: "you", text: q.trim() }, { from: "ai", text: answer(q) }])
+      setPrompt("")
+    }
+    return (
+      <motion.div key="chat" {...slide} className={root} role="group" aria-label={`AI chat about ${name}`}>
+        {header("AI chat")}
+        <div role="log" aria-live="polite" className="flex max-h-[260px] min-h-[160px] flex-col gap-2 overflow-y-auto px-1 [scrollbar-width:none]">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-start gap-1.5">
+              <span className="px-1 pb-1 text-[12px] text-foreground/60">Ask about this wallet</span>
+              {SUGGESTIONS.map((q) => (
+                <button key={q} type="button" onClick={() => ask(q)} className={cn("h-8 px-3 text-[12px]", BUTTON)}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          ) : (
+            messages.map((m, i) => (
+              <motion.p
+                key={i}
+                initial={reduced ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                /* a bubble's 12px corner holds one line of text 12px in */
+                className={cn(
+                  "max-w-[85%] rounded-[16px] px-3 py-2 text-[12.5px] leading-[1.45]",
+                  m.from === "you" ? "self-end bg-foreground/[0.9] text-background" : cn("self-start text-foreground/90", SURFACE),
+                )}
+              >
+                {m.text}
+              </motion.p>
+            ))
+          )}
+          <div ref={chatEnd} />
+        </div>
+        <form
+          className={cn("mt-3 flex h-12 items-center gap-2 pl-5 pr-2", FIELD)}
+          onSubmit={(e) => {
+            e.preventDefault()
+            ask(prompt)
+          }}
+        >
+          <input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ask anything" aria-label="Ask about this wallet" className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-foreground/45" />
+          <button type="submit" aria-label="Send the question" disabled={!prompt.trim()} className={cn("h-8 w-8", BUTTON)}>
+            <SendHorizontal size={14} aria-hidden />
+          </button>
+        </form>
+      </motion.div>
+    )
+  }
+
   if (view === "settings") {
+    const linkRow = "flex w-full items-center gap-2 rounded-[17px] px-2 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
+    if (pane === "currency")
+      return (
+        <motion.div key="currency" {...slide} className={root} role="group" aria-label="Display currency">
+          {header("Currency", () => setPane(null))}
+          <div role="radiogroup" aria-label="Display currency" className="flex flex-col">
+            {Object.keys(rates).map((c) => (
+              <button key={c} type="button" role="radio" aria-checked={c === currency} onClick={() => setCurrency(c)} className={linkRow}>
+                <span className="text-[12.5px] font-medium text-foreground/90">{c}</span>
+                <span className="text-[12px] text-foreground/60">{c === "USD" ? "US dollar" : `${SYMBOL[c] ?? ""}${rates[c]} per $1`}</span>
+                <span className="ml-auto grid w-4 place-items-center">{c === currency && <Check size={14} aria-hidden className="text-foreground/70" />}</span>
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      )
+    if (pane === "apps")
+      return (
+        <motion.div key="apps" {...slide} className={root} role="group" aria-label="Connected apps">
+          {header("Connected apps", () => setPane(null))}
+          <div className="flex flex-col">
+            {apps.length === 0 && <p className="px-2 py-3 text-[12px] text-foreground/60">No apps are connected.</p>}
+            {apps.map((app) => (
+              <div key={app} className="flex items-center gap-2.5 rounded-[17px] px-2 py-2">
+                <Mark text={APP_MARK[app] ?? app} renderIcon={renderIcon} />
+                <span className="text-[12.5px] font-medium text-foreground/90">{app}</span>
+                <button type="button" onClick={() => setApps((list) => list.filter((a) => a !== app))} className={cn("ml-auto h-7 px-3 text-[12px]", BUTTON)}>
+                  Disconnect
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )
     const switches: { key: keyof typeof prefs; label: string }[] = [
       { key: "hide", label: "Hide balances" },
       { key: "testnets", label: "Show testnets" },
       { key: "alerts", label: "Price alerts" },
     ]
     const links = [
-      { label: "Currency", value: "USD" },
-      { label: "Language", value: "English" },
-      { label: "Connected apps", value: "3" },
+      { key: "currency" as const, label: "Currency", value: currency },
+      { key: "apps" as const, label: "Connected apps", value: String(apps.length) },
     ]
     return (
       <motion.div key="settings" {...slide} className={root} role="group" aria-label={`Settings of ${name}`}>
@@ -467,7 +647,7 @@ export function WalletDrawer({
               /* 9 (the 18px switch track) + 8 side padding = 17 */
               className="flex items-center justify-between rounded-[17px] px-2 py-2.5 outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
             >
-              <span className="text-[12px] font-medium text-foreground/90">{s.label}</span>
+              <span className="text-[12.5px] font-medium text-foreground/90">{s.label}</span>
               {/* the knob travels 14px inside a 32px track: 3 + 12 + 14 + 3 */}
               <span
                 aria-hidden
@@ -482,16 +662,10 @@ export function WalletDrawer({
             </button>
           ))}
           {links.map((l) => (
-            <button
-              key={l.label}
-              type="button"
-              className="flex items-center gap-2 rounded-lg border-t border-foreground/[0.05] px-2 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
-            >
-              <span className="text-[12px] font-medium text-foreground/90">{l.label}</span>
-              <span className="ml-auto text-[11px] text-foreground/45">{l.value}</span>
-              <span className="text-foreground/35">
-                <Glyph name="next" size={12} />
-              </span>
+            <button key={l.key} type="button" onClick={() => setPane(l.key)} className={linkRow}>
+              <span className="text-[12.5px] font-medium text-foreground/90">{l.label}</span>
+              <span className="ml-auto text-[12px] text-foreground/60">{l.value}</span>
+              <ChevronRight size={14} aria-hidden className="text-foreground/45" />
             </button>
           ))}
         </div>
@@ -499,163 +673,124 @@ export function WalletDrawer({
     )
   }
 
-  /* one row shape for all five lists, so they read as one instrument */
-  const networks = [...new Set(valued.map((h) => h.network))].map((n) => {
-    const on = valued.filter((h) => h.network === n)
-    return { name: n, value: on.reduce((s, h) => s + h.value, 0), symbols: on.map((h) => h.symbol) }
-  })
-  const staked = stakes.reduce((s, p) => s + p.value, 0)
-  const meanYield = staked > 0 ? stakes.reduce((s, p) => s + p.value * p.yield, 0) / staked : 0
-  const net = activity.reduce((s, e) => s + (e.kind === "Received" ? e.value : e.kind === "Sent" ? -e.value : 0), 0)
-
-  const lists: Record<WalletTab, { rows: Row[]; rest: string }> = {
-    crypto: {
-      rows: valued.map((h) => ({
-        key: h.symbol,
-        mark: h.symbol,
-        title: h.name,
-        sub: `${amountOf(h.quantity)} ${h.symbol}`,
-        right: shown(usd(h.value)),
-        rightSub: `${share(h.value).toFixed(1)}%`,
-        read: `${h.symbol} · ${amountOf(h.quantity)} × ${usd(h.price)} = ${shown(usd(h.value))}`,
-      })),
-      rest: `${valued.length} assets · ${shown(usd(total))} in all`,
-    },
-    accounts: {
-      rows: networks.map((n) => ({
-        key: n.name,
-        mark: n.symbols[0] ?? n.name,
-        title: n.name,
-        sub: n.symbols.join(", "),
-        right: shown(usd(n.value)),
-        rightSub: `${share(n.value).toFixed(1)}%`,
-        read: `${n.name} · ${n.symbols.join(" + ")} = ${shown(usd(n.value))}`,
-      })),
-      rest: `${networks.length} networks · ${shown(usd(total))} in all`,
-    },
-    watchlist: {
-      rows: watchlist.map((w) => ({
-        key: w.symbol,
-        mark: w.symbol,
-        title: w.name,
-        sub: w.symbol,
-        right: usd(w.price, w.price < 1 ? 3 : 2),
-        rightSub: signedPct(w.change),
-        subHue: w.change >= 0 ? GREEN : RED,
-        read: `${w.symbol} · ${usd(w.price, w.price < 1 ? 3 : 2)} · ${signedPct(w.change)} in 24h`,
-      })),
-      rest: `${watchlist.length} markets · ${watchlist.filter((w) => w.change >= 0).length} up, ${watchlist.filter((w) => w.change < 0).length} down`,
-    },
-    defi: {
-      rows: stakes.map((p) => ({
-        key: p.protocol,
-        mark: p.symbol,
-        title: p.name,
-        sub: p.protocol,
-        right: shown(usd(p.value)),
-        rightSub: `${p.yield.toFixed(1)}% a year`,
-        read: `${p.protocol} · ${shown(usd((p.value * p.yield) / 100))} a year at ${p.yield.toFixed(1)}%`,
-      })),
-      rest: `${stakes.length} positions · ${shown(usd(staked))} · ${meanYield.toFixed(2)}% on average`,
-    },
-    activity: {
-      rows: activity.map((e, i) => ({
-        key: `${e.kind}-${i}`,
-        mark: e.symbol,
-        title: e.kind,
-        sub: e.detail,
-        right: `${e.kind === "Received" ? "+" : e.kind === "Sent" ? "−" : ""}${shown(usd(e.value))}`,
-        rightSub: e.time,
-        hue: e.kind === "Received" ? GREEN : e.kind === "Sent" ? RED : undefined,
-        read: `${e.kind} · ${e.detail} · ${e.time}`,
-      })),
-      rest: `${activity.length} transfers · net ${net >= 0 ? "+" : "−"}${shown(usd(Math.abs(net)))}`,
-    },
+  /* one row shape for all the lists, so they read as one instrument */
+  const lists: Record<Exclude<WalletTab, "accounts">, Row[]> = {
+    crypto: valued.map((h) => ({
+      key: h.symbol,
+      mark: h.symbol,
+      title: h.name,
+      sub: `${amountOf(h.quantity)} ${h.symbol}`,
+      right: shown(money(h.value)),
+      rightSub: `${share(h.value).toFixed(1)}%`,
+      read: `${h.symbol}: ${amountOf(h.quantity)} × ${money(h.price)} = ${shown(money(h.value))}`,
+    })),
+    watchlist: watchlist.map((w) => ({
+      key: w.symbol,
+      mark: w.symbol,
+      title: w.name,
+      sub: w.symbol,
+      right: money(w.price, w.price < 1 ? 3 : 2),
+      rightSub: signedPct(w.change),
+      subHue: w.change >= 0 ? GREEN : RED,
+      read: `${w.symbol}: ${money(w.price, w.price < 1 ? 3 : 2)}, ${signedPct(w.change)} in 24h`,
+    })),
+    defi: stakes.map((p) => ({
+      key: p.protocol,
+      mark: p.symbol,
+      title: p.name,
+      sub: p.protocol,
+      right: shown(money(p.value)),
+      rightSub: `${p.yield.toFixed(1)}% a year`,
+      read: `${p.protocol}: ${shown(money((p.value * p.yield) / 100))} a year at ${p.yield.toFixed(1)}%`,
+    })),
+    activity: activity.map((e, i) => ({
+      key: `${e.kind}-${i}`,
+      mark: e.symbol,
+      title: e.kind,
+      sub: e.detail,
+      right: `${e.kind === "Received" ? "+" : e.kind === "Sent" ? "−" : ""}${shown(money(e.value))}`,
+      rightSub: e.time,
+      hue: e.kind === "Received" ? GREEN : e.kind === "Sent" ? RED : undefined,
+      read: `${e.kind}: ${e.detail}, ${e.time}`,
+    })),
   }
-  const list = lists[tab]
-  const pointed = list.rows.find((r) => r.key === hot)
+  const shownTab = tab === "accounts" ? "crypto" : tab
+  const rows = lists[shownTab]
+  const pointed = rows.find((r) => r.key === hot)
 
-  const action = (label: string, onClick?: () => void): ReactNode => (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn("h-9 flex-1 rounded-full bg-foreground/[0.06] text-[12px] font-medium text-foreground/90 outline-none hover:bg-foreground/[0.1] focus-visible:bg-foreground/[0.1]", PRESS)}
-    >
+
+  const action = (label: string, icon: ReactNode, onClick: () => void) => (
+    <button type="button" onClick={onClick} className={cn("h-9 flex-1 text-[12.5px] font-medium", BUTTON)}>
+      <span aria-hidden className="text-foreground/70">
+        {icon}
+      </span>
       {label}
     </button>
   )
 
+  const [whole, cents] = money(total).split(".")
+
   return (
-    <motion.div key="home" {...slide} className={root} role="group" aria-label={`${name}, ${prefs.hide ? "balance hidden" : usd(total)}`}>
+    <motion.div key="home" {...slide} className={root} role="group" aria-label={`${name}, ${prefs.hide ? "balance hidden" : money(total)}`}>
       <div className="flex items-center gap-2.5">
-        <Mark text={name} size={30} plain />
+        {avatar ?? <WalletAvatar seed={address} size={32} />}
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-[13px] font-medium leading-tight text-foreground/90">{name}</span>
-          <span className="text-[10.5px] text-foreground/45">{address}</span>
+          <span className="text-[12px] text-foreground/60">{address}</span>
         </span>
         <span className="-mr-1.5 ml-auto flex items-center">
-          {(
-            [
-              ["code", "Show the receive address", "receive"],
-              ["setup", "Settings", "settings"],
-            ] as const
-          ).map(([glyph, label, target]) => (
-            <button
-              key={target}
-              type="button"
-              aria-label={label}
-              onClick={() => go(target)}
-              className="grid h-7 w-7 place-items-center rounded-full text-foreground/45 outline-none transition-colors duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:text-foreground/90"
-            >
-              <Glyph name={glyph} />
-            </button>
-          ))}
+          <button type="button" aria-label="Show the receive address" onClick={() => go("receive")} className={cn("h-8 w-8", ICON_BUTTON)}>
+            <QrCode size={15} aria-hidden />
+          </button>
+          <button type="button" aria-label="Settings" onClick={() => go("settings")} className={cn("h-8 w-8", ICON_BUTTON)}>
+            <SlidersHorizontal size={15} aria-hidden />
+          </button>
         </span>
       </div>
 
-      <div className="mt-5 text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">{shown(usd(total))}</div>
+      {/* the three-tier header (spec 14.1) */}
+      <div className="mt-5">
+        <div className="mb-3 flex items-baseline justify-between text-[12px]">
+          <span className="text-foreground/45">Total</span>
+          <span className="font-medium text-foreground/90">{network}</span>
+        </div>
+        <div className="text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+          {prefs.hide ? (
+            "••••"
+          ) : (
+            <>
+              {whole}
+              <span className="text-foreground/35">.{cents}</span>
+            </>
+          )}
+        </div>
+        <div className="mt-2 text-[12px] font-medium" style={{ color: ink(move >= 0 ? GREEN : RED) }}>
+          {shown(`${move >= 0 ? "+" : "−"}${money(Math.abs(move))}`)} ({signedPct(movePct)}) <span className="font-normal text-foreground/45">24h</span>
+        </div>
+      </div>
 
       <div className="mt-4 flex gap-1.5">
-        {action("Send", () => go("send"))}
-        {action("Receive", () => go("receive"))}
-        {action("AI chat", onChat)}
+        {action("Send", <ArrowUp size={14} />, () => go("send"))}
+        {action("Receive", <ArrowDown size={14} />, () => go("receive"))}
+        {action("AI chat", <Sparkles size={14} />, () => go("chat"))}
       </div>
 
-      <div role="tablist" aria-label="Wallet lists" className="mt-4 grid grid-cols-5">
-        {TABS.map((t) => {
-          const on = t.key === tab
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              onClick={() => {
-                setTab(t.key)
-                setHot(null)
-              }}
-              className={cn(
-                "relative h-7 rounded-full text-[11px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] motion-reduce:active:scale-100",
-                on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-              )}
-            >
-              {on &&
-                (reduced ? (
-                  <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-                ) : (
-                  <motion.span aria-hidden layoutId={`${uid}-tab`} className="absolute inset-0 rounded-full bg-foreground/[0.08]" transition={{ duration: 0.25, ease: TAB_EASE }} />
-                ))}
-              <span className="relative">{t.label}</span>
-            </button>
-          )
-        })}
-      </div>
+      <SegmentedControl
+        className="mt-4"
+        options={TABS.map((t) => t.label)}
+        value={TABS.find((t) => t.key === shownTab)?.label}
+        onChange={(label) => {
+          const next = TABS.find((t) => t.label === label)
+          if (next) setTab(next.key)
+          setHot(null)
+        }}
+      />
 
-      <div role="tabpanel" aria-label={TABS.find((t) => t.key === tab)?.label} className="mt-2 flex flex-col" onPointerLeave={() => setHot(null)}>
-        {list.rows.map((r, i) => (
+      <div role="tabpanel" aria-label={TABS.find((t) => t.key === shownTab)?.label} ref={panelRef} className="mt-2 flex flex-col" style={{ minHeight: floor || undefined }} onPointerLeave={() => setHot(null)}>
+        {rows.map((r, i) => (
           /* the outer row owns the dim so it never fights the entrance inside */
           <div
-            key={`${tab}-${r.key}`}
+            key={`${shownTab}-${r.key}`}
             role="group"
             tabIndex={0}
             aria-label={r.read}
@@ -676,15 +811,15 @@ export function WalletDrawer({
             >
               <Mark text={r.mark} renderIcon={renderIcon} />
               <span className="flex min-w-0 flex-col">
-                <span className="truncate text-[12px] font-medium leading-tight text-foreground/90">{r.title}</span>
-                <span className="truncate text-[10.5px] text-foreground/45">{r.sub}</span>
+                <span className="truncate text-[12.5px] font-medium leading-tight text-foreground/90">{r.title}</span>
+                <span className="truncate text-[11px] text-foreground/60">{r.sub}</span>
               </span>
               <span className="ml-auto flex shrink-0 flex-col items-end">
-                <span className="text-[12px] font-semibold leading-tight text-foreground/90" style={r.hue ? { color: ink(r.hue) } : undefined}>
+                <span className="text-[12.5px] font-semibold leading-tight text-foreground/90" style={r.hue ? { color: ink(r.hue) } : undefined}>
                   {r.right}
                 </span>
                 {r.rightSub && (
-                  <span className="text-[10.5px] text-foreground/45" style={r.subHue ? { color: ink(r.subHue) } : undefined}>
+                  <span className="text-[11px] text-foreground/60" style={r.subHue ? { color: ink(r.subHue) } : undefined}>
                     {r.rightSub}
                   </span>
                 )}
@@ -694,16 +829,16 @@ export function WalletDrawer({
         ))}
       </div>
 
-      <div role="status" className="mt-1 border-t border-foreground/[0.05] px-2 pt-2 text-[10.5px] text-foreground/45">
-        {/* the line swaps in place: 4px and a 2px blur, 150ms */}
+      <div role="status" className="mt-1 border-t border-foreground/[0.04] px-2 pt-2 text-[11px] text-foreground/60">
+        {/* the line reads the pointed row only, swapping in place: 4px and a 2px blur, 150ms */}
         <motion.span
-          key={`${tab}-${hot ?? ""}`}
+          key={`${shownTab}-${hot ?? ""}`}
           className="block truncate"
           initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.15, ease: EASE }}
         >
-          {pointed ? pointed.read : list.rest}
+          {pointed ? pointed.read : " "}
         </motion.span>
       </div>
     </motion.div>

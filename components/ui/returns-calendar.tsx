@@ -5,6 +5,14 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
+/* Returns Calendar: monthly returns by year, diverging up and down by magnitude, with a
+   compounded year column.
+   Formulas, all from `returns`: a year's total and any span = Π(1 + r / 100) − 1 over its
+   months, in percent; a cell's tint = the up or down hue at min(|r| / 8, 1) × 55 + 7 percent.
+   2026-10-02 audit: the tooltip wears the library popover (radius 12, an 8% hairline, the
+   6% foreground mix and the popover shadow), its label and note are /60, and a span reads
+   "Jan 2023 to Mar 2023" with no en dash. Nothing else changed: it is an exemplar. */
+
 const EASE = [0.16, 1, 0.3, 1] as const
 /* the house lift spring: cells are physical objects, so they settle instead of easing */
 const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
@@ -159,9 +167,9 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
         : 0
   const tipLabel =
     showYearSpan && yearSpan
-      ? `${years[yearSpan.lo]} – ${years[yearSpan.hi]}`
+      ? `${years[yearSpan.lo]} to ${years[yearSpan.hi]}`
       : showSpan && span
-        ? `${MONTHS[span.lo % 12]} ${years[Math.floor(span.lo / 12)]} – ${MONTHS[span.hi % 12]} ${years[Math.floor(span.hi / 12)]}`
+        ? `${MONTHS[span.lo % 12]} ${years[Math.floor(span.lo / 12)]} to ${MONTHS[span.hi % 12]} ${years[Math.floor(span.hi / 12)]}`
         : tip
           ? tip.m === YEAR
             ? `${years[tip.y]}`
@@ -351,12 +359,12 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
               <motion.div
                 role="status"
                 className={cn(
-                  "absolute bottom-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-foreground/[0.05] px-2.5 py-1 text-[10px] tabular-nums",
+                  "absolute bottom-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-[12px] border border-foreground/[0.08] px-2.5 py-1 text-[10px] tabular-nums",
                   align === "end" ? "right-0" : "left-0",
                 )}
                 style={{
                   x: align === "center" ? "-50%" : 0,
-                  background: "var(--card)",
+                  background: "var(--tip-fill, color-mix(in srgb, var(--foreground) 6%, var(--background)))",
                   boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,calc(0.35 * var(--shadow-k, 1))))",
                 }}
                 initial={reduced ? false : { opacity: 0, y: 4 }}
@@ -364,11 +372,11 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
                 exit={{ opacity: 0, y: 2 }}
                 transition={reduced ? { duration: 0 } : { duration: 0.15, ease: EASE }}
               >
-                <span className="text-foreground/45">{tipLabel}</span>
+                <span className="text-foreground/60">{tipLabel}</span>
                 <span className="font-semibold" style={{ color: ink(tipValue >= 0 ? GREEN : RED) }}>
                   {signed(tipValue, 1)}%
                 </span>
-                {tipNote ? <span className="text-foreground/45">{tipNote}</span> : null}
+                {tipNote ? <span className="text-foreground/60">{tipNote}</span> : null}
               </motion.div>
             </motion.div>
           ) : null}

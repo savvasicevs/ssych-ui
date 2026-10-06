@@ -4,6 +4,9 @@ import { useId, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
+import { SegmentedControl } from "@/components/ui/segmented-control"
+import { ChartMenu } from "@/components/ui/performance-chart-menu"
 
 /* Performance Chart, written new through ssych-component (2026-09-29).
    What it is for: your return against a benchmark over the same window. Both start at
@@ -22,10 +25,20 @@ import { cn } from "@/lib/utils"
    the right side is dimmed by drawing it at lower strength, not by laying a veil over it.
    Numbers fixed: the longest window was labelled 5Y over 260 sessions, which is one
    trading year; it is 1Y now. 6M is 126 sessions (it was 130).
+   2026-10-02 audit: a lot of numbers and a legend with little hierarchy (his call). Four
+   figures of equal weight in an 11px row gave way to one header in tiers (spec 14.1): the
+   legend in the label row (a 10 by 2 line for you in green and red, the benchmark's dotted
+   line, names at /60, no values) with the window switch on the right (the shared
+   SegmentedControl, moved up from under the plot), then your return at 26px with its
+   decimals at /35, then the gap to the benchmark in its hue with the window at /45. The
+   benchmark's name in the legend is the benchmark picker, a menu in the dashboards'
+   dropdown look (performance-chart-menu.tsx), in place of a second pill row. "Average a
+   day" is gone. The pointed session reads in the shared ChartCard (you, the benchmark, the
+   gap in its hue) with your return tagged on the axis, and the header holds still while
+   scrubbing. Gridlines are solid at 5%, axis figures 9px /45.
    Formulas, over the sessions in the window:
    · return(i)   walk(i) − walk(first day of the window), in percent
    · gap         your return − the benchmark's, in percentage points
-   · average     (your last return − your first) ÷ (sessions − 1), a day
    · crossing    where the gap changes sign, placed between the two sessions by
                  a ÷ (a − c) for the gaps a and c on either side (since 2026-10-01 drawn by
                  a clip whose edge is the gap × STEEP, which meets the plot at that point)
@@ -39,10 +52,12 @@ import { cn } from "@/lib/utils"
    Motion (2026-10-01): the lines sweep in from the left once the chart is a third in view
    (one clip, 900ms); a new benchmark or window tweens both lines, the lead and trail split
    and the zero line to the new state (400ms) where they cross-faded before, and the tick
-   figures fade to their new values; reduced motion shows each state at once. */
+   figures fade to their new values; reduced motion shows each state at once.
+   2026-10-02 round 2: the two benchmarks are named S&P 500 and Nasdaq 100 in place of the
+   invented Meridian 500 and Vector 100, so an equity buyer reads them at once. Their walks
+   (seed, drift, volatility) are unchanged, so every figure and crossing stays as it was. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 const BENCH = "var(--chart-1)"
@@ -73,7 +88,7 @@ export interface PerformanceChartProps {
   /** names the chart for screen readers */
   title?: string
   you?: PerformanceWalk
-  /** invented indices: real index names are licensed marks */
+  /** the indices to compare against, by name only (no index marks are drawn) */
   benchmarks?: PerformanceBenchmark[]
   timeframes?: PerformanceTimeframe[]
   defaultBenchmark?: number
@@ -84,8 +99,8 @@ export interface PerformanceChartProps {
 const DEFAULT_YOU: PerformanceWalk = { seed: 3, drift: 0.055, vol: 0.9 }
 
 const DEFAULT_BENCHMARKS: PerformanceBenchmark[] = [
-  { key: "mrd", label: "Meridian 500", seed: 7, drift: 0.045, vol: 0.75 },
-  { key: "vec", label: "Vector 100", seed: 21, drift: 0.06, vol: 1.05 },
+  { key: "spx", label: "S&P 500", seed: 7, drift: 0.045, vol: 0.75 },
+  { key: "ndx", label: "Nasdaq 100", seed: 21, drift: 0.06, vol: 1.05 },
 ]
 
 const DEFAULT_TIMEFRAMES: PerformanceTimeframe[] = [
@@ -110,7 +125,9 @@ function walk({ seed, drift, vol }: PerformanceWalk, n = SESSIONS): number[] {
 
 const W = 500
 const H = 200
-const PAD = { t: 10, r: 38, b: 8, l: 2 }
+const PAD = { t: 10, r: 48, b: 8, l: 2 }
+/** what a window measures over, in words; an unknown key reads as itself */
+const WINDOW_WORDS: Record<string, string> = { "1M": "past month", "3M": "past 3 months", "6M": "past 6 months", YTD: "year to date", "1Y": "past year" }
 
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`
 
@@ -189,9 +206,12 @@ export function PerformanceChart({
   const at = hi ?? last
   const gap = you[at] - series[at]
   const tone = gap >= 0 ? GREEN : RED
-  const average = (you[last] - you[0]) / last
+  const restGap = you[last] - series[last]
   const split = hi === null ? W : x(hi)
-  const ticks = [0, 0.5, 1].map((f) => min + (max - min) * f)
+  const ticks = [0.1, 0.5, 0.9].map((f) => min + (max - min) * f)
+  const tagY = hi === null ? 0 : Math.max(PAD.t + 8, Math.min(H - PAD.b - 8, y(you[hi])))
+  const [retWhole, retDec] = signed(you[last]).split(".")
+  const ago = last - at
 
   const onMove = (e: React.PointerEvent) => {
     const r = boxRef.current?.getBoundingClientRect()
@@ -199,38 +219,6 @@ export function PerformanceChart({
     const px = ((e.clientX - r.left) / r.width) * W
     setHi(Math.max(0, Math.min(last, Math.round(((px - PAD.l) / (W - PAD.l - PAD.r)) * last))))
   }
-
-  const pills = (name: string, labels: string[], value: number, set: (i: number) => void) => (
-    <div role="radiogroup" aria-label={name} className="flex items-center">
-      {labels.map((label, i) => {
-        const on = i === value
-        return (
-          <button
-            key={label}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => {
-              set(i)
-              setHi(null)
-            }}
-            className={cn(
-              "relative h-7 rounded-full px-3 text-[11px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] motion-reduce:active:scale-100",
-              on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-            )}
-          >
-            {on &&
-              (reduced ? (
-                <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-              ) : (
-                <motion.span aria-hidden layoutId={`${uid}-${name}`} className="absolute inset-0 rounded-full bg-foreground/[0.08]" transition={{ duration: 0.25, ease: TAB_EASE }} />
-              ))}
-            <span className="relative">{label}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
 
   const lines = (
     <>
@@ -246,165 +234,196 @@ export function PerformanceChart({
 
   return (
     <div className={cn("w-[500px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
-      <div className="flex justify-end">
-        {pills(
-          "Benchmark",
-          benchmarks.map((m) => m.label),
-          bench,
-          setBench,
-        )}
+      {/* the label row: the legend (no values, the headline holds yours) and the window switch */}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3 text-[11px]">
+          <span className="flex items-center gap-1.5 text-foreground/60">
+            {/* your line is green while it leads and red while it trails, so its mark carries both */}
+            <span aria-hidden className="h-[2px] w-2.5 shrink-0 rounded-full" style={{ background: `linear-gradient(90deg, ${GREEN} 50%, ${RED} 50%)` }} />
+            You
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span aria-hidden className="flex w-2.5 shrink-0 justify-between">
+              <span className="h-[2px] w-[2px] rounded-full" style={{ background: BENCH }} />
+              <span className="h-[2px] w-[2px] rounded-full" style={{ background: BENCH }} />
+              <span className="h-[2px] w-[2px] rounded-full" style={{ background: BENCH }} />
+            </span>
+            {/* the benchmark's name is its picker */}
+            <ChartMenu
+              label={`Benchmark, ${b.label}`}
+              options={benchmarks.map((m) => ({ value: m.key, label: m.label }))}
+              value={b.key}
+              onPick={(k) => {
+                setBench(Math.max(0, benchmarks.findIndex((m) => m.key === k)))
+                setHi(null)
+              }}
+              triggerClassName="-mx-1.5 h-7 rounded-full px-1.5 text-foreground/60 transition-colors duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06]"
+            >
+              <span className="truncate">{b.label}</span>
+            </ChartMenu>
+          </span>
+        </div>
+        <SegmentedControl
+          options={timeframes.map((t) => t.key)}
+          value={frame.key}
+          onChange={(k) => {
+            setTf(Math.max(0, timeframes.findIndex((t) => t.key === k)))
+            setHi(null)
+          }}
+          label="Window"
+          className="shrink-0"
+        />
       </div>
 
+      {/* a new benchmark or window swaps the figures in place (4px, 2px blur, 150ms); the pointer never does */}
       <motion.div
         role="status"
-        /* a new benchmark or window swaps the readout in place (4px, 2px blur, 150ms); the scrub moves it at once */
         key={`${b.key}-${frame.key}`}
         initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ duration: 0.15, ease: EASE }}
-        className="mt-1.5 flex items-baseline gap-3 text-[11px] text-foreground/45"
       >
-        {/* the key lives in the values: each series' mark by its name and figure */}
-        <span className="flex items-baseline gap-1.5">
-          {/* your line is green while it leads and red while it trails, so its mark carries both */}
-          <span aria-hidden className="h-[2px] w-3.5 self-center rounded-full" style={{ background: `linear-gradient(90deg, ${GREEN} 50%, ${RED} 50%)` }} />
+        <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+          {retWhole}
+          <span className="text-foreground/35">.{retDec}%</span>
+        </p>
+        <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: ink(restGap >= 0 ? GREEN : RED) }}>
           <span>
-            You <span className="font-semibold text-foreground/90">{signed(you[at])}%</span>
+            {signed(restGap)} pts vs {b.label}
           </span>
-        </span>
-        <span className="flex items-baseline gap-1.5">
-          <span aria-hidden className="flex w-3.5 justify-between self-center">
-            <span className="h-[2px] w-[2px] rounded-full" style={{ background: BENCH }} />
-            <span className="h-[2px] w-[2px] rounded-full" style={{ background: BENCH }} />
-            <span className="h-[2px] w-[2px] rounded-full" style={{ background: BENCH }} />
-          </span>
-          <span>
-            {b.label} <span style={{ color: ink(BENCH) }}>{signed(series[at])}%</span>
-          </span>
-        </span>
-        <span className="font-medium" style={{ color: ink(tone) }}>
-          {signed(gap)} pts {gap >= 0 ? "ahead" : "behind"}
-        </span>
-        <span className="ml-auto text-[10px]">{hi === null ? `Average ${signed(average)}% a day` : last - at === 0 ? "Last session" : last - at === 1 ? "1 session ago" : `${last - at} sessions ago`}</span>
+          <span className="font-normal text-foreground/45">{WINDOW_WORDS[frame.key] ?? frame.key}</span>
+        </p>
       </motion.div>
 
-      <div
-        ref={boxRef}
-        className="mt-2 cursor-crosshair touch-none outline-none"
-        tabIndex={0}
-        onPointerMove={onMove}
-        onPointerLeave={() => setHi(null)}
-        onBlur={() => setHi(null)}
-        onKeyDown={(e) => {
-          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
-          e.preventDefault()
-          setHi(Math.max(0, Math.min(last, (hi ?? last) + (e.key === "ArrowLeft" ? -1 : 1))))
-        }}
-      >
-        <svg
-          width={W}
-          height={H}
-          viewBox={`0 0 ${W} ${H}`}
-          className="block max-w-full"
-          fill="none"
-          role="img"
-          aria-label={`${title}: your return ${signed(you[last])}% against ${b.label} ${signed(series[last])}% over ${frame.key}, ${signed(you[last] - series[last])} points ${you[last] - series[last] >= 0 ? "ahead" : "behind"}`}
+      <div className="relative mt-4">
+        <div
+          ref={boxRef}
+          className="cursor-crosshair touch-none outline-none"
+          tabIndex={0}
+          onPointerMove={onMove}
+          onPointerLeave={() => setHi(null)}
+          onBlur={() => setHi(null)}
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+            e.preventDefault()
+            setHi(Math.max(0, Math.min(last, (hi ?? last) + (e.key === "ArrowLeft" ? -1 : 1))))
+          }}
         >
-          <defs>
-            {/* the days you lead and the days you trail, tweened with the lines */}
-            <clipPath id={`${uid}-lead`}>
-              <motion.path initial={false} animate={{ d: leadD }} transition={tween} />
-            </clipPath>
-            <clipPath id={`${uid}-trail`}>
-              <motion.path initial={false} animate={{ d: trailD }} transition={tween} />
-            </clipPath>
-            {/* the entrance: one clip that opens from the left edge, once */}
-            <clipPath id={`${uid}-draw`}>
-              <motion.rect
-                x={0}
-                y={0}
-                height={H}
-                initial={reduced ? false : { width: 0 }}
-                animate={{ width: play ? W : 0 }}
-                transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
-              />
-            </clipPath>
-            <clipPath id={`${uid}-past`}>
-              <rect x={0} y={0} width={split} height={H} />
-            </clipPath>
-            <clipPath id={`${uid}-ahead`}>
-              <rect x={split} y={0} width={Math.max(0, W - split)} height={H} />
-            </clipPath>
-          </defs>
-
-          {ticks.map((v, i) => {
-            const t = `${signed(v).replace(/\.\d+$/, (m) => m.slice(0, 2))}%`
-            return (
-              <g key={i}>
-                <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth="1" strokeDasharray="2 4" />
-                {/* the ticks hold their places; a new figure fades in over the old one */}
-                <AnimatePresence initial={false}>
-                  <motion.text
-                    key={t}
-                    x={W - PAD.r + 6}
-                    y={y(v) + 3}
-                    fontSize={8.5}
-                    fill="var(--foreground)"
-                    initial={{ fillOpacity: 0 }}
-                    animate={{ fillOpacity: 0.35 }}
-                    exit={{ fillOpacity: 0 }}
-                    transition={tween}
-                  >
-                    {t}
-                  </motion.text>
-                </AnimatePresence>
-              </g>
-            )
-          })}
-          {/* level with the start of the window: the only solid gridline; it rides to its new
-              height with the lines (a CSS transform, so it is placed before any script runs) */}
-          <AnimatePresence initial={false}>
-            {min < 0 && max > 0 && (
-              <motion.g key="zero" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tween}>
-                <line
-                  x1={PAD.l}
-                  x2={W - PAD.r}
-                  y1={0}
-                  y2={0}
-                  stroke="var(--foreground)"
-                  strokeOpacity={0.1}
-                  strokeWidth="1"
-                  style={{ transform: `translateY(${y(0).toFixed(1)}px)`, transition: reduced ? "none" : "transform 400ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+          <svg
+            width={W}
+            height={H}
+            viewBox={`0 0 ${W} ${H}`}
+            className="block h-auto w-full"
+            fill="none"
+            role="img"
+            aria-label={`${title}: your return ${signed(you[last])}% against ${b.label} ${signed(series[last])}% over ${frame.key}, ${signed(you[last] - series[last])} points ${you[last] - series[last] >= 0 ? "ahead" : "behind"}`}
+          >
+            <defs>
+              {/* the days you lead and the days you trail, tweened with the lines */}
+              <clipPath id={`${uid}-lead`}>
+                <motion.path initial={false} animate={{ d: leadD }} transition={tween} />
+              </clipPath>
+              <clipPath id={`${uid}-trail`}>
+                <motion.path initial={false} animate={{ d: trailD }} transition={tween} />
+              </clipPath>
+              {/* the entrance: one clip that opens from the left edge, once */}
+              <clipPath id={`${uid}-draw`}>
+                <motion.rect
+                  x={0}
+                  y={0}
+                  height={H}
+                  initial={reduced ? false : { width: 0 }}
+                  animate={{ width: play ? W : 0 }}
+                  transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
                 />
-              </motion.g>
+              </clipPath>
+              <clipPath id={`${uid}-past`}>
+                <rect x={0} y={0} width={split} height={H} />
+              </clipPath>
+              <clipPath id={`${uid}-ahead`}>
+                <rect x={split} y={0} width={Math.max(0, W - split)} height={H} />
+              </clipPath>
+            </defs>
+
+            {ticks.map((v, i) => {
+              const t = `${signed(v).replace(/\.\d+$/, (m) => m.slice(0, 2))}%`
+              return (
+                <g key={i}>
+                  <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth="1" />
+                  {/* the ticks hold their places; a new figure fades in over the old one */}
+                  <AnimatePresence initial={false}>
+                    <motion.text
+                      key={t}
+                      x={W - PAD.r + 6}
+                      y={y(v) + 3}
+                      fontSize={9}
+                      fill="var(--foreground)"
+                      initial={{ fillOpacity: 0 }}
+                      animate={{ fillOpacity: 0.45 }}
+                      style={{ opacity: hi !== null && Math.abs(y(v) - tagY) < 12 ? 0 : 1, transition: reduced ? "none" : "opacity 150ms" }}
+                      exit={{ fillOpacity: 0 }}
+                      transition={tween}
+                    >
+                      {t}
+                    </motion.text>
+                  </AnimatePresence>
+                </g>
+              )
+            })}
+            {/* level with the start of the window: the only solid gridline; it rides to its new
+                height with the lines (a CSS transform, so it is placed before any script runs) */}
+            <AnimatePresence initial={false}>
+              {min < 0 && max > 0 && (
+                <motion.g key="zero" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tween}>
+                  <line
+                    x1={PAD.l}
+                    x2={W - PAD.r}
+                    y1={0}
+                    y2={0}
+                    stroke="var(--foreground)"
+                    strokeOpacity={0.1}
+                    strokeWidth="1"
+                    style={{ transform: `translateY(${y(0).toFixed(1)}px)`, transition: reduced ? "none" : "transform 400ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+                  />
+                </motion.g>
+              )}
+            </AnimatePresence>
+
+            <g clipPath={`url(#${uid}-draw)`}>
+              <g clipPath={`url(#${uid}-past)`}>{lines}</g>
+              <g clipPath={`url(#${uid}-ahead)`} opacity={0.35}>
+                {lines}
+              </g>
+            </g>
+
+            {hi !== null && (
+              <g pointerEvents="none">
+                <line x1={x(hi)} y1={PAD.t} x2={x(hi)} y2={H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth="1" />
+                <circle cx={x(hi)} cy={y(series[hi])} r="2.4" fill={BENCH} />
+                <circle cx={x(hi)} cy={y(you[hi])} r="3" fill={tone} stroke="var(--background)" strokeWidth={1.5} />
+                <AxisTag x={W - PAD.r + 2} y={tagY} width={PAD.r - 2} color={tone}>
+                  {signed(you[hi])}%
+                </AxisTag>
+              </g>
             )}
-          </AnimatePresence>
+          </svg>
+        </div>
 
-          <g clipPath={`url(#${uid}-draw)`}>
-            <g clipPath={`url(#${uid}-past)`}>{lines}</g>
-            <g clipPath={`url(#${uid}-ahead)`} opacity={0.35}>
-              {lines}
-            </g>
-          </g>
-
-          {hi !== null && (
-            <g pointerEvents="none">
-              <line x1={x(hi)} y1={PAD.t} x2={x(hi)} y2={H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.28} strokeWidth="1" />
-              <circle cx={x(hi)} cy={y(series[hi])} r="2.4" fill={BENCH} />
-              <circle cx={x(hi)} cy={y(you[hi])} r="2.8" fill={tone} />
-            </g>
-          )}
-        </svg>
+        {/* the pointed session, read beside the cursor (chart-overlay.tsx); it flips left past 60% */}
+        <ChartCard
+          open={hi !== null}
+          x={`${(split / W) * 100}%`}
+          flip={hi !== null && x(hi) > (W - PAD.r) * 0.6}
+          heading={ago === 0 ? "Last session" : ago === 1 ? "1 session ago" : `${ago} sessions ago`}
+          rows={[
+            { label: "You", value: `${signed(you[at])}%` },
+            { label: b.label, value: `${signed(series[at])}%` },
+            { label: "Gap", value: `${signed(gap)} pts`, color: ink(tone) },
+          ]}
+          width={168}
+        />
       </div>
 
-      <div className="mt-1">
-        {pills(
-          "Window",
-          timeframes.map((t) => t.key),
-          tf,
-          setTf,
-        )}
-      </div>
     </div>
   )
 }

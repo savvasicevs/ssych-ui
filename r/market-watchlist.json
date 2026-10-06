@@ -16,11 +16,11 @@
     "files": [
       {
         "path": "components/lab/TokenIcon.tsx",
-        "lines": 143
+        "lines": 152
       },
       {
         "path": "components/lab/account/accountKit.tsx",
-        "lines": 486
+        "lines": 511
       },
       {
         "path": "components/lab/discover/discoverData.ts",
@@ -52,7 +52,7 @@
       },
       {
         "path": "components/lab/screen/PreviewBar.tsx",
-        "lines": 353
+        "lines": 396
       },
       {
         "path": "components/lab/screen/Select.tsx",
@@ -63,12 +63,16 @@
         "lines": 63
       },
       {
+        "path": "components/lab/screen/useScrolled.ts",
+        "lines": 59
+      },
+      {
         "path": "components/lab/shared.ts",
         "lines": 55
       },
       {
         "path": "components/library/controls.ts",
-        "lines": 69
+        "lines": 71
       },
       {
         "path": "components/trade/TradeboardMark.tsx",
@@ -76,7 +80,7 @@
       },
       {
         "path": "components/dashboards/market-watchlist.tsx",
-        "lines": 720
+        "lines": 705
       },
       {
         "path": "components/dashboards/watchlist/data.ts",
@@ -84,11 +88,11 @@
       },
       {
         "path": "components/dashboards/watchlist/flows.tsx",
-        "lines": 175
+        "lines": 159
       },
       {
         "path": "components/dashboards/watchlist/parts.tsx",
-        "lines": 210
+        "lines": 211
       },
       {
         "path": "components/dashboards/watchlist/tour.ts",
@@ -96,7 +100,7 @@
       },
       {
         "path": "components/dashboards/market-watchlist.README.md",
-        "lines": 42
+        "lines": 43
       }
     ],
     "packages": [

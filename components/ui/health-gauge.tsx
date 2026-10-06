@@ -1,25 +1,35 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { animate, motion, useInView, useReducedMotion } from "motion/react"
+import { animate, motion, useInView, useMotionValue, useReducedMotion, useTransform } from "motion/react"
 
+import { SegmentedControl } from "@/components/ui/segmented-control"
 import { cn } from "@/lib/utils"
 
-/* Health Gauge, rebuilt through the ssych-component skill (2026-09-29).
-   What changed against the version before it (in git history), and why:
-   · the track and the value arc are filled shapes with round ends, 8px deep. They were
-     10px strokes; the arc now grows with the number instead of drawing a dash
-   · red below 40, amber for "Caution" from 40 to 70, green from 70: the band says which
-     state the score is in (amber given back 2026-09-30, it is the warning state)
-   · the end marker is a small filled dot cut out of the arc, not a 2.5px ring
-   · the metric dots are ink, one strength for the chosen one and one for the rest, with
-     no ring around them. Pointing at a dot reads that metric and its score in the line
-     above before you press
-   · every figure is tabular; the sweep takes 0.4s (it was 1.1s), the line under the dial
-     swaps in place when it changes
-   Motion (2026-10-01): the first sweep from 0 waits until the dial is in view (it ran on
-   mount, off screen too) and takes 0.8s with the count; switching metric still sweeps
-   from the old mark to the new one in 0.4s */
+/* Health Gauge, the multi-metric variant of Radial Gauge.
+   What it is for: one score out of 100 at a time, from a few metrics you switch between,
+   read against the zones it is judged by.
+   Read first: the number in the middle; the zone word under it says what it means.
+   2026-10-02 audit (redesign): it now shares Radial Gauge's dial so the Gauge family is one
+   look at one width: 240 wide, the same 270 degree ring 7px deep and the same thin band
+   scale outside it, drawn by the same ring() shape. The number stands at its value at 26px
+   (it counted up from 0 at 34px); only the arc sweeps. The zone word sits under it in its
+   hue at weight 500. The three unlabelled dots and the press on the dial that cycled
+   metrics are gone: a SegmentedControl with the metric names sits in the label row above
+   the dial, and the dial is not a button. The quiet sub line ("margin ratio") is cut; the
+   `sub` field is still accepted and is read to a screen reader only. The 0 and 100 ticks
+   and the end dot went with the old dial. A metric may carry a `short` name for the
+   control, since three full names do not fit 240px.
+   Zones (amber given back 2026-09-30, it is the warning state): at risk below 40 in red,
+   caution from 40 to 69 in amber, healthy from 70 in green; the scale shows all three, the
+   one reached strongest.
+   Formulas, all from `metrics`:
+   · the number = round(value), clamped to 0 to 100
+   · sweep of the arc = 270° × value / 100
+   · zone = the first zone whose end the value is under (40, 70, 100)
+   Motion: the arc sweeps from the left shoulder to the value once the dial is a third in
+   view (900ms); switching metric sweeps it from the old value to the new one (400ms);
+   nothing counts. Reduced motion draws the arc at its value at once. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -30,207 +40,142 @@ export interface HealthMetric {
   /** 0–100, the position on the dial */
   value: number
   label: string
-  /** the quiet line under the label */
+  /** read to a screen reader after the label; no longer printed (2026-10-02) */
   sub: string
+  /** the metric's name in the switcher, when the label is too long for it; defaults to the label */
+  short?: string
 }
 
 export interface HealthGaugeProps {
-  /** one dial per metric; clicking the dial cycles them */
+  /** one dial per metric; the switcher above the dial picks one */
   metrics?: HealthMetric[]
   className?: string
 }
 
 const DEFAULT_METRICS: HealthMetric[] = [
-  { value: 74, label: "Account health", sub: "margin ratio" },
-  { value: 38, label: "Fear & Greed", sub: "market sentiment" },
+  { value: 74, label: "Account health", sub: "margin ratio", short: "Health" },
+  { value: 38, label: "Fear and Greed", sub: "market sentiment", short: "Sentiment" },
   { value: 61, label: "Liquidity", sub: "depth score" },
 ]
 
-const SPAN = 270
-const START = -135
+/* Radial Gauge's dial, value for value: a 270° ring open at the bottom, 7px deep, and a
+   2px band scale just outside it */
+const SIZE = 180
+const MID = SIZE / 2
+const H = 150
+const SWEEP = 270
+const START = 135
+const R_OUT = 66
+const R_IN = 59
+const CAP = (R_OUT - R_IN) / 2
+const S_OUT = 74
+const S_IN = 72
+/** the gap between two zones of the scale, in degrees */
+const GAP = 2
 
-/* The 270° sweep bottoms out at ±R·sin45°, so the box is sized (and CY nudged up) to
-   clear the round ends and the 0 and 100 ticks. */
-const VB_W = 220
-const VB_H = 176
-const CX = VB_W / 2
-const CY = 94
-/** the ring's centre line, and how deep the band is */
-const R = 84
-const DEPTH = 8
-const R_OUT = R + DEPTH / 2
-const R_IN = R - DEPTH / 2
-const CAP = DEPTH / 2
-
-function polar(deg: number, r = R) {
-  const a = ((deg - 90) * Math.PI) / 180
-  return [CX + r * Math.cos(a), CY + r * Math.sin(a)] as const
-}
-const pt = (deg: number, r: number) => {
-  const [x, y] = polar(deg, r)
-  return `${x.toFixed(2)} ${y.toFixed(2)}`
+const at = (deg: number, r: number) => {
+  const a = (deg * Math.PI) / 180
+  return `${(MID + r * Math.cos(a)).toFixed(2)} ${(MID + r * Math.sin(a)).toFixed(2)}`
 }
 
-/** a band of the ring from `from` to `to` degrees as one closed shape, both ends round */
-function band(from: number, to: number) {
-  const b = Math.max(from, to)
-  const large = b - from > 180 ? 1 : 0
-  return [
-    `M ${pt(from, R_OUT)}`,
-    `A ${R_OUT} ${R_OUT} 0 ${large} 1 ${pt(b, R_OUT)}`,
-    `A ${CAP} ${CAP} 0 0 1 ${pt(b, R_IN)}`,
-    `A ${R_IN} ${R_IN} 0 ${large} 0 ${pt(from, R_IN)}`,
-    `A ${CAP} ${CAP} 0 0 1 ${pt(from, R_OUT)}`,
-    "Z",
-  ].join(" ")
+/** a band of the ring as a closed shape, `from` to `to` degrees of sweep, round at both ends */
+function ring(from: number, to: number, rOut: number, rIn: number, cap: number) {
+  const a = START + from
+  const b = START + Math.max(from + 0.01, to)
+  const large = b - a > 180 ? 1 : 0
+  return `M ${at(a, rOut)} A ${rOut} ${rOut} 0 ${large} 1 ${at(b, rOut)} A ${cap} ${cap} 0 0 1 ${at(b, rIn)} A ${rIn} ${rIn} 0 ${large} 0 ${at(a, rIn)} A ${cap} ${cap} 0 0 1 ${at(a, rOut)} Z`
 }
-const at = (v: number) => START + (Math.max(0, Math.min(100, v)) / 100) * SPAN
 
-/* the zone tints the value arc and its label, never the ground: red at risk, amber for
-   the warning in between, green healthy */
+/* the zone tints the value arc, its word and its part of the scale, never the ground */
 const ZONES = [
-  { to: 40, color: RED, label: "At risk" },
-  { to: 70, color: AMBER, label: "Caution" },
-  { to: 100, color: GREEN, label: "Healthy" },
+  { from: 0, to: 40, color: RED, label: "At risk" },
+  { from: 40, to: 70, color: AMBER, label: "Caution" },
+  { from: 70, to: 100, color: GREEN, label: "Healthy" },
 ]
-const zoneOf = (v: number) => ZONES.find((z) => v < z.to) ?? ZONES[ZONES.length - 1]
-
-function tickPos(v: number) {
-  const [x, y] = polar(at(v), R + 16)
-  return { x, y: y + 3 }
+const zoneIndex = (v: number) => {
+  const i = ZONES.findIndex((z) => v < z.to)
+  return i === -1 ? ZONES.length - 1 : i
 }
-
-const TRACK_D = band(START, START + SPAN)
+const mix = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`
+const clamp = (v: number) => Math.max(0, Math.min(100, v))
 
 /**
- * A bounded single-metric dial: a 270° band on one flat track, a value band that sweeps
- * round to its mark while the centre number counts up with it. Pressing the dial goes to
- * the next metric; the dots below go straight to the one you pick, and pointing at a dot
- * reads it first.
+ * A bounded score dial with a metric switcher: the arc sweeps round to the score over a
+ * thin scale of the zones it is judged by; the number and the zone word stand still.
+ * Picking another metric sweeps the arc from the old score to the new one.
  */
 export function HealthGauge({ metrics = DEFAULT_METRICS, className }: HealthGaugeProps) {
   const reduced = useReducedMotion()
   const [mi, setMi] = useState(0)
-  /** the dot being pointed at */
-  const [hot, setHot] = useState<number | null>(null)
-  const metric = metrics[mi]
-  const target = metric.value
-  const zone = zoneOf(target)
-  const [v, setV] = useState(reduced ? target : 0)
-  const shown = useRef(reduced ? target : 0)
-  /* the first sweep plays once, when a third of the dial is in view; reduced motion lands at once */
-  const rootRef = useRef<HTMLDivElement>(null)
-  const seen = useInView(rootRef, { once: true, amount: 0.3 })
-  const entered = useRef(false)
+  const metric = metrics[Math.min(mi, metrics.length - 1)] ?? DEFAULT_METRICS[0]
+  const value = clamp(metric.value)
+  const zi = zoneIndex(value)
+  const zone = ZONES[zi]
+  const names = metrics.map((m) => m.short ?? m.label)
 
+  const dialRef = useRef<HTMLDivElement>(null)
+  /* the sweep waits until the dial is a third in view, then plays once */
+  const inView = useInView(dialRef, { once: true, amount: 0.3 })
+  /** the first sweep is the entrance; later ones follow a switch of metric */
+  const swept = useRef(false)
+  const drawn = useMotionValue(reduced ? value / 100 : 0)
+  const d = useTransform(drawn, (v) => ring(0, SWEEP * v, R_OUT, R_IN, CAP))
   useEffect(() => {
     if (reduced) {
-      shown.current = target
-      setV(target)
+      drawn.set(value / 100)
       return
     }
-    if (!seen) return
-    /* the entrance is the long sweep up from 0; every later change is the quick one */
-    const first = !entered.current
-    entered.current = true
-    const controls = animate(shown.current, target, {
-      duration: first ? 0.8 : 0.4,
+    if (!inView) return
+    const run = animate(drawn, value / 100, {
+      duration: swept.current ? 0.4 : 0.9,
       ease: EASE,
-      onUpdate: (n) => {
-        shown.current = n
-        setV(n)
+      onComplete: () => {
+        swept.current = true
       },
     })
-    return () => controls.stop()
-  }, [reduced, target, seen])
-
-  const [ex, ey] = polar(at(v))
-  const read = hot !== null && hot !== mi ? metrics[hot] : null
+    return () => run.stop()
+  }, [drawn, value, reduced, inView])
 
   return (
-    <div ref={rootRef} className={cn("w-[220px] tabular-nums", className)}>
-      <button
-        type="button"
-        onClick={() => setMi((m) => (m + 1) % metrics.length)}
-        aria-label={`${metric.label}, ${Math.round(target)} out of 100, ${zone.label}. Press for the next metric`}
-        className="block w-full cursor-pointer rounded-lg outline-none"
-      >
-        <motion.svg
-          viewBox={`0 0 ${VB_W} ${VB_H}`}
-          className="block h-auto w-full"
-          whileTap={reduced ? undefined : { scale: 0.97 }}
-          transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 30 }}
+    <div className={cn("flex w-[240px] max-w-full flex-col items-center tabular-nums", className)}>
+      {/* the label row is the switcher: the metric names, one picked */}
+      <SegmentedControl
+        options={names}
+        value={names[mi]}
+        onChange={(name) => setMi(Math.max(0, names.indexOf(name)))}
+        className="[&>button]:px-2.5"
+      />
+
+      <div ref={dialRef} className="relative mt-3" style={{ width: SIZE, height: H }}>
+        <svg
+          width={SIZE}
+          height={H}
+          viewBox={`0 0 ${SIZE} ${H}`}
           role="img"
-          aria-label={`${metric.label} ${Math.round(target)} out of 100, ${zone.label}`}
+          aria-label={`${metric.label}, ${metric.sub}: ${Math.round(value)} out of 100, ${zone.label}`}
         >
-          {/* one flat track, no zone banding */}
-          <path d={TRACK_D} fill="var(--foreground)" fillOpacity={0.08} />
-          {/* the value band follows the counting number, so both arrive together */}
-          <path d={band(START, at(v))} fill={zone.color} style={{ transition: reduced ? "none" : "fill 200ms" }} />
-          <circle cx={ex} cy={ey} r={1.75} fill="var(--background)" />
-          <text x={CX} y={CY - 2} textAnchor="middle" fontSize={34} fontWeight={600} fill="var(--foreground)" fillOpacity={0.9}>
-            {Math.round(v)}
-          </text>
-          <text
-            x={CX}
-            y={CY + 18}
-            textAnchor="middle"
-            fontSize={11}
-            fontWeight={600}
-            fill={zone.color}
-            style={{ transition: reduced ? "none" : "fill 200ms" }}
-          >
-            {zone.label}
-          </text>
-          <text {...tickPos(0)} fontSize={9} fill="var(--foreground)" fillOpacity={0.35} textAnchor="middle">
-            0
-          </text>
-          <text {...tickPos(100)} fontSize={9} fill="var(--foreground)" fillOpacity={0.35} textAnchor="middle">
-            100
-          </text>
-        </motion.svg>
-      </button>
-
-      <div role="status" className="mt-1 flex justify-center text-[11px]">
-        {/* the line swaps in place: a 4px rise through a 2px blur */}
-        <motion.span
-          key={`${(read ?? metric).label}-${read ? "read" : "sub"}`}
-          className="flex items-baseline gap-1.5"
-          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-        >
-          <span className="font-medium text-foreground/90">{(read ?? metric).label}</span>
-          <span className="text-foreground/45">{read ? `${Math.round(read.value)} · ${zoneOf(read.value).label}` : metric.sub}</span>
-        </motion.span>
-      </div>
-
-      {/* one plain dot per metric */}
-      <div className="mt-1.5 flex items-center justify-center gap-1" role="group" aria-label="Metric" onPointerLeave={() => setHot(null)}>
-        {metrics.map((m, i) => {
-          const on = i === mi
-          return (
-            <button
-              key={m.label}
-              type="button"
-              aria-label={`Show ${m.label}, ${Math.round(m.value)} out of 100`}
-              aria-pressed={on}
-              onClick={() => setMi(i)}
-              onPointerEnter={() => setHot(i)}
-              onFocus={() => setHot(i)}
-              onBlur={() => setHot(null)}
-              className="grid size-7 cursor-pointer place-items-center rounded-full outline-none transition-colors duration-150 hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.08]"
-            >
-              <span
-                className={cn(
-                  "block size-1.5 rounded-full bg-foreground transition-[opacity,transform] duration-200",
-                  on ? "scale-[1.35] opacity-90" : hot === i ? "opacity-90" : "opacity-30",
-                  reduced && "transition-none",
-                )}
+          <path d={ring(0, SWEEP, R_OUT, R_IN, CAP)} fill="var(--foreground)" fillOpacity={0.08} />
+          <motion.path d={d} fill={zone.color} style={{ transition: reduced ? "none" : "fill 160ms" }} />
+          {ZONES.map((z, i) => {
+            const from = (z.from / 100) * SWEEP + (i === 0 ? 0 : GAP / 2)
+            const to = (z.to / 100) * SWEEP - (i === ZONES.length - 1 ? 0 : GAP / 2)
+            return (
+              <path
+                key={z.label}
+                d={ring(from, to, S_OUT, S_IN, (S_OUT - S_IN) / 2)}
+                fill={mix(z.color, i === zi ? 70 : 35)}
+                style={{ transition: reduced ? "none" : "fill 160ms" }}
               />
-            </button>
-          )
-        })}
+            )
+          })}
+        </svg>
+
+        <div role="status" className="pointer-events-none absolute inset-x-0 flex flex-col items-center" style={{ top: MID - 20 }}>
+          <span className="text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">{Math.round(value)}</span>
+          <span className="mt-1.5 text-[11px] font-medium" style={{ color: zone.color, transition: reduced ? "none" : "color 160ms" }}>
+            {zone.label}
+          </span>
+        </div>
       </div>
     </div>
   )

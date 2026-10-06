@@ -3,7 +3,7 @@
   "name": "balance-chart",
   "type": "registry:ui",
   "title": "Balance Chart",
-  "description": "Wallet-value area chart: trend picks the colour, the high and low float at their true points, scrubbing greys everything ahead of the cursor, and timeframe pills reseed the walk.",
+  "description": "A wallet balance chart for crypto and banking apps: an area line coloured by trend, with high and low marks and timeframes from 1H to All.",
   "categories": [
     "charts"
   ],

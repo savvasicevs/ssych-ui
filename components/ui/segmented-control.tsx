@@ -4,13 +4,19 @@ import { useId, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
 
 /* Segmented Control, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
    · the track sets tabular numerals, so labels with a figure in them (1D, 1W, 3M) line up
-   Nothing else. This is the material every control in the library is cut from
+   This is the material every control in the library is cut from
    (src/components/library/controls.ts), so the track, the thumb, the sizes and the
-   glide are the original's, value for value. */
+   glide are the original's, value for value.
+   2026-10-02 audit: the control now reads its material from control-classes (TRACK, THUMB,
+   SEGMENT_OFF) instead of its own 8% copy, so the thumb turns white on a raised light
+   surface like every other control; the options are an explicit 28px tall (h-7) at 11.5px
+   with no letter spacing, the control text size of spec 14.4; an optional `label` names
+   the group for a screen reader. Props and the export are unchanged. */
 
 export interface SegmentedControlProps {
   options: string[]
@@ -18,20 +24,22 @@ export interface SegmentedControlProps {
   value?: string
   onChange?: (v: string) => void
   className?: string
+  /** what the group switches, read by a screen reader (optional) */
+  label?: string
 }
 
 /**
  * The range switcher as a primitive: a hairline pill whose thumb glides
- * between options with a shared-layout spring. Tabular labels, no chrome.
+ * between options with a shared-layout tween. Tabular labels, no chrome.
  */
-export function SegmentedControl({ options, value, onChange, className }: SegmentedControlProps) {
+export function SegmentedControl({ options, value, onChange, className, label }: SegmentedControlProps) {
   const reduced = useReducedMotion()
   const uid = useId()
   const [inner, setInner] = useState(value ?? options[0])
   const current = value ?? inner
 
   return (
-    <div className={cn("inline-flex items-center gap-0.5 rounded-full border border-foreground/[0.04] p-0.5 tabular-nums", className)}>
+    <div role="group" aria-label={label} className={cn("inline-flex items-center gap-0.5 tabular-nums", TRACK, className)}>
       {options.map((o) => {
         const on = o === current
         return (
@@ -44,16 +52,15 @@ export function SegmentedControl({ options, value, onChange, className }: Segmen
               onChange?.(o)
             }}
             className={cn(
-              "group relative rounded-full px-3 py-1.5 text-[11px] tracking-[0.05em] transition-colors duration-200",
-              on ? "text-foreground" : "text-foreground/40 hover:text-foreground/70",
+              "group relative inline-flex h-7 items-center rounded-full px-3 text-[11.5px] outline-none transition-colors duration-200 focus-visible:text-foreground/90",
+              on ? "text-foreground/90" : SEGMENT_OFF,
             )}
           >
             {on && (
               /* transitions.dev sliding-tabs feel: a clean 250ms smooth-out tween */
               <motion.span
                 layoutId={`${uid}-thumb`}
-                className="absolute inset-0 rounded-full bg-foreground/[0.08]"
-                style={{ boxShadow: "inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 6%, transparent)" }}
+                className={cn("absolute inset-0 rounded-full", THUMB)}
                 transition={reduced ? { duration: 0 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               />
             )}

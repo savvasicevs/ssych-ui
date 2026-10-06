@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
+import { LiveFigure } from "@/components/ui/live-figure"
 import { cn } from "@/lib/utils"
 
 /* Ratings Radar, rebuilt through the ssych-component skill (2026-09-29).
@@ -16,7 +17,21 @@ import { cn } from "@/lib/utils"
    · every figure is tabular; the sample labels are in sentence case
    Motion (2026-10-01): the fade, the outline draw and the points now wait until the chart
    is in view (they played on mount, off screen too), all landed by 0.65s; new counts morph
-   the shape and glide each point along its spoke */
+   the shape and glide each point along its spoke
+   2026-10-02: the radar does not need a header (spec 14.1: no single figure to read first,
+   its axis labels name it), so the visible "Analyst ratings" title is gone; the `title`
+   prop still names the chart in its aria-label. The line over the chart stays: blank at
+   rest, it reads the pointed rating's count and share.
+   2026-10-02 audit: the sample axes run in the scale's order, Strong buy at the top and then
+   Buy, Neutral, Sell and Strong sell clockwise, so a buy lean pulls the shape up and to the
+   right (Strong sell used to sit beside Strong buy, so the shape meant nothing). The axis
+   labels are 11px with the name at /60 and the count at /90. The line over the chart no
+   longer repeats the label and count printed at the axis: it reads only the new figure,
+   the share ("31.0% of 87 analysts"), 11px /60 with the share /90, and it swaps through the
+   shared LiveFigure.
+   Formulas, all from `ratings`: total = sum of counts; share = count / total × 100, 1dp;
+   point radius = 6 + count / largest count × 96; the hue = green when the buy counts are
+   at least the sell counts, red when not, ink when the labels say neither. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -29,11 +44,11 @@ export interface RadarRating {
 }
 
 const DEFAULT_RATINGS: RadarRating[] = [
-  { label: "Neutral", count: 11 },
-  { label: "Buy", count: 27 },
   { label: "Strong buy", count: 38 },
-  { label: "Strong sell", count: 3 },
+  { label: "Buy", count: 27 },
+  { label: "Neutral", count: 11 },
   { label: "Sell", count: 8 },
+  { label: "Strong sell", count: 3 },
 ]
 
 const SIZE_W = 300
@@ -49,7 +64,7 @@ const BEAR = /sell|underperform|underweight/i
 /**
  * Analyst ratings as a pentagon: hairline rings and spokes, one shape pulled toward the
  * dominant rating, counts beside their labels. Pointing at an axis reads that rating's
- * count and its share of all analysts in place of the caption.
+ * share of all analysts in place of the caption.
  */
 export function RatingsRadar({
   ratings = DEFAULT_RATINGS,
@@ -59,8 +74,9 @@ export function RatingsRadar({
 }: {
   /** One axis per rating, drawn clockwise from the top. */
   ratings?: RadarRating[]
+  /** names the chart to a screen reader; not printed */
   title?: string
-  /** Defaults to "<total> analysts · last 90 days". */
+  /** a line shown over the chart at rest; blank by default */
   caption?: string
   className?: string
 }) {
@@ -93,27 +109,18 @@ export function RatingsRadar({
   return (
     <div ref={rootRef} className={cn("w-[300px] tabular-nums", className)}>
       <div className="text-center">
-        <div className="text-[13px] font-medium text-foreground/90">{title}</div>
-        <div role="status" className="mt-0.5 text-[10.5px] text-foreground/45">
-          {/* the caption swaps in place: 4px and a 2px blur, 150ms */}
-          <motion.span
-            key={hot ?? -1}
-            className="inline-block"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-          {hot !== null && ratings[hot] ? (
-            <>
-              <span className="font-medium text-foreground/90">
-                {ratings[hot].label} {ratings[hot].count}
-              </span>
-              {`, ${share(ratings[hot].count)}% of ${total}`}
-            </>
-          ) : (
-            (caption ?? `${total} analysts · last 90 days`)
-          )}
-          </motion.span>
+        <div role="status" className="text-[11px] text-foreground/60">
+          {/* the line swaps in place when the pointed rating changes (LiveFigure: 4px, 2px blur, 150ms) */}
+          <LiveFigure intent={hot}>
+            {hot !== null && ratings[hot] ? (
+              <>
+                <span className="font-medium text-foreground/90">{share(ratings[hot].count)}%</span>
+                {` of ${total} analysts`}
+              </>
+            ) : (
+              (caption ?? "\u00a0") /* no summary at rest (user call, 2026-10-02) */
+            )}
+          </LiveFigure>
         </div>
       </div>
 
@@ -213,7 +220,7 @@ export function RatingsRadar({
               onFocus={() => setHot(i)}
               onBlur={() => setHot(null)}
               onClick={() => setHot(i)}
-              className="absolute whitespace-nowrap rounded-full text-[10.5px] outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
+              className="absolute whitespace-nowrap rounded-full text-[11px] outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
               style={{
                 left: x,
                 top: y,
@@ -221,8 +228,8 @@ export function RatingsRadar({
                 opacity: hot === null || hot === i ? 1 : 0.4,
               }}
             >
-              <span className={hot === i ? "text-foreground/90" : "text-foreground/45"}>{r.label} </span>
-              {r.count > 0 && <span className="font-semibold text-foreground/90">{r.count}</span>}
+              <span className={hot === i ? "text-foreground/90" : "text-foreground/60"}>{r.label} </span>
+              {r.count > 0 && <span className="font-medium text-foreground/90">{r.count}</span>}
             </button>
           )
         })}

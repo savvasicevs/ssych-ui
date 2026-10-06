@@ -1,8 +1,13 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { ChevronRight, Settings } from "lucide-react"
 
+import { ChainPicker } from "@/components/ui/cross-chain-swap-picker"
+
+import { ICON_BUTTON } from "@/components/ui/control-classes"
+import { AmountBox, FlipButton, Line, PILL, PrimaryButton, Segments, TICKET_WIDTH, amountText } from "@/components/ui/swap-ticket-field"
+import { TicketModal, modalField, modalPrimary, modalSecondary } from "@/components/ui/swap-ticket-modal"
 import { cn } from "@/lib/utils"
 
 /* Cross Chain Swap, written new through ssych-component (2026-09-29).
@@ -29,12 +34,41 @@ import { cn } from "@/lib/utils"
    · rate         pay price ÷ get price
    · can be sent  0 < amount ≤ balance of the pay asset
    Library (2026-09-30): ships alone, so a mark is a disc in its --coin-<symbol> colour with
-   its letters in white; `renderIcon` draws the real mark in its place. */
+   its letters in white; `renderIcon` draws the real mark in its place.
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit, redesigned (his list: "things should be clickable; more functionality"):
+   the cross-chain member of the swap family, cut from the same parts as Swap Ticket and Swap
+   Confirm (swap-ticket-field.tsx, swap-ticket-modal.tsx) at 320 wide. Each side is the
+   family's amount field (28 = the 32px chips' 16 + 12) holding two dropdowns: the asset, and
+   the network, which lists only the networks that asset lives on (USDC on Ethereum, Arbitrum or
+   Optimism); the network was a readout and the asset list a cramped grid in the field. Max
+   sits on the balance line. The receive figure is the quote read first (22px), the typed
+   amount 17px. Under the fields: the rate and a route line (time and fee), each with its
+   formula on hover; the receive address is a row that opens a popup to edit or paste it
+   (it called an `onEditAddress` nobody passed). A gear opens the slippage. The primary is
+   the family's 48px white button and reads "Swap ETH on Ethereum for BTC". The sample book
+   gained ETH and USDC on Arbitrum and Optimism so the network choice has something to choose.
+   Formulas (added):
+   · route time   confirmation time of the pay network + of the get network, in whole
+                  minutes, at least 1 (SETTLE below, or a chain's own `settle`)
+   · minimum      you get × (1 − slippage), in the settings popup
+   2026-10-02 round 2: (his notes: "the Bitcoin is right under the arrow, and the chains look
+   weird in there. Maybe on hover you're able to change the token and the chain, and the chain
+   is a little bit more minimal"; and for every swap, the balance overlaps the flip arrow).
+   Each side is one chip (cross-chain-swap-picker.tsx): the token's mark with the network's mark
+   small on its corner, the symbol and a chevron; pointing at it says what it holds and that it
+   changes both, pressing it opens one picker with a compact row of network marks on top and
+   every token on every network under it. The second full pill for the network is gone; the
+   network is named quietly in the field's label ("Pay from Ethereum", "Get on Bitcoin"). Max
+   moved from the balance line into the amount row, and both fields keep a clear lane over the
+   flip (AmountBox `seam`), so neither the chip nor the balance sits under the arrow. The
+   address popup's field shows focus on its own edge. A pick goes straight to its entry
+   (token and network at once); picking what the other side holds still turns the route
+   around. Formulas are unchanged. */
 
-const EASE = [0.16, 1, 0.3, 1] as const
-const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
-/** a balance the amount runs past is a threshold crossed, so it reads red */
 const RED = "var(--chart-down)"
+const SLIPPAGES = ["0.1%", "0.5%", "1%"] as const
+type Slip = (typeof SLIPPAGES)[number]
 
 export interface ChainAsset {
   symbol: string
@@ -49,6 +83,8 @@ export interface ChainAsset {
   balance: number
   /** the wallet's address on that network, already shortened */
   address: string
+  /** minutes a transfer on this network takes to confirm (SETTLE has the defaults) */
+  settle?: number
 }
 
 export interface CrossChainQuote {
@@ -72,7 +108,8 @@ export interface CrossChainSwapProps {
   /** route fee as a fraction of the value paid */
   feeRate?: number
   onSwap?: (quote: CrossChainQuote) => void
-  onEditAddress?: (asset: ChainAsset) => void
+  /** fired when the receive address popup opens, and with the new address when it is saved */
+  onEditAddress?: (asset: ChainAsset, address?: string) => void
   /** draws an asset or network mark in place of the built-in disc */
   renderIcon?: (symbol: string, size: number) => ReactNode
   className?: string
@@ -85,10 +122,26 @@ const DEFAULT_ASSETS: ChainAsset[] = [
   { symbol: "USDC", name: "USD Coin", chain: "Ethereum", chainSymbol: "ETH", price: 1, balance: 1500, address: "0x8f3C…9aD1" },
   { symbol: "BNB", name: "BNB", chain: "BNB Chain", chainSymbol: "BNB", price: 578, balance: 3.7, address: "0x8f3C…9aD1" },
   { symbol: "XRP", name: "XRP", chain: "XRP Ledger", chainSymbol: "XRP", price: 2.2, balance: 340, address: "rN7n7o…k9tt" },
+  { symbol: "ETH", name: "Ethereum", chain: "Optimism", chainSymbol: "OP", price: 3050, balance: 0.85, address: "0x8f3C…9aD1" },
+  { symbol: "ETH", name: "Ethereum", chain: "Arbitrum", chainSymbol: "ARB", price: 3050, balance: 1.2, address: "0x8f3C…9aD1" },
+  { symbol: "USDC", name: "USD Coin", chain: "Optimism", chainSymbol: "OP", price: 1, balance: 620, address: "0x8f3C…9aD1" },
+  { symbol: "USDC", name: "USD Coin", chain: "Arbitrum", chainSymbol: "ARB", price: 1, balance: 240, address: "0x8f3C…9aD1" },
 ]
+
+/** minutes to confirm a transfer, by network: sample figures for the route line */
+const SETTLE: Record<string, number> = {
+  Ethereum: 1,
+  Bitcoin: 10,
+  Solana: 0.2,
+  "BNB Chain": 0.3,
+  "XRP Ledger": 0.1,
+  Optimism: 0.3,
+  Arbitrum: 0.3,
+}
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const upTo = (n: number, dp: number) => n.toLocaleString("en-US", { maximumFractionDigits: dp })
+const settleOf = (a: ChainAsset) => a.settle ?? SETTLE[a.chain] ?? 1
 
 /* the brand colour of each mark, only ever the fallback of its --coin-<symbol> property;
    a glyph colour is given where white would not read on the disc */
@@ -106,26 +159,14 @@ const MARKS: Record<string, { disc: string; glyph?: string }> = {
   POL: { disc: "var(--coin-pol, #8247e5)" },
 }
 
-function Mark({ symbol, quiet = false, renderIcon }: { symbol: string; quiet?: boolean; renderIcon?: (symbol: string, size: number) => ReactNode }) {
-  if (renderIcon) return <>{renderIcon(symbol, 24)}</>
+function Mark({ symbol, size = 24, renderIcon }: { symbol: string; size?: number; renderIcon?: (symbol: string, size: number) => ReactNode }) {
+  if (renderIcon) return <span className="inline-flex shrink-0">{renderIcon(symbol, size)}</span>
   const mark = MARKS[symbol.toUpperCase()]
-  if (mark)
-    return (
-      <span
-        aria-hidden
-        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[8px] font-semibold"
-        style={{ background: mark.disc, color: mark.glyph ?? "var(--coin-glyph, #fff)" }}
-      >
-        {symbol.slice(0, 3)}
-      </span>
-    )
   return (
     <span
       aria-hidden
-      className={cn(
-        "grid h-6 w-6 shrink-0 place-items-center rounded-full text-[8px] font-semibold",
-        quiet ? "bg-foreground/[0.06] text-foreground/45" : "bg-foreground/[0.12] text-foreground/90",
-      )}
+      className={cn("grid shrink-0 place-items-center rounded-full font-semibold", !mark && "bg-foreground/[0.12] text-foreground/90")}
+      style={{ width: size, height: size, fontSize: Math.max(7, Math.round(size * 0.33)), background: mark?.disc, color: mark ? (mark.glyph ?? "var(--coin-glyph, #fff)") : undefined }}
     >
       {symbol.slice(0, 3)}
     </span>
@@ -133,9 +174,10 @@ function Mark({ symbol, quiet = false, renderIcon }: { symbol: string; quiet?: b
 }
 
 /**
- * The bridge ticket: each side is an asset on a network, the amount paid is typed and the
- * amount received is worked from the prices less the route fee. The flip turns the whole
- * route around and the white button carries the state of the ticket.
+ * The bridge ticket: each side is an asset on a network, both picked from dropdowns; the
+ * amount paid is typed and the amount received is worked from the prices less the route fee.
+ * The flip turns the whole route around, the address row opens its own popup, and the white
+ * button carries the state of the ticket.
  */
 export function CrossChainSwap({
   assets = DEFAULT_ASSETS,
@@ -148,12 +190,15 @@ export function CrossChainSwap({
   renderIcon,
   className,
 }: CrossChainSwapProps) {
-  const reduced = useReducedMotion()
   const [payAt, setPayAt] = useState(defaultPay)
   const [getAt, setGetAt] = useState(defaultGet)
   const [amountStr, setAmountStr] = useState(defaultAmount)
-  const [open, setOpen] = useState<"pay" | "get" | null>(null)
-  const [turns, setTurns] = useState(0)
+  const [slip, setSlip] = useState<Slip>("0.5%")
+  const [settings, setSettings] = useState(false)
+  /** addresses typed by hand, by network */
+  const [typedAddress, setTypedAddress] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState("")
 
   const pay = assets[payAt] ?? assets[0]
   const get = assets[getAt] ?? assets[0]
@@ -162,91 +207,62 @@ export function CrossChainSwap({
   const fee = payValue * feeRate
   const out = get.price > 0 ? (payValue - fee) / get.price : 0
   const rate = get.price > 0 ? pay.price / get.price : 0
+  const minutes = Math.max(1, Math.ceil(settleOf(pay) + settleOf(get)))
+  const slipPct = parseFloat(slip)
+  const address = typedAddress[get.chain] ?? get.address
 
   const state = amount <= 0 ? "amount" : amount > pay.balance ? "short" : "ready"
-  const verdict = state === "amount" ? "Enter an amount" : state === "short" ? `Insufficient ${pay.symbol}` : `Swap ${pay.symbol} for ${get.symbol}`
+  const verdict = state === "amount" ? "Enter an amount" : state === "short" ? `Insufficient ${pay.symbol}` : `Swap ${pay.symbol} on ${pay.chain} for ${get.symbol}`
 
   const flip = () => {
     setPayAt(getAt)
     setGetAt(payAt)
-    setOpen(null)
-    setTurns((t) => t + 1)
   }
-  const pick = (side: "pay" | "get", i: number) => {
+  /* an index for a side's new asset or network; picking what the other side holds turns the route around */
+  const choose = (side: "pay" | "get", i: number) => {
+    if (i < 0) return
     if (i === (side === "pay" ? getAt : payAt)) flip()
     else if (side === "pay") setPayAt(i)
     else setGetAt(i)
-    setOpen(null)
   }
+  const markOf = (symbol: string, size: number) => <Mark symbol={symbol} size={size} renderIcon={renderIcon} />
+  const chip = (side: "pay" | "get") => (
+    <ChainPicker
+      assets={assets}
+      value={side === "pay" ? payAt : getAt}
+      onPick={(i) => choose(side, i)}
+      label={side === "pay" ? "Asset to pay with" : "Asset to get"}
+      mark={markOf}
+    />
+  )
+  /** the field's label with its network named quietly after it */
+  const named = (word: string, joint: string, a: ChainAsset) => (
+    <>
+      {word} <span className="text-foreground/45">{joint} {a.chain}</span>
+    </>
+  )
 
-  const side = (key: "pay" | "get", label: string, asset: ChainAsset, at: number) => (
-    <div>
-      <div className="flex items-baseline justify-between px-1">
-        <span className="text-[11px] text-foreground/45">{label}</span>
-        <span
-          className="text-[10.5px] text-foreground/45 transition-colors duration-150 motion-reduce:transition-none"
-          style={key === "pay" && state === "short" ? { color: RED } : undefined}
-        >
-          Balance {upTo(asset.balance, 4)} {asset.symbol}
-        </span>
+  return (
+    <div className={cn(TICKET_WIDTH, "tabular-nums", className)} role="group" aria-label={`Swap ${pay.symbol} on ${pay.chain} for ${get.symbol} on ${get.chain}, ${verdict}`}>
+      <div className="mb-2 flex items-center justify-between pl-1">
+        <span className="text-[12px] font-medium text-foreground/90">Cross-chain swap</span>
+        <button type="button" aria-label="Swap settings" aria-haspopup="dialog" onClick={() => setSettings(true)} className={cn("h-8 w-8", ICON_BUTTON)}>
+          <Settings size={15} aria-hidden />
+        </button>
       </div>
-      {/* 16 (the 32px asset pill) + 10 top padding = 26 */}
-      <div className="mt-1.5 rounded-[26px] bg-foreground/[0.04] px-3 py-2.5 transition-colors duration-150 focus-within:bg-foreground/[0.06]">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setOpen((o) => (o === key ? null : key))}
-            aria-expanded={open === key}
-            aria-label={`${label}: ${asset.symbol} on ${asset.chain}, change asset`}
-            className="flex h-8 items-center gap-1.5 rounded-full bg-foreground/[0.08] pl-1 pr-2.5 outline-none transition-colors duration-150 hover:bg-foreground/[0.12] focus-visible:bg-foreground/[0.12]"
-          >
-            <Mark symbol={asset.symbol} renderIcon={renderIcon} />
-            <span className="text-[12px] font-semibold text-foreground/90">{asset.symbol}</span>
-            <svg aria-hidden width="8" height="8" viewBox="0 0 8 8" fill="none" className={cn("transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", open === key && "rotate-180")}>
-              <path d="M1 2.5 4 5.5 7 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="text-foreground/45" />
-            </svg>
-          </button>
-          <span className="text-[11px] text-foreground/45">on</span>
-          {/* the network is a readout: it follows the asset and cannot be pressed */}
-          <span className="flex h-8 items-center gap-1.5 pr-1">
-            <Mark symbol={asset.chainSymbol} quiet renderIcon={renderIcon} />
-            <span className="text-[12px] text-foreground/70">{asset.chain}</span>
-          </span>
-        </div>
 
-        {/* the list opens in the flow: the grid row grows from 0fr to 1fr over 250ms and the
-            chevron turns with it; closed, it is inert so nothing in it takes focus */}
-        <div
-          className="grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-          style={{ gridTemplateRows: open === key ? "1fr" : "0fr", opacity: open === key ? 1 : 0 }}
-          inert={open !== key}
+      <div className="relative flex flex-col gap-1">
+        <AmountBox
+          label={named("Pay", "from", pay)}
+          aside={chip("pay")}
+          seam="bottom"
+          foot={usd(payValue)}
+          footAside={
+            <span className="truncate" style={state === "short" ? { color: RED } : undefined}>
+              Balance {upTo(pay.balance, 4)}
+            </span>
+          }
         >
-            <div className="min-h-0 overflow-hidden">
-              <div role="listbox" aria-label={`${label}, assets`} className="grid grid-cols-3 gap-1 pt-2">
-                {assets.map((a, i) => {
-                  const on = i === at
-                  return (
-                    <button
-                      key={`${a.symbol}-${a.chain}`}
-                      type="button"
-                      role="option"
-                      aria-selected={on}
-                      onClick={() => pick(key, i)}
-                      className={cn(
-                        "rounded-[4px] px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.08] focus-visible:bg-foreground/[0.08]",
-                        on && "bg-foreground/[0.08]",
-                      )}
-                    >
-                      <span className="block text-[11.5px] font-semibold text-foreground/90">{a.symbol}</span>
-                      <span className="block truncate text-[9.5px] text-foreground/45">on {a.chain}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-        </div>
-
-        {key === "pay" ? (
           <input
             value={amountStr}
             onChange={(e) => {
@@ -254,89 +270,99 @@ export function CrossChainSwap({
             }}
             placeholder="0"
             inputMode="decimal"
-            aria-label={`Amount of ${asset.symbol} to pay`}
-            className="mt-2 w-full bg-transparent text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90 caret-foreground outline-none placeholder:text-foreground/35"
+            aria-label={`Amount of ${pay.symbol} to pay`}
+            className={amountText("second", !amountStr)}
           />
-        ) : (
-          <div className={cn("mt-2 text-[22px] font-semibold leading-none tracking-[-0.02em]", out > 0 ? "text-foreground/90" : "text-foreground/35")}>
-            {out > 0 ? upTo(out, 6) : "0"}
-          </div>
-        )}
-        <div className="mt-1.5 text-[11px] text-foreground/45">≈ {usd(key === "pay" ? payValue : out * asset.price)}</div>
-      </div>
-    </div>
-  )
-
-  const line = (label: string, value: string) => (
-    <div className="flex items-baseline justify-between text-[11px]">
-      <span className="text-foreground/45">{label}</span>
-      <span className="text-foreground/90">{value}</span>
-    </div>
-  )
-
-  return (
-    <div
-      className={cn("w-[340px] max-w-full tabular-nums", className)}
-      role="group"
-      aria-label={`Swap ${pay.symbol} on ${pay.chain} for ${get.symbol} on ${get.chain}, ${verdict}`}
-    >
-      {side("pay", "Pay with", pay, payAt)}
-
-      <div className="my-1.5 flex justify-center">
-        <motion.button
-          type="button"
-          onClick={flip}
-          aria-label="Turn the route around"
-          animate={{ rotate: turns * 180 }}
-          whileTap={reduced ? undefined : { scale: 0.97 }}
-          transition={reduced ? { duration: 0 } : { rotate: { duration: 0.3, ease: EASE }, scale: LIFT_SPRING }}
-          className="grid h-7 w-7 place-items-center rounded-full bg-foreground/[0.08] text-foreground/70 outline-none transition-colors duration-150 hover:bg-foreground/[0.12] hover:text-foreground/90 focus-visible:bg-foreground/[0.12]"
-        >
-          <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M6 1.5v9M2.5 7 6 10.5 9.5 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </motion.button>
+          {/* Max sits in the amount row, clear of the flip on the seam */}
+          <button type="button" onClick={() => setAmountStr(String(pay.balance))} aria-label={`Use the full balance, ${upTo(pay.balance, 4)} ${pay.symbol}`} className={cn("shrink-0", PILL)}>
+            Max
+          </button>
+        </AmountBox>
+        <FlipButton onClick={flip} label="Turn the route around" />
+        <AmountBox label={named("Get", "on", get)} seam="top" aside={chip("get")} foot={usd(out * get.price)} footAside={<span>Balance {upTo(get.balance, 4)}</span>}>
+          <span className={cn(amountText("lead", out <= 0), "truncate")}>{out > 0 ? upTo(out, 6) : "0"}</span>
+        </AmountBox>
       </div>
 
-      {side("get", "You get", get, getAt)}
-
-      <div role="status" className="mt-3 flex flex-col gap-1.5 px-1">
-        {line("Rate", `1 ${pay.symbol} = ${upTo(rate, 6)} ${get.symbol}`)}
-        {line(`Route fee · ${(feeRate * 100).toFixed(2)}%`, usd(fee))}
+      <div role="status" className="flex flex-col gap-1.5 px-1 pt-3">
+        <Line label="Rate" value={`1 ${pay.symbol} = ${upTo(rate, 6)} ${get.symbol}`} tip={`${pay.symbol} price ÷ ${get.symbol} price = ${usd(pay.price)} ÷ ${usd(get.price)}`} />
+        <Line
+          label="Route"
+          value={`About ${minutes} min, fee ${usd(fee)}`}
+          tip={`time: ${pay.chain} ${settleOf(pay)} min + ${get.chain} ${settleOf(get)} min, rounded up; fee: ${usd(payValue)} × ${(feeRate * 100).toFixed(2)}%`}
+        />
       </div>
 
       <button
         type="button"
-        onClick={() => onEditAddress?.(get)}
-        aria-label={`Receive address on ${get.chain}, ${get.address}, edit`}
-        className="group mt-2 flex w-full items-baseline justify-between border-t border-foreground/[0.05] px-1 pt-2 text-[11px] outline-none"
+        onClick={() => {
+          setDraft(address)
+          setEditing(true)
+          onEditAddress?.(get)
+        }}
+        aria-haspopup="dialog"
+        aria-label={`Receive address on ${get.chain}, ${address}, edit`}
+        className="group mt-1.5 flex w-full items-center justify-between gap-2 rounded-full px-1 py-1 text-[12px] outline-none"
       >
-        <span className="text-foreground/45">Receive on {get.chain}</span>
-        <span className="text-foreground/70 transition-colors duration-150 group-hover:text-foreground group-focus-visible:text-foreground">
-          {get.address} <span className="text-foreground/45 transition-colors duration-150 group-hover:text-foreground/90">· Edit</span>
+        <span className="text-foreground/60">Receive on {get.chain}</span>
+        <span className="flex items-center gap-1 text-foreground/90 transition-colors duration-150 group-hover:text-foreground group-focus-visible:text-foreground">
+          {address}
+          <ChevronRight size={14} aria-hidden className="text-foreground/60 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
         </span>
       </button>
 
-      {/* the one solid control; its label is the state of the ticket */}
-      <motion.button
-        type="button"
+      {/* the one loud control; its label is the state of the ticket */}
+      <PrimaryButton
+        className="mt-3"
+        state={state === "ready" ? `ready-${pay.symbol}-${pay.chain}-${get.symbol}` : state}
         disabled={state !== "ready"}
         onClick={() => onSwap?.({ pay, get, amount, fee, out })}
-        whileTap={state === "ready" && !reduced ? { scale: 0.97 } : undefined}
-        transition={reduced ? { duration: 0 } : LIFT_SPRING}
-        className="mt-4 h-11 w-full rounded-full bg-foreground/[0.92] text-[13px] font-semibold text-background outline-none transition-[background-color,opacity] duration-200 enabled:cursor-pointer enabled:hover:bg-foreground enabled:focus-visible:bg-foreground disabled:cursor-not-allowed disabled:opacity-35"
-      >
-        {/* the state swaps in place: a 4px rise through a 2px blur */}
-        <motion.span
-          key={verdict}
-          className="inline-block"
-          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
+        label={verdict}
+      />
+
+      <TicketModal open={editing} title={`Receive on ${get.chain}`} onClose={() => setEditing(false)}>
+        <div className="flex gap-2">
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Your ${get.chain} address`} aria-label={`Address on ${get.chain}`} className={modalField} />
+          <button
+            type="button"
+            className={modalSecondary}
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText()
+                if (text.trim()) setDraft(text.trim())
+              } catch {
+                /* the page may not read the clipboard; the field still takes a typed address */
+              }
+            }}
+          >
+            Paste
+          </button>
+        </div>
+        <p className="px-3 pt-2 text-[12px] text-foreground/60">Only {get.chain} addresses. Funds sent to another network are lost.</p>
+        <button
+          type="button"
+          disabled={!draft.trim()}
+          className={cn("mt-3", modalPrimary)}
+          onClick={() => {
+            setTypedAddress((m) => ({ ...m, [get.chain]: draft.trim() }))
+            onEditAddress?.(get, draft.trim())
+            setEditing(false)
+          }}
         >
-          {verdict}
-        </motion.span>
-      </motion.button>
+          Save address
+        </button>
+      </TicketModal>
+
+      <TicketModal open={settings} title="Swap settings" onClose={() => setSettings(false)}>
+        <div className="px-3 pb-2 text-[12px] text-foreground/60">Max slippage</div>
+        <Segments name="Max slippage" value={slip} onChange={setSlip} options={SLIPPAGES.map((s) => ({ value: s, label: s }))} />
+        <p className="px-3 pt-2 text-[12px] text-foreground/60">
+          {out > 0 ? `The least you get is ${upTo(out * (1 - slipPct / 100), 6)} ${get.symbol}: ${upTo(out, 6)} × (1 − ${slip}).` : "Enter an amount to see the least you get."}
+        </p>
+        <button type="button" className={cn("mt-3", modalPrimary)} onClick={() => setSettings(false)}>
+          Done
+        </button>
+      </TicketModal>
     </div>
   )
 }

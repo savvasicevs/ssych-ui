@@ -1,21 +1,22 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { motion, useInView, useReducedMotion } from "motion/react"
+import { useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
 
 /* Uptime Bars, written new through ssych-component (2026-09-29).
    What it is for: ninety days of one service, a bar a day, so a bad day is found by eye.
    Read first: the uptime percent for the window.
    The pointer: scrub the bars (or focus them and use the arrow keys). The pointed day stays
-   full and the rest dim; the headline becomes that day's uptime with its date, and the line
-   under it names the incident, its severity and the time lost. Nothing floats.
+   full and the rest dim; a card by the bar reads that day's uptime, the time lost, and the
+   incident with its severity. The headline keeps the window.
    Reference: browsable "uptime" (90 Day Uptime Bars, Uptime Status Page, Status Page). Only
    the index descriptions were read, no source. Idea taken: one thin bar per day with the
-   day's record behind the pointer. Colour (2026-09-30, direction): a clean day is healthy,
-   so it is green, quiet at rest and full under the pointer; a minor incident is degraded,
-   amber; a major or critical one is red, deeper the worse it was.
+   day's record behind the pointer. Colour: a clean day is quiet ink at 20% and turns green
+   only under the pointer, so at rest only the incident days carry colour; a minor incident
+   is degraded, amber; a major or critical one is red, deeper the worse it was.
    Formulas:
    · day uptime     = (1440 − minutes down that day) / 1440
    · window uptime  = 1 − Σ minutes down / (days × 1440)
@@ -25,9 +26,16 @@ import { cn } from "@/lib/utils"
    Motion (2026-10-01): the bars grow from the floor once the strip is a third in view, left
    to right with the stagger spread over 360ms and 400ms a bar (760ms in all), as CSS
    transitions so ninety bars cost no script per frame; reduced motion shows them standing.
-   No data changes here, so nothing else moves. */
+   No data changes here, so nothing else moves.
+   2026-10-02 audit: the header is the three tiers now: the service at /45 with the window
+   (90 days) at /90 in a 12px label row, the window uptime as the 26px headline with its
+   decimals at /35, and a 12px sub line with the time down in red and the incident count
+   at /45. A pointed day no longer overwrites the headline: it opens a ChartCard by the bar
+   (the date as heading, Uptime, Down and Severity rows, the incident named under them),
+   so the joined "title · severity · time" line is gone. Clean days moved from 45% green to
+   ink at 20%, green under the pointer, so the doc comment and the bars agree. Axis text is
+   9px /45. */
 
-const EASE = [0.16, 1, 0.3, 1] as const
 const CSS_EASE = "cubic-bezier(0.16, 1, 0.3, 1)"
 const RED = "var(--chart-down)"
 const GREEN = "var(--chart-up)"
@@ -95,6 +103,7 @@ const downOf = (d: UptimeDay | undefined) => d?.incident?.downMinutes ?? 0
 const dayUptime = (d: UptimeDay | undefined) => ((DAY_MINUTES - downOf(d)) / DAY_MINUTES) * 100
 const span = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`)
 
+const SEVERITY_NAME: Record<UptimeSeverity, string> = { minor: "Minor", major: "Major", critical: "Critical" }
 /** severity: degraded is amber, down is red, and the red deepens with how bad it was */
 const SEVERITY: Record<UptimeSeverity, string> = {
   minor: AMBER,
@@ -102,14 +111,17 @@ const SEVERITY: Record<UptimeSeverity, string> = {
   critical: RED,
 }
 const barFill = (d: UptimeDay, on: boolean) =>
-  d.incident ? SEVERITY[d.incident.severity] : `color-mix(in srgb, ${GREEN} ${on ? 100 : 45}%, transparent)`
+  d.incident ? SEVERITY[d.incident.severity] : on ? GREEN : undefined
+/* the grey days come from a class so light and dark can differ (his call, 2026-10-02:
+   lighter on light): 11% ink in light, 20% in dark */
+const IDLE_BAR = "fill-[color-mix(in_srgb,var(--foreground)_11%,transparent)] dark:fill-[color-mix(in_srgb,var(--foreground)_20%,transparent)]"
 
 const W = 460
 const H = 40
 
 /**
  * Ninety days of uptime as thin bars. A clean day is quiet ink and a day with an incident
- * is red, deeper the worse it was. Scrubbing reads any day in place of the headline.
+ * is amber or red, deeper the worse it was. Scrubbing reads any day in a card by its bar.
  */
 export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", className }: UptimeBarsProps) {
   const reduced = useReducedMotion()
@@ -117,8 +129,6 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
   /* the bars wait until the strip is a third in view, then grow once */
   const play = useInView(boxRef, { once: true, amount: 0.3 }) || !!reduced
   const [hot, setHot] = useState<number | null>(null)
-  /** the last move came from the arrow keys: the headline then changes at once */
-  const viaKey = useRef(false)
 
   const n = days.length
   const stats = useMemo(() => {
@@ -138,11 +148,9 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
     const el = boxRef.current
     if (!el || !n) return
     const r = el.getBoundingClientRect()
-    viaKey.current = false
     setHot(clamp(Math.floor(((e.clientX - r.left) / r.width) * n)))
   }
   const onKey = (e: React.KeyboardEvent) => {
-    viaKey.current = true
     if (e.key === "ArrowLeft") setHot((h) => clamp((h ?? n) - 1))
     else if (e.key === "ArrowRight") setHot((h) => clamp((h ?? -1) + 1))
     else if (e.key === "Escape") setHot(null)
@@ -151,6 +159,7 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
   }
 
   const day = hot === null ? undefined : days[hot]
+  const [whole, decimals] = stats.uptime.toFixed(2).split(".")
   const first = days[0]
   const last = days[n - 1]
   /* month starts that sit clear of both ends get a tick of their own */
@@ -160,36 +169,25 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
 
   return (
     <div className={cn("w-[460px] max-w-full tabular-nums", className)}>
-      {/* between the window and a scrubbed day the headline crosses over (4px, 2px blur,
-          150ms); while scrubbing it follows the pointer in place, and keys change it at once */}
-      <motion.div
-        key={day ? "day" : "window"}
-        role="status"
-        initial={viaKey.current ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ duration: 0.15, ease: EASE }}
-      >
-        <div className="flex items-baseline gap-2">
-          <span className="text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
-            {(day ? dayUptime(day) : stats.uptime).toFixed(2)}%
+      {/* the three tiers (spec 14.1); the headline always reads the window, a pointed day
+          reads in the card by its bar */}
+      <div>
+        <div className="mb-3 flex items-baseline justify-between text-[12px]">
+          <span className="text-foreground/45">{title}</span>
+          <span className="font-medium text-foreground/90">{n} days</span>
+        </div>
+        <div className="text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+          {whole}
+          <span className="text-foreground/35">.{decimals}%</span>
+        </div>
+        <div className="mt-2 text-[12px] font-medium">
+          <span style={{ color: stats.down ? RED : GREEN }}>{stats.down ? `${span(stats.down)} down` : "No time down"}</span>
+          <span className="font-normal text-foreground/45">
+            {" "}
+            in {stats.incidents} incident{stats.incidents === 1 ? "" : "s"}
           </span>
-          <span className="text-[10px] text-foreground/45">{day ? dayLabel(day.date) : title}</span>
         </div>
-        <div className="mt-1.5 truncate text-[10.5px] text-foreground/45">
-          {day ? (
-            day.incident ? (
-              <>
-                <span className="text-foreground/90">{day.incident.title}</span> ·{" "}
-                <span style={{ color: SEVERITY[day.incident.severity] }}>{day.incident.severity}</span> · {span(day.incident.downMinutes)} down
-              </>
-            ) : (
-              "No incident"
-            )
-          ) : (
-            `${stats.incidents} incidents · ${span(stats.down)} down`
-          )}
-        </div>
-      </motion.div>
+      </div>
 
       <div
         ref={boxRef}
@@ -221,6 +219,7 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
                   height={H}
                   rx={1}
                   fill={barFill(d, on)}
+                  className={barFill(d, on) ? undefined : IDLE_BAR}
                   style={{
                     transformBox: "fill-box",
                     transformOrigin: "50% 100%",
@@ -232,9 +231,30 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
             )
           })}
         </svg>
+        {/* the pointed day reads in the library popover by its bar (spec 13.5, 14.6) */}
+        <ChartCard
+          open={!!day}
+          x={hot === null ? 0 : `${((hot + 0.5) / Math.max(1, n)) * 100}%`}
+          y={H + 6}
+          flip={hot !== null && (hot + 0.5) / Math.max(1, n) > 0.6}
+          width={176}
+          heading={day ? dayLabel(day.date) : ""}
+          rows={
+            day
+              ? [
+                  { label: "Uptime", value: `${dayUptime(day).toFixed(2)}%` },
+                  { label: "Down", value: span(downOf(day)) },
+                  day.incident
+                    ? { label: "Severity", value: SEVERITY_NAME[day.incident.severity], color: SEVERITY[day.incident.severity] }
+                    : { label: "Incident", value: "None" },
+                ]
+              : []
+          }
+          footer={day?.incident ? <span className="text-foreground/90">{day.incident.title}</span> : undefined}
+        />
       </div>
 
-      <div className="relative mt-1.5 h-3 text-[9px] text-foreground/35" aria-hidden>
+      <div className="relative mt-1.5 h-3 text-[9px] text-foreground/45" aria-hidden>
         {first && <span className="absolute left-0">{dayLabel(first.date)}</span>}
         {ticks.map(({ d, i }) => (
           <span key={d.date} className="absolute" style={{ left: `${(i / n) * 100}%` }}>

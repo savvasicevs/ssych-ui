@@ -11,7 +11,11 @@ import { cn } from "@/lib/utils"
    · the unread dot is ink, not blue: colour is kept for up and down
    · a portrait-less actor gets their own categorical hue so people are told apart (2026-09-30)
    · sentence case, every figure tabular, corners of 8px and under
-   · pointing at a row dims the others; the list and each row name themselves */
+   · pointing at a row dims the others; the list and each row name themselves
+   2026-10-02 round 2: the sample is a trading desk's notifications in place of a design
+   team's tickets: the risk desk flags order 84133, compliance asks for a review of
+   withdrawal W-2291, an eval run on Claude Opus 5.5 finishes at a 91.4% pass rate, and BTC-PERP margin
+   reaches 82%. A system sender has a one word name, since a row shows the first word. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -30,10 +34,10 @@ export interface InboxItem {
 }
 
 const DEFAULT_ITEMS: InboxItem[] = [
-  { id: "n1", actor: "Jane Doe", text: "assigned you SSI-14 · Audit chart contrast", time: "2m", image: "/lab-icons/avatars/abs-1.svg" },
-  { id: "n2", actor: "Alex Kim", text: "commented on the metrics group", time: "18m", image: "/lab-icons/avatars/abs-2.svg" },
-  { id: "n3", actor: "Mia Chen", text: "marked SSI-11 as done", time: "1h", image: "/lab-icons/avatars/abs-3.svg" },
-  { id: "n4", actor: "Omar Ali", text: "requested a review on the footer block", time: "3h", image: "/lab-icons/avatars/abs-4.svg" },
+  { id: "n1", actor: "Lena Novak", text: "on the risk desk flagged order 84133 on BTC-PERP", time: "2m", image: "/lab-icons/avatars/abs-1.svg" },
+  { id: "n2", actor: "Marcus Hale", text: "in compliance asked you to review withdrawal W-2291", time: "18m", image: "/lab-icons/avatars/abs-2.svg" },
+  { id: "n3", actor: "Evals", text: "finished the Claude Opus 5.5 run, 91.4% pass rate", time: "1h", image: "/lab-icons/avatars/abs-3.svg" },
+  { id: "n4", actor: "Margin", text: "on BTC-PERP reached 82%", time: "3h", image: "/lab-icons/avatars/abs-4.svg" },
 ]
 
 /**

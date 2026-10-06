@@ -16,7 +16,16 @@ import { cn } from "@/lib/utils"
      the + or − already says the direction
    · the hide control is a round button; the eye stays because it is the control
    · every figure is tabular, the header reads itself out as one status line
-   Props are unchanged. */
+   Props are unchanged.
+   2026-10-02 audit: it reads from the left like every other header now, on the three tiers
+   of spec 14.1: a 12px label row ("Total balance" /45 left, the hide control right, where
+   it no longer floats beside the figure), the 26px figure with leading-none 12px under it,
+   and a 12px sub line 8px under that, the move font-medium in its hue then the period /45.
+   The move reads "+$1,204.32 (+1.9%)", no middle dot. The hide control shows on hover or
+   focus, and always where there is no hover.
+   Formulas:
+   · percent  change ÷ (total − change) × 100, the move over the balance it moved from,
+              unless the caller passes changePct */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -65,7 +74,7 @@ export function BalanceHeader({
   const sign = up ? "+" : "−"
   /* the move over the balance it moved FROM, so the two numbers agree */
   const pct = changePct ?? (change / (total - change || 1)) * 100
-  const move = `${sign}${usd(Math.abs(change))} · ${sign}${Math.abs(pct).toFixed(1)}%`
+  const move = `${sign}${usd(Math.abs(change))} (${sign}${Math.abs(pct).toFixed(1)}%)`
 
   const [whole, cents] = usd(total).split(".")
 
@@ -86,36 +95,20 @@ export function BalanceHeader({
 
   return (
     <div
-      className={cn("group flex flex-col items-center tabular-nums", className)}
+      className={cn("group flex w-max min-w-[200px] flex-col items-stretch tabular-nums", className)}
       role="group"
       aria-label={hidden ? "Total balance, hidden" : `Total balance ${usd(total)}${delta ? `, ${move} over ${period}` : ""}`}
     >
-      <motion.span {...rise(0)} className="text-[11px] font-medium text-foreground/45">
-        Total balance
-      </motion.span>
-
-      {/* the control floats at the trailing edge so it never nudges the number off-axis */}
-      <div className="relative mt-2 flex items-center justify-center">
-        <motion.span {...rise(0.035)} role="status" className="text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span key={hidden ? "mask" : "figure"} {...swap} className="inline-block">
-              {hidden ? (
-                MASK
-              ) : (
-                <>
-                  {whole}
-                  {cents && <span className="text-foreground/35">.{cents}</span>}
-                </>
-              )}
-            </motion.span>
-          </AnimatePresence>
-        </motion.span>
+      <motion.div {...rise(0)} className="mb-3 flex items-baseline justify-between gap-3 text-[12px]">
+        <span className="text-foreground/45">Total balance</span>
+        {/* the hide control sits at the row's end, so it never nudges the figure; it keeps
+            the 12px row by bleeding into the padding around it */}
         <button
           type="button"
           onClick={() => setHidden((h) => !h)}
           aria-label={hidden ? "Show balances" : "Hide balances"}
           aria-pressed={hidden}
-          className="absolute left-full ml-2 grid h-7 w-7 place-items-center rounded-full text-foreground/45 opacity-0 outline-none transition-[opacity,color,background-color,transform,translate,scale,rotate] duration-200 active:scale-[0.97] hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 group-hover:opacity-100"
+          className="-my-1.5 -mr-1.5 grid h-6 w-6 self-center place-items-center rounded-full text-foreground/60 opacity-0 outline-none transition-[opacity,color,background-color,transform,translate,scale,rotate] duration-200 active:scale-[0.97] hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:active:scale-100 [@media(hover:none)]:opacity-100"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
@@ -126,25 +119,40 @@ export function BalanceHeader({
               exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.8, filter: "blur(2px)" }}
               transition={{ duration: 0.12, ease: EASE }}
             >
-              {hidden ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
+              {hidden ? <EyeOff size={13} aria-hidden /> : <Eye size={13} aria-hidden />}
             </motion.span>
           </AnimatePresence>
         </button>
-      </div>
+      </motion.div>
+
+      <motion.p {...rise(0.035)} role="status" className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span key={hidden ? "mask" : "figure"} {...swap} className="inline-block">
+            {hidden ? (
+              MASK
+            ) : (
+              <>
+                {whole}
+                {cents && <span className="text-foreground/35">.{cents}</span>}
+              </>
+            )}
+          </motion.span>
+        </AnimatePresence>
+      </motion.p>
 
       {delta && (
-        <motion.div {...rise(0.07)} className="mt-2.5 flex items-baseline gap-2">
+        <motion.div {...rise(0.07)} className="mt-2 flex items-baseline gap-1.5 text-[12px]">
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={hidden ? "mask" : "move"}
               {...swap}
-              className="inline-block text-[12px] font-semibold"
+              className="inline-block font-medium"
               style={{ color: hidden ? "color-mix(in srgb, var(--foreground) 45%, transparent)" : hue }}
             >
               {hidden ? MASK : move}
             </motion.span>
           </AnimatePresence>
-          <span className="text-[11px] text-foreground/45">{period}</span>
+          <span className="text-foreground/45">{period}</span>
         </motion.div>
       )}
     </div>

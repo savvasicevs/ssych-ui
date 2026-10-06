@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
 
 /* Historical EPS, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -17,7 +18,20 @@ import { cn } from "@/lib/utils"
    · every figure is tabular, the chart names itself to a screen reader
    Motion (2026-10-01): the bars grow out of the zero line once the chart is in view (it
    played on mount, off screen too), 30ms apart per quarter, all landed by 0.7s; new data
-   tweens every bar's top and height and glides the gridlines with their figures */
+   tweens every bar's top and height and glides the gridlines with their figures
+   2026-10-02 audit: the chart has no one figure to read first, so the visible title went
+   (the `title` prop still names it in the aria-label) and the legend leads the label row:
+   a 6px round dot per series and the name at 11px /60, where square chips were. The
+   growth line at rest went too; YoY and QoQ live in the aria-label. Pointing a quarter now
+   reads it in a card over its column (chart-overlay.tsx): Forecast, Reported, and the
+   Surprise in its hue. The chart is a fixed 560 wide and drawn 1:1, so the 9px axis no
+   longer scales up; gridlines are solid at 5%, the axis states its unit ("$0.42") at /45,
+   and the arrow keys walk the quarters (Escape lets go).
+   Formulas:
+   · surprise = (reported − forecast) ÷ |forecast| × 100, the forecast floored at 0.01
+   · YoY      = (reported now − reported four quarters back) ÷ |that| × 100, rounded
+   · QoQ      = (reported now − reported a quarter back) ÷ |that| × 100, rounded
+   · axis     = the top at 98% and the middle at 49% of the largest value × 1.1, and zero */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const RED = "var(--chart-down)"
@@ -48,19 +62,18 @@ const DEFAULT_DATA: EpsQuarter[] = [
 
 const W = 560
 const H = 190
-const PAD = { l: 8, r: 36, t: 14, b: 24 }
+const PAD = { l: 8, r: 40, t: 14, b: 24 }
 const BAR_W = 11
 
 /** "+0.42" or "−0.42", always signed, with the typographic minus */
 const signed = (v: number, dp: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(dp)}`
-/** "0.42" or "−0.42": a level, so only the minus is written */
-const level = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}`
+/** "$0.42" or "−$0.42": a level, so only the minus is written */
+const level = (v: number) => `${v < 0 ? "−" : ""}$${Math.abs(v).toFixed(2)}`
 
 /**
  * Forecast against reported, quarter by quarter: two bars in two colours, standing on a
- * shared zero line. Pointing at a quarter dims the
- * others and reads its forecast, reported and surprise in place of the growth figures.
- * Growth and surprise derive from the data.
+ * shared zero line. Pointing at a quarter dims the others and reads its forecast, reported
+ * and surprise in a card over its column. Growth and surprise derive from the data.
  */
 export function HistoricalEps({
   data = DEFAULT_DATA,
@@ -100,79 +113,52 @@ export function HistoricalEps({
 
   const q = hot !== null ? data[hot] : null
   const hue = (v: number) => (v >= 0 ? GREEN : RED)
+  /* the card sits beside the pointed column, on its left once past 60% of the plot */
+  const flip = hot !== null && (hot + 0.5) / Math.max(1, data.length) > 0.6
+  const cardX = hot !== null ? PAD.l + hot * colW + colW / 2 + (flip ? -BAR_W - 6 : BAR_W + 6) : 0
+  const growth = [yoy !== null ? `growth ${signed(yoy, 0)}% year on year` : "", qoq !== null ? `${signed(qoq, 0)}% on the quarter` : ""]
+    .filter(Boolean)
+    .join(", ")
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") return setHot(null)
+    if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || !data.length) return
+    e.preventDefault()
+    const at = hot ?? (e.key === "ArrowLeft" ? data.length : -1)
+    setHot(Math.max(0, Math.min(data.length - 1, at + (e.key === "ArrowRight" ? 1 : -1))))
+  }
 
   return (
-    <div ref={rootRef} className={cn("w-full max-w-[620px] tabular-nums", className)}>
-      <div className="flex items-baseline justify-between gap-4">
-        <div className="flex items-baseline gap-4">
-          <span className="text-[13px] font-medium text-foreground/90">{title}</span>
-          <span aria-hidden className="flex items-center gap-3 text-[10px] text-foreground/45">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-[2px]" style={{ background: FORECAST }} />
-              Forecast
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-[2px]" style={{ background: REPORTED }} />
-              Reported
-            </span>
-          </span>
-        </div>
-
-        {/* the readout crosses over when the quarter changes (4px, 2px blur, 150ms) */}
-        <motion.div
-          key={hot ?? "rest"}
-          role="status"
-          className="flex items-baseline gap-3 whitespace-nowrap text-[10px] text-foreground/45"
-          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-        >
-          {q ? (
-            <>
-              <span className="font-medium text-foreground/90">{q.label}</span>
-              <span>
-                Forecast <span className="font-medium" style={{ color: FORECAST }}>{level(q.forecast)}</span>
-              </span>
-              <span>
-                Reported <span className="font-medium" style={{ color: REPORTED }}>{level(q.reported)}</span>
-              </span>
-              <span>
-                Surprise{" "}
-                <span className="font-medium" style={{ color: hue(q.reported - q.forecast) }}>
-                  {signed(surprise(q) * 100, 1)}%
-                </span>
-              </span>
-            </>
-          ) : (
-            <>
-              {yoy !== null && (
-                <span>
-                  Growth YoY{" "}
-                  <span className="font-medium" style={{ color: hue(yoy) }}>
-                    {signed(yoy, 0)}%
-                  </span>
-                </span>
-              )}
-              {qoq !== null && (
-                <span>
-                  QoQ{" "}
-                  <span className="font-medium" style={{ color: hue(qoq) }}>
-                    {signed(qoq, 0)}%
-                  </span>
-                </span>
-              )}
-            </>
-          )}
-        </motion.div>
+    <div ref={rootRef} className={cn("w-[560px] max-w-full tabular-nums", className)}>
+      {/* no title: the legend leads the label row (spec 14.1, 14.3), the name is in the aria-label */}
+      <div aria-hidden className="mb-3 flex items-center gap-3 text-[11px]">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: FORECAST }} />
+          <span className="text-foreground/60">Forecast</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: REPORTED }} />
+          <span className="text-foreground/60">Reported</span>
+        </span>
       </div>
 
+      <div
+        role="group"
+        tabIndex={0}
+        aria-label={`${title} by quarter. Arrow keys walk the quarters`}
+        onKeyDown={onKey}
+        onBlur={() => setHot(null)}
+        className="relative rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+      >
       <svg
+        width={W}
+        height={H}
         viewBox={`0 0 ${W} ${H}`}
-        className="mt-2 block w-full"
+        className="block h-auto max-w-full"
         role="img"
         aria-label={
           last
-            ? `${title}, ${data.length} quarters. ${last.label}: reported ${level(last.reported)} against a forecast of ${level(last.forecast)}`
+            ? `${title}, ${data.length} quarters. ${last.label}: reported ${level(last.reported)} against a forecast of ${level(last.forecast)}${growth ? `, ${growth}` : ""}`
             : title
         }
         onPointerLeave={() => setHot(null)}
@@ -192,7 +178,6 @@ export function HistoricalEps({
               stroke="var(--foreground)"
               strokeOpacity={0.05}
               strokeWidth={1}
-              strokeDasharray={v === 0 ? undefined : "2 4"}
               initial={false}
               animate={{ y1: y(v), y2: y(v) }}
               transition={morph}
@@ -201,7 +186,7 @@ export function HistoricalEps({
               x={W - PAD.r + 8}
               fontSize={9}
               fill="var(--foreground)"
-              fillOpacity={0.35}
+              fillOpacity={0.45}
               initial={false}
               animate={{ attrY: y(v) + 3 }}
               transition={morph}
@@ -246,7 +231,7 @@ export function HistoricalEps({
                 textAnchor="middle"
                 fontSize={9}
                 fill="var(--foreground)"
-                fillOpacity={hot === i ? 0.9 : 0.35}
+                fillOpacity={hot === i ? 0.9 : 0.45}
                 style={{ transition: reduced ? "none" : "fill-opacity 160ms ease-out" }}
               >
                 {d.label}
@@ -255,6 +240,25 @@ export function HistoricalEps({
           )
         })}
       </svg>
+
+      {/* the pointed quarter, read in a card over its column (chart-overlay.tsx) */}
+      <ChartCard
+        open={q !== null}
+        x={`${(cardX / W) * 100}%`}
+        flip={flip}
+        width={140}
+        heading={q?.label ?? ""}
+        rows={
+          q
+            ? [
+                { label: "Forecast", value: level(q.forecast) },
+                { label: "Reported", value: level(q.reported) },
+                { label: "Surprise", value: `${signed(surprise(q) * 100, 1)}%`, color: hue(q.reported - q.forecast) },
+              ]
+            : []
+        }
+      />
+      </div>
     </div>
   )
 }

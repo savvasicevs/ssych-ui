@@ -23,7 +23,21 @@ import { cn } from "@/lib/utils"
    · `targets[n].color` still wins when it is passed; the default targets no longer set it
    Motion (2026-10-01): the entrance waits until the chart is in view, then the history sweeps
    in left to right through a clip, the now dot lands and the fan sweeps out to the targets;
-   new prices or targets glide the line, the projections, the dots and the gridlines there */
+   new prices or targets glide the line, the projections, the dots and the gridlines there
+   2026-10-02 audit: the price axis sat on the left with bare figures, the header was one
+   crowded line, the readout blurred in on every scrubbed week and the crosshair eased behind
+   the pointer. Now the axis is on the right in dollars, and the three targets are its named
+   references ("$232" at /90 with "High" at /45 after it), still buttons for the keyboard and
+   touch, while the hue stays on their dots. The header is the library's three tiers: the
+   title (a new `title` prop) at /45 with the symbol (a new `symbol` prop) at /90, the price
+   as the 26px headline with its decimals at /35, and a sub line with the move in its hue
+   then who set it at /45. The readout swaps only when the mode changes (rest, scrub, a
+   target), the crosshair follows the pointer with no easing, gridlines are solid at 5%,
+   axis text is 9px at /45, and the width is 560 like the other price charts.
+   Formulas:
+   · move against now = (target or scrubbed price − price now) ÷ price now × 100
+   · gridlines        = round steps of 1, 2, 2.5 or 5 × a power of ten, at most four, over
+                        the domain of the history and the targets padded by 6% */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -47,9 +61,10 @@ export interface PriceTarget {
   color?: string
 }
 
-const W = 520
+const W = 560
 const H = 236
-const PAD = { l: 30, r: 104, t: 16, b: 28 }
+/** the price axis on the right holds a named reference like "$232 High" */
+const PAD = { l: 8, r: 76, t: 16, b: 28 }
 
 // deterministic weekly history ending exactly at `current` (Lehmer LCG)
 function buildHistory(current: number): number[] {
@@ -71,6 +86,10 @@ function buildHistory(current: number): number[] {
 export interface PriceTargetFanProps {
   /** accessible name of the chart */
   label?: string
+  /** the name in the header's label row */
+  title?: string
+  /** the symbol on the right of the label row */
+  symbol?: string
   /** last traded price; the history walks to this point */
   current?: number
   /** High / Mean / Low analyst targets, in that order */
@@ -97,6 +116,8 @@ const DEFAULT_TARGETS: [PriceTarget, PriceTarget, PriceTarget] = [
  */
 export function PriceTargetFan({
   label = "Price target, 12 months",
+  title = "Price target",
+  symbol = "AAPL",
   current = 178.52,
   targets = DEFAULT_TARGETS,
   dates = { start: "Jul 2025", mid: "Jan 2026", horizon: "Jul 2027" },
@@ -127,6 +148,8 @@ export function PriceTargetFan({
   /** (price − now) ÷ now */
   const pct = (p: number) => ((p - current) / current) * 100
   const fmt = (p: number) => `$${p.toFixed(2)}`
+  /** an axis figure: whole dollars when the value is whole */
+  const axisUsd = (p: number) => `$${Number.isInteger(p) ? p : p.toFixed(2)}`
 
   const geo = useMemo(() => {
     const histW = (W - PAD.l - PAD.r) * 0.56
@@ -199,11 +222,14 @@ export function PriceTargetFan({
           price: geo.proj[hotT].price,
           move: pct(geo.proj[hotT].price),
           hue: geo.proj[hotT].color,
-          note: `${geo.proj[hotT].key} target, ${dates.horizon}, ${geo.proj[hotT].analysts} analysts`,
+          note: `${geo.proj[hotT].key.toLowerCase()} target of ${geo.proj[hotT].analysts} analysts`,
         }
       : scrub !== null
         ? { price: hist[scrub], move: null, hue: GREEN, note: when(scrub) }
-        : { price: mean.price, move: pct(mean.price), hue: mean.color, note: `${mean.key} target` }
+        : { price: mean.price, move: pct(mean.price), hue: mean.color, note: `${mean.key.toLowerCase()} of ${mean.analysts} analysts` }
+  /* the readout swaps only on a change of mode: rest, scrub or a target */
+  const mode = hotT !== null ? `target-${hotT}` : scrub !== null ? "scrub" : "rest"
+  const [headWhole, headCents] = fmt(head.price).split(".")
 
   /* round-numbered gridlines derived from the domain, at most four of them */
   const grid = useMemo(() => {
@@ -220,28 +246,33 @@ export function PriceTargetFan({
   const fanW = geo.endX - geo.nowX + 40
 
   return (
-    <div ref={rootRef} className={cn("w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
-      {/* the headline is the readout: the pointed target, the scrubbed week, or the mean */}
-      <div role="status" className="mb-1 flex items-baseline gap-2 px-1">
-        {/* the readout swaps in place: a 4px rise through a 2px blur */}
-        <motion.span
-          key={`${head.price}-${head.note}`}
-          className="flex items-baseline gap-2"
+    <div ref={rootRef} className={cn("w-[560px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
+      {/* the header, three tiers (spec 14.1): title and symbol, the price, the move and who set it */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{title}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">{symbol}</span>
+      </div>
+      <div role="status">
+        {/* the readout swaps in place (4px, 2px blur) only when the mode changes; scrubbing
+            from week to week follows the pointer at once */}
+        <motion.div
+          key={mode}
           initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.15, ease: EASE }}
         >
-          <span className="text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">{fmt(head.price)}</span>
-          {head.move !== null && (
-            <span className="text-[12px] font-medium" style={{ color: ink(head.hue) }}>
-              {signedPct(head.move)}
-            </span>
-          )}
-          <span className="text-[10px] text-foreground/45">{head.note}</span>
-        </motion.span>
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {headWhole}
+            <span className="text-foreground/35">.{headCents}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium">
+            {head.move !== null && <span style={{ color: ink(head.hue) }}>{signedPct(head.move)}</span>}
+            <span className="font-normal text-foreground/45">{head.note}</span>
+          </p>
+        </motion.div>
       </div>
 
-      <div className="relative mx-auto w-[520px]" onPointerMove={onMove} onPointerLeave={onLeave}>
+      <div className="relative mt-4" onPointerMove={onMove} onPointerLeave={onLeave}>
         <svg
           ref={svgRef}
           width={W}
@@ -282,7 +313,8 @@ export function PriceTargetFan({
             </clipPath>
           </defs>
 
-          {/* gridlines and the left price axis */}
+          {/* solid gridlines and the price axis on the right, in dollars; a figure next to a
+              target's named reference steps aside for it */}
           {grid.out.map((v) => (
             <g key={v}>
               <motion.line
@@ -291,22 +323,20 @@ export function PriceTargetFan({
                 stroke="var(--foreground)"
                 strokeOpacity={0.05}
                 strokeWidth={1}
-                strokeDasharray="2 5"
                 initial={false}
                 animate={{ y1: y(v), y2: y(v) }}
                 transition={morph}
               />
               <motion.text
-                x={PAD.l - 7}
-                textAnchor="end"
-                fontSize={8.5}
+                x={geo.endX + 12}
+                fontSize={9}
                 fill="var(--foreground)"
-                fillOpacity={0.35}
+                fillOpacity={0.45}
                 initial={false}
-                animate={{ attrY: y(v) + 3 }}
+                animate={{ attrY: y(v) + 3, opacity: geo.proj.some((p) => Math.abs(p.ty - y(v)) < 12) ? 0 : 1 }}
                 transition={morph}
               >
-                {grid.step >= 1 ? Math.round(v) : v.toFixed(1)}
+                ${grid.step >= 1 ? Math.round(v) : v.toFixed(1)}
               </motion.text>
             </g>
           ))}
@@ -318,7 +348,7 @@ export function PriceTargetFan({
             { x: geo.nowX, t: "Now", a: "middle" as const },
             { x: geo.endX, t: dates.horizon, a: "middle" as const },
           ].map((d) => (
-            <text key={d.t} x={d.x} y={H - 8} textAnchor={d.a} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
+            <text key={d.t} x={d.x} y={H - 8} textAnchor={d.a} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
               {d.t}
             </text>
           ))}
@@ -397,34 +427,17 @@ export function PriceTargetFan({
             transition={still ?? { opacity: { duration: 0.2, ease: EASE, delay: 0.45 }, cy: morph }}
           />
 
-          {/* the scrub crosshair glides along the history, so a slow drag reads as one readout */}
+          {/* the scrub crosshair sits on the pointed week with no easing, so it never trails the hand */}
           {scrub !== null && (
             <g pointerEvents="none">
-              <motion.line
-                x1={geo.hx(scrub)}
-                x2={geo.hx(scrub)}
-                y1={PAD.t}
-                y2={H - PAD.b}
-                stroke={`url(#${fadeId})`}
-                strokeWidth={1}
-                initial={false}
-                animate={{ x1: geo.hx(scrub), x2: geo.hx(scrub) }}
-                transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}
-              />
-              <motion.circle
-                cx={geo.hx(scrub)}
-                cy={y(hist[scrub])}
-                r={3}
-                fill="var(--foreground)"
-                initial={false}
-                animate={{ cx: geo.hx(scrub), cy: y(hist[scrub]) }}
-                transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}
-              />
+              <line x1={geo.hx(scrub)} x2={geo.hx(scrub)} y1={PAD.t} y2={H - PAD.b} stroke={`url(#${fadeId})`} strokeWidth={1} />
+              <circle cx={geo.hx(scrub)} cy={y(hist[scrub])} r={3} fill="var(--foreground)" stroke="var(--background)" strokeWidth={1.5} />
             </g>
           )}
         </svg>
 
-        {/* the target figures: real buttons beside the end of each projection */}
+        {/* the targets as the axis's named references (spec 14.7): the price at /90 and the
+            name at /45, real buttons so the keyboard and touch reach them */}
         {geo.proj.map((p, i) => {
           const on = hotT === i
           const dim = hotT !== null && !on
@@ -432,7 +445,7 @@ export function PriceTargetFan({
             <motion.div
               key={p.key}
               className="absolute"
-              style={{ left: `${((geo.endX + 7) / W) * 100}%` }}
+              style={{ left: `${((geo.endX + 8) / W) * 100}%` }}
               initial={reduced ? false : { opacity: 0, top: `${(p.ty / H) * 100}%` }}
               animate={{ opacity: play ? 1 : 0, top: `${(p.ty / H) * 100}%` }}
               transition={still ?? { opacity: { duration: 0.2, ease: EASE, delay: 0.65 + i * 0.035 }, top: morph }}
@@ -453,10 +466,11 @@ export function PriceTargetFan({
                 onKeyDown={(e) => {
                   if (e.key === "Escape") e.currentTarget.blur()
                 }}
-                className="block -translate-y-1/2 rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold leading-none outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
-                style={{ color: ink(p.color), opacity: dim ? 0.35 : 1 }}
+                className="block -translate-y-1/2 whitespace-nowrap rounded-full px-1 py-0.5 text-[9px] leading-none outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
+                style={{ opacity: dim ? 0.35 : 1 }}
               >
-                {p.price}
+                <span className="font-medium text-foreground/90">{axisUsd(p.price)}</span>
+                <span className="text-foreground/45"> {p.key}</span>
               </button>
             </motion.div>
           )

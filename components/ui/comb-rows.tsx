@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
+import { LiveFigure } from "@/components/ui/live-figure"
 import { cn } from "@/lib/utils"
 
 /* Comb Rows, rebuilt through the ssych-component skill (2026-09-29).
@@ -16,7 +17,16 @@ import { cn } from "@/lib/utils"
    Motion (2026-10-01): once the rows first come into view they settle in 4px apart by 40ms
    and their ticks grow out of the middle line left to right, 4ms apart, all in about 800ms.
    A new value walks the cursor tick: heights and inks tween over 300ms. The ticks are CSS
-   transitions on transform, not 230 motion nodes. Reduced motion draws the end state. */
+   transitions on transform, not 230 motion nodes. Reduced motion draws the end state.
+   2026-10-02 audit: the typed caption "AMZN is 95% above sector average" is gone, since no
+   sector average is in the data; at rest the readout line is blank (an nbsp holds its
+   height) and a pointed row reads against the subject there, under the rows. The centred
+   title and caption became the left label row of spec 14.1: the title 12px /45 on the left,
+   the subject and its value /90 on the right. A `renderIcon(symbol, size)` slot draws a real
+   16px mark before each ticker (the preview passes BrandIcon); left out, the tickers stand
+   alone as before. Off rows' labels and values are /60.
+   Formulas: the cursor tick = round(value / max × 46); the pointed row against the subject
+   = (row value / subject value − 1) × 100, whole percent, "above" or "below". */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const ACCENT = "var(--chart-1)"
@@ -44,18 +54,22 @@ const TALL = 13
  * A comparison in the Ink register: every row is a ruler of ticks, the cursor tick
  * stands taller at the value, and the subject row's comb carries the accent. Pointing at
  * another row hands it the accent, dims the rest and reads it against the subject in
- * place of the caption. The ticks grow in row by row on mount.
+ * the line under the rows. The ticks grow in row by row once in view.
  */
 export function CombRows({
   title = "P/E ratio",
-  caption = "AMZN is 95% above sector average",
+  caption,
   rows = DEFAULT_ROWS,
   subject = "AMZN",
   max = 50,
+  renderIcon,
   className,
 }: {
   title?: string
+  /** a line shown under the rows at rest; none by default (2026-10-02: no typed claim the data cannot back) */
   caption?: string
+  /** a company mark before each ticker, e.g. (s, size) => <BrandIcon name={s} size={size} />; 16px */
+  renderIcon?: (symbol: string, size: number) => ReactNode
   rows?: CombRow[]
   /** the row that carries the accent while nothing is hovered */
   subject?: string
@@ -79,32 +93,30 @@ export function CombRows({
   const base = rows.find((r) => r.label === subject)
   const pointed = rows.find((r) => r.label === hot)
   /* the pointed row against the subject: value ÷ subject's value − 1 */
-  const readout = (() => {
-    if (!pointed || pointed.label === subject) return caption
-    if (!base || base.value === 0) return `${pointed.label} ${pointed.value} of ${max}`
+  const readout: ReactNode = (() => {
+    if (!pointed || pointed.label === subject) return caption ?? "\u00a0"
+    if (!base || base.value === 0) return <><span className="font-medium text-foreground/90">{pointed.label}</span> of {max}</>
     const gap = (pointed.value / base.value - 1) * 100
-    return `${pointed.label} ${pointed.value}, ${Math.abs(gap).toFixed(0)}% ${gap < 0 ? "below" : "above"} ${subject}`
+    return (
+      <>
+        <span className="font-medium text-foreground/90">{pointed.label}</span> {Math.abs(gap).toFixed(0)}% {gap < 0 ? "below" : "above"} {subject}
+      </>
+    )
   })()
 
   return (
     <div ref={rootRef} className={cn("w-[320px] tabular-nums", className)} role="group" aria-label={`${title}, ${rows.length} rows${base ? `, ${subject} ${base.value}` : ""}`}>
-      <div className="text-center">
-        <div className="text-[13px] font-medium text-foreground/90">{title}</div>
-        <div role="status" className="mt-0.5 text-[10.5px] text-foreground/45">
-          {/* the caption swaps in place: a 4px rise through a 2px blur */}
-          <motion.span
-            key={readout}
-            className="inline-block"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-            {readout}
-          </motion.span>
-        </div>
+      {/* the label row: the measure on the left, the subject and its value on the right */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="text-foreground/45">{title}</span>
+        {base && (
+          <span className="font-medium text-foreground/90">
+            {subject} {base.value}
+          </span>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-col" role="list" onPointerLeave={() => setHot(null)}>
+      <div className="flex flex-col" role="list" onPointerLeave={() => setHot(null)}>
         {rows.map((r, ri) => {
           const cursor = Math.round((r.value / max) * TICKS)
           const active = hot === r.label || (hot === null && r.label === subject)
@@ -128,7 +140,10 @@ export function CombRows({
                 animate={shown ? { opacity: 1, y: 0 } : { opacity: 0, y: 4 }}
                 transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: ri * 0.04 }}
               >
-                <span className={cn("w-[52px] shrink-0 text-[11.5px] font-medium transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/45")}>{r.label}</span>
+                <span className={cn("flex shrink-0 items-center gap-1.5 text-[11.5px] font-medium transition-colors duration-150", renderIcon ? "w-[74px]" : "w-[52px]", active ? "text-foreground/90" : "text-foreground/60")}>
+                  {renderIcon?.(r.label, 16)}
+                  {r.label}
+                </span>
                 <span className="flex h-4 flex-1 items-center gap-[2.5px]" aria-hidden>
                   {Array.from({ length: TICKS }, (_, t) => {
                     const isCursor = t === cursor
@@ -161,11 +176,16 @@ export function CombRows({
                     )
                   })}
                 </span>
-                <span className={cn("w-[36px] shrink-0 text-right text-[11px] transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/45")}>{r.value}</span>
+                <span className={cn("w-[36px] shrink-0 text-right text-[11px] transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/60")}>{r.value}</span>
               </motion.div>
             </div>
           )
         })}
+      </div>
+
+      {/* the pointed row against the subject; blank at rest, it keeps its height */}
+      <div role="status" className="mt-3 text-[11px] text-foreground/60">
+        <LiveFigure intent={pointed && pointed.label !== subject ? pointed.label : null}>{readout}</LiveFigure>
       </div>
     </div>
   )

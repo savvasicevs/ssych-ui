@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { RAISED, SURFACE } from "@/components/ui/control-classes"
+import { usePointed } from "@/components/ui/use-pointed"
 
 /* Agent Run Timeline, new through ssych-component (2026-09-29).
    What it is for: the steps of one agent run, in the order they ran.
@@ -23,13 +25,22 @@ import { cn } from "@/lib/utils"
    Formulas:
    · done = steps whose state is done
    · so far = Σ durationMs of done, failed and running steps (1210 + 840 + 2310 + 4600
-     = 8960 ms = 8.96 s); a running step carries the time elapsed when it was sampled */
+     = 8960 ms = 8.96 s); a running step carries the time elapsed when it was sampled
+   · running time = the step's durationMs + the time the run has been pointed at since
+     load, counted in 100 ms steps (it holds still at rest)
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit: the run now sits in a box he asked for, the 7% surface card at 24px
+   with a 6px inset, so rows nest at 18px and the code blocks sit raised at 12px. The count
+   and total left the header (they are in the aria-label), the tool column left the row so
+   long step names have room (the tool is in the open detail and the aria-label), the dot
+   alone carries the state's hue with the word in ink, and the running step counts up in
+   place only while the run is pointed at (usePointed), holding still at rest. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const RED = "var(--chart-down)"
 const GREEN = "var(--chart-up)"
 const AMBER = "var(--chart-amber)"
-const COLS = "grid-cols-[14px_minmax(0,1fr)_auto_60px_52px]"
+const COLS = "grid-cols-[14px_minmax(0,1fr)_60px_52px]"
 
 export type StepState = "done" | "running" | "waiting" | "failed"
 
@@ -114,7 +125,7 @@ function Code({ label, children }: { label: string; children: string }) {
   return (
     <div>
       <div className="text-[10.5px] text-foreground/45">{label}</div>
-      <pre className="mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[4px] bg-foreground/[0.04] px-2.5 py-2 font-mono text-[11px] leading-[1.5] text-foreground/80">
+      <pre className={cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[12px] px-3 py-2.5 font-mono text-[11px] leading-[1.5] text-foreground/80", RAISED)}>
         {children}
       </pre>
     </div>
@@ -142,25 +153,34 @@ export function AgentRunTimeline({
     return () => clearTimeout(t)
   }, [reduced, steps.length])
 
+  /* the running step counts up only while the run is pointed at (his call 2026-10-02);
+     at rest it holds the time it was sampled at */
+  const { ref, live: pointed, bind } = usePointed()
+  const [extra, setExtra] = useState(0)
+  const hasRunning = steps.some((s) => s.state === "running")
+  useEffect(() => {
+    if (!pointed || !hasRunning) return
+    const t = window.setInterval(() => setExtra((e) => e + 100), 100)
+    return () => window.clearInterval(t)
+  }, [pointed, hasRunning])
+  const ms = (s: AgentStep) => (s.durationMs === undefined ? undefined : s.durationMs + (s.state === "running" ? extra : 0))
+
   const done = steps.filter((s) => s.state === "done").length
-  const soFar = steps.reduce((sum, s) => (s.state === "waiting" ? sum : sum + (s.durationMs ?? 0)), 0)
+  const soFar = steps.reduce((sum, s) => (s.state === "waiting" ? sum : sum + (ms(s) ?? 0)), 0)
   const running = steps.find((s) => s.state === "running")
 
   return (
     <div
-      className={cn("w-full max-w-[480px] tabular-nums", className)}
+      ref={ref}
+      {...bind}
+      className={cn("w-[440px] max-w-full rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
       role="group"
       aria-label={`${runId}, ${task}. ${done} of ${steps.length} steps done, ${took(soFar)} so far${running ? `, running: ${running.step}` : ""}`}
     >
-      <div className="flex items-baseline justify-between gap-3 px-3 pb-2">
-        {/* the run id is the one name (2026-10-01); the task is read out in the group's aria-label */}
-        <span className="min-w-0 truncate text-[13px] font-medium text-foreground/90">{runId}</span>
-        <span role="status" className="shrink-0 text-[10.5px] text-foreground/45">
-          <span className="font-medium text-foreground/90">
-            {done} of {steps.length} done
-          </span>{" "}
-          · {took(soFar)} so far
-        </span>
+      {/* the run id is the one name (2026-10-01); the task, the count and the total are read
+          out in the group's aria-label, so nothing sums the run at rest (spec 13.1) */}
+      <div className="flex h-9 items-center px-3">
+        <span className="min-w-0 truncate text-[12px] font-medium text-foreground/90">{runId}</span>
       </div>
 
       <div role="list" onPointerLeave={() => setHot(null)}>
@@ -189,13 +209,13 @@ export function AgentRunTimeline({
               <button
                 type="button"
                 aria-expanded={on}
-                aria-label={`Step ${i + 1}, ${s.step}, ${s.tool}, ${s.durationMs === undefined ? "" : `${took(s.durationMs)}, `}${WORD[s.state].toLowerCase()}`}
+                aria-label={`Step ${i + 1}, ${s.step}, ${s.tool}, ${ms(s) === undefined ? "" : `${took(ms(s)!)}, `}${WORD[s.state].toLowerCase()}`}
                 onClick={() => setOpen(on ? null : s.id)}
                 onPointerEnter={() => setHot(s.id)}
                 onFocus={() => setHot(s.id)}
                 onBlur={() => setHot(null)}
                 className={cn(
-                  "grid h-9 w-full items-center gap-x-2.5 rounded-lg px-3 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.99] motion-reduce:active:scale-100",
+                  "grid h-9 w-full items-center gap-x-2.5 rounded-[18px] px-3 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.99] motion-reduce:active:scale-100",
                   COLS,
                 )}
               >
@@ -208,14 +228,10 @@ export function AgentRunTimeline({
                   />
                 </span>
                 <span className={cn("truncate text-[12.5px]", s.state === "waiting" ? "text-foreground/45" : "font-medium text-foreground/90")}>{s.step}</span>
-                <span className="text-[11px] text-foreground/45">{s.tool}</span>
-                <span className="text-right text-[11px] text-foreground/70">{s.durationMs === undefined ? "" : took(s.durationMs)}</span>
-                <span
-                  className={cn("text-right text-[11px]", live ? "font-medium text-foreground/90" : "text-foreground/45")}
-                  style={live ? undefined : { color: MARK[s.state] }}
-                >
-                  {WORD[s.state]}
-                </span>
+                {/* the time changes in place on each 100 ms step, no re-entry (spec 13.4) */}
+                <span className="text-right text-[11px] text-foreground/70">{ms(s) === undefined ? "" : took(ms(s)!)}</span>
+                {/* the dot carries the hue; the word stays in ink (RULEBOOK 3.5) */}
+                <span className={cn("text-right text-[11px]", live ? "font-medium text-foreground/90" : "text-foreground/45")}>{WORD[s.state]}</span>
               </button>
 
               {/* the detail opens on grid rows, 0fr to 1fr in 250ms, and fades with it */}
@@ -226,6 +242,9 @@ export function AgentRunTimeline({
               >
                 <div className="min-h-0 overflow-hidden">
                     <div className="flex flex-col gap-2 pb-3 pl-9 pr-3 pt-1">
+                      <div className="text-[10.5px] text-foreground/45">
+                        Tool <span className="font-mono text-foreground/70">{s.tool}</span>
+                      </div>
                       {s.input !== undefined && <Code label="Input">{s.input}</Code>}
                       {s.output !== undefined ? (
                         <Code label="Output">{s.output}</Code>

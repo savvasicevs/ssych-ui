@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { usePointed } from "@/components/ui/use-pointed"
 
 /* Vitals Strip, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: the handful of figures that sit over a chart or a ticket: price, size,
@@ -21,10 +22,18 @@ import { cn } from "@/lib/utils"
    The sample numbers hold: 15.44B × 228.02 = 3.52T, 3.52T ÷ 56.3T = 6.25%,
    228.02 ÷ 7.31 = 31.2.
    Formulas: each cell carries its own in `hint`.
-   · trades = the opening count + 1 for each tick; still under reduced motion */
+   · trades = the opening count + 1 for each tick; ticks only while the strip is pointed at,
+     still under reduced motion
+   2026-10-02 audit: the trade count ran from mount, re-entered through a 4px blur on every
+   tick and flashed to full ink; now it ticks only while the strip is pointed at (his call,
+   usePointed) and changes in place, with no flash and no re-entry. The vertical rules
+   between cells are gone (24px gaps instead), the cells have no side padding so the first
+   one no longer sits 0 / 12, and the focus fill bleeds 8px past the text on 8px corners.
+   The price cell takes a real mark through a new `renderIcon(symbol, size)` prop and a new
+   `icon` field on a vital. The hint line reads "Mkt cap: 15.44B shares × $228.02". */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-/** the in-place swap: a 4px rise through a 2px blur */
+/** the hint line's swap when the pointed cell changes (a change of intent): a 4px rise through a 2px blur */
 const SWAP_FROM = { opacity: 0, y: 4, filter: "blur(2px)" }
 const SWAP_TO = { opacity: 1, y: 0, filter: "blur(0px)" }
 const GREEN = "var(--chart-up)"
@@ -37,6 +46,8 @@ export interface Vital {
   delta?: string
   /** how the figure is reached, read out while the cell is pointed at */
   hint?: string
+  /** a ticker or token whose mark `renderIcon` draws before the label */
+  icon?: string
 }
 
 export interface VitalsStripProps {
@@ -45,13 +56,15 @@ export interface VitalsStripProps {
   counter?: string
   /** where the running count starts */
   count?: number
-  /** milliseconds between ticks of the count; 0 holds it still */
+  /** milliseconds between ticks of the count while the strip is pointed at; 0 holds it still */
   every?: number
+  /** draws a company or token mark (14px) before a vital's label; the preview passes BrandIcon */
+  renderIcon?: (symbol: string, size: number) => ReactNode
   className?: string
 }
 
 const DEFAULT_VITALS: Vital[] = [
-  { label: "AAPL", value: "$228.02", delta: "+2.56%", hint: "last price, change against the prior close" },
+  { label: "AAPL", value: "$228.02", delta: "+2.56%", hint: "last price, change against the prior close", icon: "AAPL" },
   { label: "Mkt cap", value: "3.52T", hint: "15.44B shares × $228.02" },
   { label: "Index weight", value: "6.25%", hint: "3.52T ÷ 56.3T index cap" },
   { label: "Volume", value: "54.2M", hint: "shares traded, session to date" },
@@ -62,26 +75,18 @@ const DEFAULT_VITALS: Vital[] = [
  * A strip of vitals: label over value, hairlines between. The last cell is a count that
  * ticks; pointing at any cell reads how its figure is reached.
  */
-export function VitalsStrip({ vitals = DEFAULT_VITALS, counter = "Trades", count = 4215882, every = 1400, className }: VitalsStripProps) {
+export function VitalsStrip({ vitals = DEFAULT_VITALS, counter = "Trades", count = 4215882, every = 1400, renderIcon, className }: VitalsStripProps) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<number | null>(null)
   const [ticks, setTicks] = useState(0)
-  const [flash, setFlash] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /* the count runs only while the strip is pointed at (his call, 2026-10-02); at rest it holds */
+  const { ref, live: pointed, bind } = usePointed()
 
   useEffect(() => {
-    if (reduced || !counter || every <= 0) return
-    const id = setInterval(() => {
-      setTicks((t) => t + 1)
-      setFlash(true)
-      clearTimeout(timer.current)
-      timer.current = setTimeout(() => setFlash(false), 260)
-    }, every)
-    return () => {
-      clearInterval(id)
-      clearTimeout(timer.current)
-    }
-  }, [reduced, counter, every])
+    if (reduced || !pointed || !counter || every <= 0) return
+    const id = setInterval(() => setTicks((t) => t + 1), every)
+    return () => clearInterval(id)
+  }, [reduced, pointed, counter, every])
 
   const cells: Vital[] = counter
     ? [...vitals, { label: counter, value: (count + ticks).toLocaleString("en-US"), hint: `${count.toLocaleString("en-US")} at the open + ${ticks} since` }]
@@ -89,8 +94,8 @@ export function VitalsStrip({ vitals = DEFAULT_VITALS, counter = "Trades", count
   const shown = hot === null ? null : cells[hot]
 
   return (
-    <div className={cn("w-full max-w-[520px] tabular-nums", className)} role="group" aria-label={cells.map((c) => `${c.label} ${c.value}${c.delta ? ` ${c.delta}` : ""}`).join(", ")}>
-      <div className="flex flex-wrap gap-y-3" onPointerLeave={() => setHot(null)}>
+    <div ref={ref} {...bind} className={cn("w-[520px] max-w-full tabular-nums", className)} role="group" aria-label={cells.map((c) => `${c.label} ${c.value}${c.delta ? ` ${c.delta}` : ""}`).join(", ")}>
+      <div className="flex flex-wrap gap-x-6 gap-y-3" onPointerLeave={() => setHot(null)}>
         {cells.map((c, i) => {
           const live = !!counter && i === cells.length - 1
           return (
@@ -102,33 +107,21 @@ export function VitalsStrip({ vitals = DEFAULT_VITALS, counter = "Trades", count
               onPointerEnter={() => setHot(i)}
               onFocus={() => setHot(i)}
               onBlur={() => setHot(null)}
-              className={cn(
-                "flex min-w-0 flex-col gap-1 px-3 outline-none transition-opacity duration-200 first:pl-0 focus-visible:bg-foreground/[0.06]",
-                i > 0 && "border-l border-foreground/[0.05]",
-              )}
+              /* no side padding and no rules: cells part by the 24px gap; focus bleeds 8px past the text */
+              className="-mx-2 flex min-w-0 flex-col gap-1 rounded-[8px] px-2 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
               style={{ opacity: hot !== null && hot !== i ? 0.45 : 1 }}
             >
-              <span className="whitespace-nowrap text-[10px] text-foreground/45">{c.label}</span>
+              <span className="flex items-center gap-1.5 whitespace-nowrap text-[10px] text-foreground/45">
+                {renderIcon && c.icon ? (
+                  <span aria-hidden className="inline-flex shrink-0">
+                    {renderIcon(c.icon, 14)}
+                  </span>
+                ) : null}
+                {c.label}
+              </span>
               <span className="flex items-baseline gap-1.5 whitespace-nowrap">
-                <span
-                  className="text-[12px] font-medium transition-colors duration-300"
-                  style={{ color: `color-mix(in srgb, var(--foreground) ${live && flash ? 100 : live ? 70 : 90}%, transparent)` }}
-                >
-                  {/* each new count pops in from 4px below through a 2px blur */}
-                  {live ? (
-                    <motion.span
-                      key={ticks}
-                      className="inline-block"
-                      initial={ticks === 0 ? false : SWAP_FROM}
-                      animate={SWAP_TO}
-                      transition={{ duration: 0.15, ease: EASE }}
-                    >
-                      {c.value}
-                    </motion.span>
-                  ) : (
-                    c.value
-                  )}
-                </span>
+                {/* the running count changes in place on each tick: no re-entry, no flash (spec 13.4) */}
+                <span className={cn("text-[12px] font-medium", live ? "text-foreground/70" : "text-foreground/90")}>{c.value}</span>
                 {c.delta && (
                   <span className="text-[10px] font-medium" style={{ color: /^[-−]/.test(c.delta.trim()) ? RED : GREEN }}>
                     {c.delta}
@@ -151,7 +144,7 @@ export function VitalsStrip({ vitals = DEFAULT_VITALS, counter = "Trades", count
             transition={{ duration: 0.15, ease: EASE }}
           >
             <span className="font-medium text-foreground/90">{shown.label}</span>
-            {shown.hint ? ` · ${shown.hint}` : ""}
+            {shown.hint ? `: ${shown.hint}` : ""}
           </motion.span>
         )}
       </div>

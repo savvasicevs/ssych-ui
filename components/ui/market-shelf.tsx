@@ -1,9 +1,11 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON } from "@/components/ui/control-classes"
+import { ShelfModal } from "@/components/ui/market-shelf-modal"
 
 /* Market Shelf, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: a named shelf of markets (trending, top movers, newly listed) as small
@@ -25,7 +27,22 @@ import { cn } from "@/lib/utils"
    Formulas:
    · week's change   (last − first of the 7 day series) ÷ first × 100
    · week's range    lowest and highest of the 7 day series
-   · up, down        count of tiles whose day's change is above or below zero */
+   No count line at rest (user call, 2026-10-02): the line under the tiles reads only the
+   tile being pointed at, and keeps its height when empty so nothing jumps.
+   2026-10-02 audit: a tile showed two windows at once (the 24h change in red beside a green
+   7 day line), so the line is ink now and only the 24h change carries a hue; the week is
+   read in the pointed line under the shelf ("SOL 7d −6.3%, $139.20 to $158.10", no dots).
+   "See all" did nothing in the preview: it is the control material's BUTTON and, unless the
+   host passes `onSeeAll`, it opens a popup listing every market (the shelf shows the first
+   `tiles`, 4 by default, and the sample has 8). Ticker 10px, change 11px.
+   2026-10-02 round 2: his note was that the tiles expanded weirdly on hover. The tile's
+   transition listed transform with opacity and the fill at 150ms on the default curve, and
+   the press scale fought the hover. Now the pointed tile grows on its transform alone,
+   scale 1.03 over 220ms on an ease-out ([0.16, 1, 0.3, 1]), raised above its neighbours so
+   the 4px gaps never show an overlap; its size in the grid never changes, so nothing around
+   it moves. The others step back to 50% over the same 220ms, the fill brightens with them,
+   and a press sinks the tile to 0.98 from wherever it is. Reduced motion keeps the dim and
+   the fill and drops the growth. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -76,7 +93,10 @@ export interface MarketShelfProps {
   title?: string
   markets?: ShelfMarket[]
   onSelect?: (symbol: string) => void
+  /** the host's own "See all"; without it the button opens the built-in list of every market */
   onSeeAll?: () => void
+  /** how many markets the shelf shows as tiles; "See all" lists the rest too */
+  tiles?: number
   /** draws a coin's mark in place of the coloured disc */
   renderIcon?: (symbol: string, size: number) => ReactNode
   className?: string
@@ -104,6 +124,10 @@ const DEFAULT_MARKETS: ShelfMarket[] = [
   { name: "Solana", symbol: "SOL", change: -2.2, week: week(148.2, -6.3, 11) },
   { name: "XRP", symbol: "XRP", change: -1.2, week: week(2.2, 2.4, 13) },
   { name: "Dogecoin", symbol: "DOGE", change: 3.1, week: week(0.162, -3.8, 17) },
+  { name: "Bitcoin", symbol: "BTC", change: 1.4, week: week(67412, 3.2, 23) },
+  { name: "Ethereum", symbol: "ETH", change: -0.8, week: week(3391, -1.6, 29) },
+  { name: "Cardano", symbol: "ADA", change: 2.3, week: week(0.452, 5.1, 31) },
+  { name: "Avalanche", symbol: "AVAX", change: -3.4, week: week(28.9, -7.2, 37) },
 ]
 
 const W = 56
@@ -115,10 +139,15 @@ const signedPct = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1
 /**
  * A shelf of markets as tiles: price, the day's signed change and the week as a line.
  * Pointing at a tile writes its week under the shelf; pressing it opens the market.
+ * 2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
  */
-export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onSelect, onSeeAll, renderIcon, className }: MarketShelfProps) {
+export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onSelect, onSeeAll, tiles = 4, renderIcon, className }: MarketShelfProps) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<string | null>(null)
+  const [all, setAll] = useState(false)
+  /** the tile under a press, sunk to 0.98 */
+  const [pressed, setPressed] = useState<string | null>(null)
+  const root = useRef<HTMLDivElement>(null)
 
   const rows = markets.map((m) => {
     const data = m.week.length ? m.week : [0]
@@ -130,24 +159,24 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
     return { ...m, price: data[last], min, max, line, weekChange: data[0] ? ((data[last] - data[0]) / data[0]) * 100 : 0 }
   })
   const shown = rows.find((r) => r.symbol === hot)
-  const ups = rows.filter((r) => r.change > 0).length
-  const downs = rows.filter((r) => r.change < 0).length
+  const shelf = rows.slice(0, tiles)
 
   return (
-    <div className={cn("w-full max-w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)} role="group" aria-label={`${title}, ${rows.length} markets`}>
+    <div ref={root} className={cn("w-full max-w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)} role="group" aria-label={`${title}, ${rows.length} markets`}>
       <div className="mb-2 flex items-center justify-between px-1">
         <span className="text-[13px] font-medium text-foreground/90">{title}</span>
         <button
           type="button"
-          onClick={onSeeAll}
-          className="-mr-2 h-7 rounded-full px-2.5 text-[11px] font-medium text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] hover:bg-foreground/[0.08] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] focus-visible:text-foreground/90"
+          aria-haspopup={onSeeAll ? undefined : "dialog"}
+          onClick={() => (onSeeAll ? onSeeAll() : setAll(true))}
+          className={cn(BUTTON, "h-7 px-3 text-[11.5px]")}
         >
           See all
         </button>
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-1" onPointerLeave={() => setHot(null)}>
-        {rows.map((r, i) => {
+        {shelf.map((r, i) => {
           const on = hot === r.symbol
           return (
             <button
@@ -156,32 +185,43 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
               aria-label={`${r.name}, ${usd(r.price)}, ${signedPct(r.change)} today, ${signedPct(r.weekChange)} over 7 days`}
               onClick={() => onSelect?.(r.symbol)}
               onPointerEnter={() => setHot(r.symbol)}
+              onPointerLeave={() => setPressed(null)}
               onFocus={() => setHot(r.symbol)}
               onBlur={() => setHot(null)}
-              /* 12 (the 24px coin mark) + 12 padding = 24 */
+              /* 12 (the 24px coin mark) + 12 padding = 24. The hover grows the tile on its
+                 transform only (rule 6): scale 1.03, 220ms ease-out, no layout change */
               className={cn(
-                "flex min-w-0 flex-col gap-2 rounded-[24px] bg-foreground/[0.04] p-3 text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] active:scale-[0.98]",
+                "relative flex min-w-0 flex-col gap-2 rounded-[24px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
+                on && "z-[1] bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
                 hot !== null && !on && "opacity-50",
               )}
+              style={{
+                transform: `scale(${pressed === r.symbol ? 0.98 : on && !reduced ? 1.03 : 1})`,
+                transition: "transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+              onPointerDown={() => setPressed(r.symbol)}
+              onPointerUp={() => setPressed(null)}
+              onPointerCancel={() => setPressed(null)}
             >
               <span className="flex items-center gap-2">
                 <Mark symbol={r.symbol} size={24} renderIcon={renderIcon} />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-[11.5px] font-medium leading-tight text-foreground/90">{r.name}</span>
                   {/* the ticker only when it says something the name does not (BNB, XRP are both) */}
-                  {r.symbol !== r.name && <span className="text-[9.5px] text-foreground/45">{r.symbol}</span>}
+                  {r.symbol !== r.name && <span className="text-[10px] text-foreground/45">{r.symbol}</span>}
                 </span>
               </span>
               <span className="text-[13px] font-semibold text-foreground/90">{usd(r.price)}</span>
               <span className="flex items-end justify-between gap-2">
-                <span className="text-[10.5px] font-medium" style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>
+                <span className="text-[11px] font-medium" style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>
                   {signedPct(r.change)}
                 </span>
                 <svg aria-hidden width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none" className="shrink-0 overflow-visible">
                   <motion.path
                     d={r.line}
-                    stroke={r.weekChange >= 0 ? GREEN : RED}
-                    strokeOpacity={on ? 1 : 0.7}
+                    /* ink, so the tile shows one window in hue (the 24h change) */
+                    stroke="var(--foreground)"
+                    strokeOpacity={on ? 0.9 : 0.45}
                     strokeWidth="1.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -197,7 +237,7 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
         })}
       </div>
 
-      <div role="status" className="mt-2 truncate px-1 text-[10.5px] text-foreground/45">
+      <div role="status" className="mt-2 truncate px-1 text-[10.5px] text-foreground/60">
         {/* the line swaps in place as the pointer moves (text swap: 4px, 2px blur, 150ms) from a
             dimmed copy, so it never blinks out; reduced motion keeps the fade */}
         <motion.span
@@ -209,14 +249,41 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
         >
         {shown ? (
           <>
-            <span className="font-medium text-foreground/90">{shown.symbol}</span> · 7 days{" "}
-            <span style={{ color: ink(shown.weekChange >= 0 ? GREEN : RED) }}>{signedPct(shown.weekChange)}</span> · between {usd(shown.min)} and {usd(shown.max)}
+            <span className="font-medium text-foreground/90">{shown.symbol}</span> 7d{" "}
+            <span style={{ color: ink(shown.weekChange >= 0 ? GREEN : RED) }}>{signedPct(shown.weekChange)}</span>, {usd(shown.min)} to {usd(shown.max)}
           </>
         ) : (
-          `${rows.length} markets · ${ups} up, ${downs} down today`
+          "\u00a0"
         )}
         </motion.span>
       </div>
+      <ShelfModal open={all} title={title} onClose={() => setAll(false)} host={root.current}>
+        <div className="flex flex-col">
+          {rows.map((r) => (
+            <button
+              key={r.symbol}
+              type="button"
+              aria-label={`${r.name}, ${usd(r.price)}, ${signedPct(r.change)} today, ${signedPct(r.weekChange)} over 7 days`}
+              onClick={() => {
+                onSelect?.(r.symbol)
+                setAll(false)
+              }}
+              /* a 48px row, corner 24: the popup's 36 is this + its 12px padding */
+              className="grid h-12 w-full grid-cols-[24px_minmax(0,1fr)_auto_52px] items-center gap-3 rounded-[24px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06]"
+            >
+              <Mark symbol={r.symbol} size={24} renderIcon={renderIcon} />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-[12.5px] font-medium leading-tight text-foreground/90">{r.name}</span>
+                <span className="text-[10.5px] text-foreground/45">{r.symbol}</span>
+              </span>
+              <span className="text-right text-[12.5px] text-foreground/90">{usd(r.price)}</span>
+              <span className="text-right text-[11.5px] font-medium" style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>
+                {signedPct(r.change)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </ShelfModal>
     </div>
   )
 }

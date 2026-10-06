@@ -4,14 +4,15 @@ import { useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
 
 /* Gantt Mini, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: a two-week sprint as a strip: who works on what, from when to when,
    and where today falls.
    Read first: the line for today, and the bars it crosses. Those are the strongest ink.
-   The pointer: point at a task, or tab to it, and the rest of the plan steps back and its
-   bar comes to full strength; its dates, its length and its owner are read out to screen
-   readers. Nothing floats.
+   The pointer: point at a task, or tab to it, and the rest of the plan steps back, its bar
+   comes to full ink, and a card by the bar reads its full name, its dates, its length and
+   its owner (a long name truncates in the row, so the card is where it is read whole).
    Lab sketch: src/components/lab/GanttMini.tsx. Kept: 14 days, a row per task, bars that
    draw in from the left, the weekend tint, the today line, one task read at a time.
    Changed: no card, header band or floating tooltip; bars were green, blue and grey by
@@ -29,17 +30,25 @@ import { cn } from "@/lib/utils"
    · done, active, upcoming = count of tasks in each state (sample: 3, 2, 1)
    Motion (2026-10-01): the bars draw in from their start day once the strip is a third in
    view, 30ms apart over 500ms (650ms in all); reduced motion shows them drawn. No data
-   changes here, so nothing else moves. */
+   changes here, so nothing else moves.
+   2026-10-02 audit: he found the bars too short, so they are 16px pills in 32px rows (the
+   plot stays the same height). Pointing at a task, or tabbing to it, now opens a ChartCard
+   by its bar with the full name as heading and Dates, Days and Owner rows, so a truncated
+   name always has a reveal. The six lane hues are gone (the rows are already apart and
+   labelled): bars are ink by state, active 90%, done 35%, upcoming 15%, the pointed one
+   90%. The 13 vertical day rules are gone, the weekend wash and the week ticks carry the
+   grid. Task names are 12px, axis text 9px /45, width 460 like the other charts.
+   2026-10-02 round 2: the sample is a model release in place of a generic product sprint:
+   data freeze, fine tune, eval suite, red team, a 5% canary and the full rollout, owned by
+   the roles that run them. Starts, spans and today are unchanged, so the states still
+   count 3 done, 2 active, 1 upcoming (the eval suite ends on day 8, before today). */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-/* each lane takes its own hue so the tasks are told apart (colour pass, 2026-09-30), in the
-   house categorical order; the state stays the strength of that hue. Past six, one "other" ink */
-const LANES = ["var(--chart-1)", "var(--chart-5)", "var(--chart-3)", "var(--chart-amber)", "var(--chart-2)", "var(--chart-4)"]
 
-const ROW_H = 40
+const ROW_H = 32
 /** bar thickness; a pill, so its radius is half of this */
-const BAR_H = 8
-const LABEL_W = 104
+const BAR_H = 16
+const LABEL_W = 112
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
@@ -70,18 +79,17 @@ export interface GanttMiniProps {
 }
 
 const DEFAULT_TASKS: GanttTask[] = [
-  { name: "Design pass", start: 0, span: 3, owner: "Design lead" },
-  { name: "API wiring", start: 2, span: 3, owner: "Backend engineer" },
-  { name: "Schema migration", start: 7, span: 2, owner: "Data engineer" },
-  { name: "Dashboard build", start: 7, span: 4, owner: "Frontend engineer" },
-  { name: "QA run", start: 9, span: 3, owner: "QA analyst" },
-  { name: "Release prep", start: 11, span: 1, owner: "Release manager" },
+  { name: "Data freeze", start: 0, span: 3, owner: "Data engineer" },
+  { name: "Fine tune", start: 2, span: 3, owner: "ML engineer" },
+  { name: "Eval suite", start: 7, span: 2, owner: "Eval lead" },
+  { name: "Red team", start: 7, span: 4, owner: "Safety lead" },
+  { name: "Canary at 5%", start: 9, span: 3, owner: "Platform engineer" },
+  { name: "Full rollout", start: 11, span: 1, owner: "Release manager" },
 ]
 
-const STRENGTH: Record<GanttState, number> = { done: 45, active: 100, upcoming: 24 }
+/** the state is the bar's ink; the pointed bar comes to 90 */
+const STRENGTH: Record<GanttState, number> = { done: 35, active: 90, upcoming: 15 }
 const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
-/** lane i at a state's strength; the seventh lane on is one quiet ink */
-const laneFill = (i: number, pct: number) => (LANES[i] ? `color-mix(in srgb, ${LANES[i]} ${pct}%, transparent)` : ink(22))
 
 const stateOf = (t: GanttTask, today: number): GanttState => (t.start + t.span - 1 < today ? "done" : t.start > today ? "upcoming" : "active")
 
@@ -100,8 +108,9 @@ function dateOf(d: number, month: number, day: number) {
  * A sprint strip in the Linear register: a quiet day grid, bars that draw in from the
  * left and a hairline for today. Pointing at a task steps the rest back and reads its
  * dates and owner above the plan.
+ * 2026-10-02: weekend washes lifted to 6% so the weekends read on white and on black.
  */
-export function GanttMini({ tasks = DEFAULT_TASKS, title = "Sprint 14", days = 14, today = 9, startMonth = 7, startDay = 20, className }: GanttMiniProps) {
+export function GanttMini({ tasks = DEFAULT_TASKS, title = "Model release, checkpoint 14", days = 14, today = 9, startMonth = 7, startDay = 20, className }: GanttMiniProps) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<number | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -119,7 +128,7 @@ export function GanttMini({ tasks = DEFAULT_TASKS, title = "Sprint 14", days = 1
 
   return (
     <div
-      className={cn("w-full max-w-[520px] tabular-nums", className)}
+      className={cn("w-[460px] max-w-full tabular-nums", className)}
       role="group"
       aria-label={`${title}, ${tasks.length} tasks, ${count("done")} done, ${count("active")} active, ${count("upcoming")} upcoming, today is ${date(today)}`}
     >
@@ -135,10 +144,7 @@ export function GanttMini({ tasks = DEFAULT_TASKS, title = "Sprint 14", days = 1
         {/* the day grid sits behind the rows, over the track only */}
         <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0" style={{ left: LABEL_W }}>
           {weekends.map((d) => (
-            <span key={d} className="absolute inset-y-0 bg-foreground/[0.03]" style={{ left: left(d), width: left(Math.min(2, days - d)) }} />
-          ))}
-          {Array.from({ length: days - 1 }, (_, i) => (
-            <span key={i} className="absolute inset-y-0 w-px bg-foreground/[0.05]" style={{ left: left(i + 1) }} />
+            <span key={d} className="absolute inset-y-0 bg-foreground/[0.06]" style={{ left: left(d), width: left(Math.min(2, days - d)) }} />
           ))}
           <span className="absolute inset-y-0 w-px" style={{ left: `calc(${left(today + 0.5)} - 0.5px)`, background: ink(45) }} />
         </div>
@@ -157,14 +163,14 @@ export function GanttMini({ tasks = DEFAULT_TASKS, title = "Sprint 14", days = 1
               className="relative flex w-full items-center text-left outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.04] motion-reduce:transition-none"
               style={{ height: ROW_H, opacity: hot !== null && !on ? 0.4 : 1 }}
             >
-              <span className={cn("shrink-0 truncate pr-2 text-[11px]", state === "done" ? "text-foreground/45" : "text-foreground/90")} style={{ width: LABEL_W }}>
+              <span className={cn("shrink-0 truncate pr-2 text-[12px]", state === "done" ? "text-foreground/45" : "text-foreground/90")} style={{ width: LABEL_W }}>
                 {t.name}
               </span>
               <span className="relative block h-full flex-1">
                 <motion.span
                   aria-hidden
                   className="absolute top-1/2 block origin-left -translate-y-1/2 rounded-full"
-                  style={{ height: BAR_H, left: left(t.start), width: left(t.span), background: laneFill(i, on ? 100 : STRENGTH[state]), transition: reduced ? "none" : "background 150ms" }}
+                  style={{ height: BAR_H, left: left(t.start), width: left(t.span), background: ink(on ? 90 : STRENGTH[state]), transition: reduced ? "none" : "background 150ms" }}
                   initial={reduced ? false : { scaleX: 0 }}
                   animate={{ scaleX: play ? 1 : 0 }}
                   transition={reduced ? { duration: 0 } : { duration: 0.5, ease: EASE, delay: Math.min(i, 9) * 0.03 }}
@@ -173,9 +179,36 @@ export function GanttMini({ tasks = DEFAULT_TASKS, title = "Sprint 14", days = 1
             </button>
           )
         })}
+
+        {/* the pointed task reads in the library popover by its bar: the name in full (spec 13.5, 14.6) */}
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0" style={{ left: LABEL_W }}>
+          {(() => {
+            const end = shown ? (shown.start + shown.span) / days : 0
+            const flip = end > 0.6
+            return (
+              <ChartCard
+                open={!!shown}
+                x={shown ? left(flip ? shown.start : shown.start + shown.span) : 0}
+                y={hot === null ? 0 : hot * ROW_H + ROW_H / 2 - 12}
+                flip={flip}
+                width={176}
+                heading={shown?.name ?? ""}
+                rows={
+                  shown
+                    ? [
+                        { label: "Dates", value: shown.span === 1 ? date(shown.start) : `${date(shown.start)} to ${date(shown.start + shown.span - 1)}` },
+                        { label: "Days", value: String(shown.span) },
+                        { label: "Owner", value: shown.owner },
+                      ]
+                    : []
+                }
+              />
+            )
+          })()}
+        </div>
       </div>
 
-      <div aria-hidden className="relative mt-1.5 h-3 text-[9px] text-foreground/35" style={{ marginLeft: LABEL_W }}>
+      <div aria-hidden className="relative mt-1.5 h-3 text-[9px] text-foreground/45" style={{ marginLeft: LABEL_W }}>
         {weeks.map((d) => (
           <span key={d} className="absolute top-0" style={{ left: left(d) }}>
             {date(d)}

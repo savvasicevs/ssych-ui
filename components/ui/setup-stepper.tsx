@@ -4,6 +4,7 @@ import { useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON_PRIMARY } from "@/components/ui/control-classes"
 
 /* Setup Stepper, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: a short setup in order, showing which step is open, which are behind
@@ -22,9 +23,20 @@ import { cn } from "@/lib/utils"
    step.
    Colour pass (2026-09-30): a finished step is done, so its coin is green again under the
    drawn check; open and to come stay ink.
-   Formulas:
-   · finished = steps before the open one (sample: 1 of 4)
-   · position = open step + 1 of steps (sample: 2 of 4) */
+   Formulas (read in the aria-labels):
+   · finished = steps before the open one (sample: 1 of 4), every step once finished
+   · position = open step + 1 of steps (sample: 2 of 4)
+   2026-10-02 audit: the smaller size is the component's own now (264 wide, 20px coins),
+   where the preview used to zoom it to 0.88; the coins and the 12.5px rows match the
+   Onboarding Checklist. The line "Step 2 of 4 · 1 finished" beside the button is gone, the
+   rail says both. The button is the shared 48px primary at a fixed width: "Continue" moves
+   one on, and on the last step "Finish" is live and checks the last coin too (it used to
+   say "Done" while disabled); once finished it reads "Start over". The label swaps in place
+   (4px, 2px blur, 150ms). Detail lines read at 60%. New optional `onFinish`.
+   2026-10-02 round 2: the steps are an AI ops setup in place of an email domain setup, so
+   it no longer repeats the Onboarding Checklist: connect a model provider, upload an eval
+   set, run the first eval, set an alert threshold. The sample still opens on step 2 with 1
+   of 4 finished. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -45,45 +57,61 @@ export interface SetupStepperProps {
   /** index of the step open at the start */
   initialActive?: number
   onChange?: (index: number) => void
+  /** told when the last step is finished */
+  onFinish?: () => void
   className?: string
 }
 
 const DEFAULT_STEPS: SetupStep[] = [
-  { title: "Add your domain", body: "Name and region for sending." },
-  { title: "Fill in DNS records", body: "DKIM and SPF at your provider." },
-  { title: "Verify records", body: "Propagation is checked for you." },
-  { title: "Send your first email", body: "One POST to /emails." },
+  { title: "Connect a model provider", body: "Anthropic, OpenAI or Google keys." },
+  { title: "Upload an eval set", body: "480 test cases as one JSONL file." },
+  { title: "Run the first eval", body: "Claude Opus 5.5 against the set." },
+  { title: "Set an alert threshold", body: "Page on call under an 85% pass rate." },
 ]
 
 const solid = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, var(--background))`
 
 /**
- * A setup rail in the Resend register: numbered coins down a hairline, the open step
+ * A setup rail in the Resend register (sample: an AI ops setup): numbered coins down a hairline, the open step
  * with its detail, finished steps checked. Any step can be pressed; the rail follows.
  */
-export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChange, className }: SetupStepperProps) {
+export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChange, onFinish, className }: SetupStepperProps) {
   const reduced = useReducedMotion()
   const last = steps.length - 1
   const [active, setActive] = useState(Math.max(0, Math.min(last, initialActive)))
   const [hot, setHot] = useState<number | null>(null)
+  /** every step finished, the last one included */
+  const [complete, setComplete] = useState(false)
 
   const go = (i: number) => {
     const to = Math.max(0, Math.min(last, i))
+    setComplete(false)
     setActive(to)
     onChange?.(to)
   }
+  const next = () => {
+    if (complete) return go(0)
+    if (active < last) return go(active + 1)
+    setComplete(true)
+    onFinish?.()
+  }
+  const cta = complete ? "Start over" : active === last ? "Finish" : "Continue"
 
   return (
-    <div className={cn("w-full max-w-[300px] tabular-nums", className)} role="group" aria-label={`Setup, step ${active + 1} of ${steps.length}: ${steps[active]?.title ?? ""}`}>
+    <div
+      className={cn("w-[264px] max-w-full tabular-nums", className)}
+      role="group"
+      aria-label={complete ? `Setup, all ${steps.length} steps finished` : `Setup, step ${active + 1} of ${steps.length}, ${active} finished: ${steps[active]?.title ?? ""}`}
+    >
       <ol className="flex flex-col" onPointerLeave={() => setHot(null)}>
         {steps.map((s, i) => {
-          const done = i < active
-          const on = i === active
+          const done = complete || i < active
+          const on = !complete && i === active
           return (
             <li key={s.title} className="relative transition-opacity duration-200" style={{ opacity: hot !== null && hot !== i ? 0.45 : 1 }}>
               {/* the rail to the next coin: a faint track, and the ink that fills it once this step is behind */}
               {i < last && (
-                <span aria-hidden className="absolute bottom-0 left-[10.5px] top-[22px] w-px bg-foreground/[0.08]">
+                <span aria-hidden className="absolute bottom-0 left-[9.5px] top-[20px] w-px bg-foreground/[0.08]">
                   <motion.span
                     className="block h-full w-full origin-top bg-foreground/70"
                     initial={false}
@@ -104,7 +132,7 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
               >
                 <span
                   aria-hidden
-                  className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full text-[10px] font-medium transition-colors duration-200"
+                  className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-medium transition-colors duration-200"
                   style={{
                     background: done ? GREEN : solid(on ? 22 : 8),
                     color: on ? "var(--foreground)" : "color-mix(in srgb, var(--foreground) 45%, transparent)",
@@ -127,7 +155,7 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
                     i + 1
                   )}
                 </span>
-                <span className="pt-[3px]">
+                <span className="pt-[2px]">
                   <span
                     className={cn(
                       "block text-[12.5px] transition-colors duration-200",
@@ -138,7 +166,7 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
                   </span>
                   {on && (
                     <motion.span
-                      className="mt-0.5 block text-[11px] text-foreground/45"
+                      className="mt-0.5 block text-[11px] text-foreground/60"
                       initial={reduced ? false : { opacity: 0, y: 3 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}
@@ -153,23 +181,12 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
         })}
       </ol>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => go(active + 1)}
-          disabled={active === last}
-          className="h-7 rounded-full bg-foreground px-3.5 text-[11px] font-medium text-background outline-none transition-[opacity,scale] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35 motion-reduce:active:scale-100"
-        >
-          <motion.span key={active === last ? "done" : "continue"} className="inline-block" {...SWAP} initial={reduced ? { opacity: 0 } : SWAP.initial}>
-            {active === last ? "Done" : "Continue"}
-          </motion.span>
-        </button>
-        <span role="status" className="text-[10.5px] text-foreground/45">
-          <motion.span key={active} className="inline-block" {...SWAP} initial={reduced ? { opacity: 0 } : SWAP.initial}>
-            Step {active + 1} of {steps.length} · {active} finished
-          </motion.span>
-        </span>
-      </div>
+      {/* one width whatever it says; the label swaps in place */}
+      <button type="button" onClick={next} className={BUTTON_PRIMARY}>
+        <motion.span key={cta} className="inline-block" {...SWAP} initial={reduced ? { opacity: 0 } : SWAP.initial}>
+          {cta}
+        </motion.span>
+      </button>
     </div>
   )
 }

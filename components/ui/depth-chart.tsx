@@ -4,15 +4,18 @@ import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import { AnimatePresence, animate, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { useWidth } from "@/components/ui/use-width"
+import { ChartCard } from "@/components/ui/chart-overlay"
+import { SegmentedControl } from "@/components/ui/segmented-control"
 
 /* Depth Chart, written new through ssych-component (2026-09-29).
    What it is for: seeing how much size rests on each side of the mid, and how far the
    price has to travel to walk through a given amount of it.
    Read first: the mid price in the middle of the line above the chart.
    The pointer: scrub across the chart. The distance from the mid is mirrored, so both
-   sides answer at once: the run inside that distance stays lit, the rest dims, and the
-   line above reads the size resting down to the bid price and up to the ask price. The
-   arrow keys do the same; the pills set how far from the mid the chart reaches.
+   sides answer at once: the run inside that distance stays lit, the rest dims, and a card
+   by the pointer reads the size resting down to the bid price and up to the ask price. The
+   arrow keys do the same; the switcher sets how far from the mid the chart reaches.
    Sketch used: src/components/lab/DepthChartPro.tsx. Kept: the level shape (price, size),
    levels summed outward from the mid into a staircase that runs flat to the edge, the
    window set as a distance from the mid, and the mirrored readout. Changed: it is drawn in
@@ -28,16 +31,26 @@ import { cn } from "@/lib/utils"
    · distance     |pointer price − mid|, snapped to the tick, shown as distance ÷ mid × 100
    · at rest      distance is the whole window, so the figures are everything drawn
    · height       depth ÷ (the larger side's depth in the window × 1.15)
+   · spread       best ask − best bid
    Motion (2026-10-01): once the chart first comes into view one clip opens both staircases
    outward from the mid, 800ms (it was a 400ms dash draw on mount). A new reach zooms: the
    window and the height scale ease from the old values to the new ones in 380ms (the window
    on a log scale, so the zoom reads even), and every frame between is a true redraw of the
    book at that window, levels entering and leaving at the edges. It writes four path
    attributes per frame, no React state. The size gridlines and the price labels cross-fade.
-   Reduced motion draws every state at once. */
+   Reduced motion draws every state at once.
+   2026-10-02 audit: nine readout lines and six figures sat over the plot at rest, all at the
+   same 13px, so nothing was read first. The header is now the library's three tiers: the
+   symbol at /45 with the reach switcher (the shared SegmentedControl) on the right, the mid
+   as the 26px headline, and the spread under it at /45. The window's totals left the rest
+   state (they live in the aria-label); scrubbing reads the bid and ask depth in a card by
+   the pointer (chart-overlay.tsx), the sides marked by the hued dots on the curves rather
+   than green and red words. The size figures moved to the right edge, the dashed mid line
+   is named on the price axis ("67,412.5 Mid", the price at /90 and the name at /45), axis
+   text went from /35 to /45, the dimmed book rests at 0.45 while a run is read, and the
+   width is 460 like the other non price charts. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 
@@ -57,6 +70,8 @@ export interface DepthChartProps {
   tick?: number
   /** how far from the mid the chart can reach, in percent; the last is the opening one */
   reaches?: number[]
+  /** the plot's height in px (2026-10-06), so it can fill the panel it shares with a price chart */
+  height?: number
   priceDp?: number
   sizeDp?: number
   className?: string
@@ -88,7 +103,7 @@ const DEFAULT_BOOK: { bids: DepthLevel[]; asks: DepthLevel[] } = (() => {
 
 const DEFAULT_REACHES = [0.25, 0.5, 1]
 
-const W = 480
+const W = 460
 const H = 200
 const PAD = { t: 8, b: 20 }
 const FLOOR = H - PAD.b
@@ -102,8 +117,8 @@ const nice = (raw: number) => {
   const f = raw / p
   return (f >= 5 ? 5 : f >= 2 ? 2 : 1) * p
 }
-/** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
-const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
+/** the reach as the switcher writes it */
+const reachLabel = (r: number) => `±${r}%`
 
 type Step = { price: number; depth: number }
 
@@ -118,11 +133,12 @@ function steps(levels: DepthLevel[]): Step[] {
 
 /** Both staircases and their fills for a window `half` either side of the mid, scaled so
  *  `top` is the full height. The rest state is drawn with it, and so is every zoom frame. */
-function drawBook(bids: DepthLevel[], asks: DepthLevel[], mid: number, half: number, top: number) {
+/** w and floor are the box the curves are drawn in (2026-10-06: passed in, so they follow the measured size) */
+function drawBook(bids: DepthLevel[], asks: DepthLevel[], mid: number, half: number, top: number, w = W, floor = FLOOR) {
   const lo = mid - half
   const hi = mid + half
-  const x = (p: number) => ((p - lo) / (hi - lo)) * W
-  const y = (v: number) => PAD.t + (1 - v / top) * (FLOOR - PAD.t)
+  const x = (p: number) => ((p - lo) / (hi - lo)) * w
+  const y = (v: number) => PAD.t + (1 - v / top) * (floor - PAD.t)
   const stair = (pts: Step[], edge: number) => {
     if (!pts.length) return ""
     let d = `M ${x(pts[0].price).toFixed(1)} ${y(0).toFixed(1)}`
@@ -157,14 +173,21 @@ export function DepthChart({
   reaches = DEFAULT_REACHES,
   priceDp = 1,
   sizeDp = 2,
+  height = 200,
   className,
 }: DepthChartProps) {
+  // laid out at the width and height it is given (2026-10-06), so the text keeps its size
+  const [widthRef, W] = useWidth<HTMLDivElement>(460)
+  const H = height
+  const FLOOR = H - PAD.b
   const reduced = useReducedMotion()
   const uid = useId().replace(/:/g, "")
   const boxRef = useRef<HTMLDivElement>(null)
   const [reach, setReach] = useState(reaches[reaches.length - 1] ?? 1)
   /** distance from the mid being pointed at, in price; null at rest */
   const [dist, setDist] = useState<number | null>(null)
+  /** which side of the mid the pointer is on, so the card rides that crosshair */
+  const [side, setSide] = useState<1 | -1>(1)
 
   const book = useMemo(() => {
     const b = [...bids].sort((x, y) => y.price - x.price)
@@ -183,7 +206,7 @@ export function DepthChart({
   const x = (p: number) => ((p - lo) / (hi - lo)) * W
   const y = (v: number) => PAD.t + (1 - v / top) * (FLOOR - PAD.t)
 
-  const { bidLine, askLine, bidArea, askArea } = useMemo(() => drawBook(sortedBids, sortedAsks, mid, half, top), [sortedBids, sortedAsks, mid, half, top])
+  const { bidLine, askLine, bidArea, askArea } = useMemo(() => drawBook(sortedBids, sortedAsks, mid, half, top, W, FLOOR), [sortedBids, sortedAsks, mid, half, top, W, FLOOR])
 
   /* the entrance waits until the chart is on screen */
   const seen = useInView(boxRef, { once: true, amount: 0.3 })
@@ -199,7 +222,7 @@ export function DepthChart({
   const drawn = useRef({ half, top })
   useLayoutEffect(() => {
     const paint = (h: number, t: number) => {
-      const g = drawBook(sortedBids, sortedAsks, mid, h, t)
+      const g = drawBook(sortedBids, sortedAsks, mid, h, t, W, FLOOR)
       bidLineRef.current?.setAttribute("d", g.bidLine)
       askLineRef.current?.setAttribute("d", g.askLine)
       bidAreaRef.current?.setAttribute("d", g.bidArea)
@@ -219,7 +242,7 @@ export function DepthChart({
       onComplete: () => paint(half, top),
     })
     return () => run.stop()
-  }, [sortedBids, sortedAsks, mid, half, top, reduced])
+  }, [sortedBids, sortedAsks, mid, half, top, reduced, W, FLOOR])
 
   /* the reading: at rest the distance is the whole window */
   const d = dist ?? half
@@ -228,6 +251,14 @@ export function DepthChart({
   const bidDepth = bidSteps.reduce((s, p) => (p.price >= bidPrice ? p.depth : s), 0)
   const askDepth = askSteps.reduce((s, p) => (p.price <= askPrice ? p.depth : s), 0)
   const pct = mid > 0 ? (d / mid) * 100 : 0
+  const spread = (sortedAsks[0]?.price ?? 0) - (sortedBids[0]?.price ?? 0)
+  const [midWhole, midDecimals] = (() => {
+    const t = num(mid, priceDp)
+    const at = t.indexOf(".")
+    return at < 0 ? [t, ""] : [t.slice(0, at), t.slice(at)]
+  })()
+  /* the card rides the crosshair on the pointer's side and turns past 60% of the plot */
+  const cardAt = side < 0 ? x(bidPrice) : x(askPrice)
 
   const snap = (v: number) => clamp(Math.round(v / tick) * tick, 0, half)
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -235,6 +266,7 @@ export function DepthChart({
     if (!el) return
     const r = el.getBoundingClientRect()
     const price = lo + clamp((e.clientX - r.left) / r.width, 0, 1) * (hi - lo)
+    setSide(price < mid ? -1 : 1)
     setDist(snap(Math.abs(price - mid)))
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -265,80 +297,27 @@ export function DepthChart({
   )
 
   return (
-    <div role="group" aria-label={`${symbol} depth`} className={cn("w-[480px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
-      {/* no visible title (2026-10-01): the readout says what it is; the reach sits in the top corner */}
-      <div className="mb-3 flex items-center justify-end">
-        <div role="radiogroup" aria-label="Reach from the mid" className="flex items-center">
-          {reaches.map((r) => {
-            const on = r === reach
-            return (
-              <button
-                key={r}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => {
-                  setReach(r)
-                  setDist(null)
-                }}
-                className={cn(
-                  "relative h-7 rounded-full px-2.5 text-[11px] outline-none transition-colors duration-200",
-                  on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-                )}
-              >
-                {on &&
-                  (reduced ? (
-                    <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-                  ) : (
-                    <motion.span
-                      aria-hidden
-                      layoutId={`${uid}-reach`}
-                      className="absolute inset-0 rounded-full bg-foreground/[0.08]"
-                      transition={{ duration: 0.25, ease: TAB_EASE }}
-                    />
-                  ))}
-                <span className="relative">±{r}%</span>
-              </button>
-            )
-          })}
-        </div>
+    <div ref={widthRef} role="group" aria-label={`${symbol} depth`} className={cn("w-[460px] max-w-full tabular-nums", className)}>
+      {/* the header, three tiers (spec 14.1): the symbol and the reach, the mid, the spread */}
+      <div className="mb-3 flex items-center justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{symbol}</span>
+        <SegmentedControl
+          label="Reach from the mid"
+          options={reaches.map(reachLabel)}
+          value={reachLabel(reach)}
+          onChange={(v) => {
+            const next = reaches.find((r) => reachLabel(r) === v)
+            if (next === undefined) return
+            setReach(next)
+            setDist(null)
+          }}
+        />
       </div>
-
-      {/* the readout cross-fades when the scrub starts or ends and when the reach changes; while
-          scrubbing the figures follow at once */}
-      <div role="status">
-      <motion.div
-        key={`${reach}-${dist === null ? "rest" : "scrub"}`}
-        className="mb-2 grid grid-cols-3 items-end"
-        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ duration: 0.15, ease: EASE }}
-      >
-        <div className="flex flex-col">
-          <span className="text-[10.5px] font-medium" style={{ color: ink(GREEN) }}>
-            Bids
-          </span>
-          <span className="mt-0.5 text-[13px] font-semibold text-foreground/90">
-            {num(bidDepth, sizeDp)} {unit}
-          </span>
-          <span className="text-[10px] text-foreground/45">down to {num(bidPrice, priceDp)}</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <span className="text-[10.5px] text-foreground/45">Mid</span>
-          <span className="mt-0.5 text-[13px] font-semibold text-foreground/90">{num(mid, priceDp)}</span>
-          <span className="text-[10px] text-foreground/45">±{pct.toFixed(2)}% from it</span>
-        </div>
-        <div className="flex flex-col items-end">
-          <span className="text-[10.5px] font-medium" style={{ color: ink(RED) }}>
-            Asks
-          </span>
-          <span className="mt-0.5 text-[13px] font-semibold text-foreground/90">
-            {num(askDepth, sizeDp)} {unit}
-          </span>
-          <span className="text-[10px] text-foreground/45">up to {num(askPrice, priceDp)}</span>
-        </div>
-      </motion.div>
-      </div>
+      <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+        {midWhole}
+        <span className="text-foreground/35">{midDecimals}</span>
+      </p>
+      <p className="mb-0 mt-2 text-[12px] text-foreground/45">Spread {num(spread, priceDp)}</p>
 
       <div
         ref={boxRef}
@@ -349,7 +328,7 @@ export function DepthChart({
         aria-valuemax={Number(reach.toFixed(2))}
         aria-valuenow={Number(pct.toFixed(2))}
         aria-valuetext={`${pct.toFixed(2)}% from the mid: ${num(bidDepth, sizeDp)} ${unit} of bids, ${num(askDepth, sizeDp)} ${unit} of asks`}
-        className="relative cursor-crosshair touch-none outline-none"
+        className="relative mt-4 cursor-crosshair touch-none outline-none"
         onPointerMove={onMove}
         onPointerDown={onMove}
         onPointerLeave={() => setDist(null)}
@@ -392,7 +371,7 @@ export function DepthChart({
               {grid.map((v) => (
                 <g key={v}>
                   <line x1={0} x2={W} y1={y(v)} y2={y(v)} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth="1" />
-                  <text x={W / 2 + 5} y={y(v) - 3} fontSize={9} fill="var(--foreground)" fillOpacity={0.35}>
+                  <text x={W} y={y(v) - 3} textAnchor="end" fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
                     {num(v, v < 10 && gridStep < 1 ? 1 : 0)}
                   </text>
                 </g>
@@ -404,7 +383,7 @@ export function DepthChart({
 
           {/* the whole book, dimmed while a run is being read */}
           <g clipPath={`url(#${uid}-wipe)`}>
-            <g style={{ opacity: dist === null ? 1 : 0.35, transition: reduced ? "none" : "opacity 160ms" }}>{curves(true)}</g>
+            <g style={{ opacity: dist === null ? 1 : 0.45, transition: reduced ? "none" : "opacity 160ms" }}>{curves(true)}</g>
           </g>
           {/* the run inside the distance, at full strength */}
           {dist !== null && (
@@ -433,14 +412,37 @@ export function DepthChart({
                   fontSize={9}
                   textAnchor={i === 0 ? "start" : i === axis.length - 1 ? "end" : "middle"}
                   fill="var(--foreground)"
-                  fillOpacity={0.35}
                 >
-                  {num(p, priceDp)}
+                  {/* the middle figure is the mid, named under its dashed line (spec 14.7) */}
+                  {i === 2 ? (
+                    <>
+                      <tspan fontWeight={500} fillOpacity={0.9}>
+                        {num(mid, priceDp)}
+                      </tspan>
+                      <tspan fillOpacity={0.45}> Mid</tspan>
+                    </>
+                  ) : (
+                    <tspan fillOpacity={0.45}>{num(p, priceDp)}</tspan>
+                  )}
                 </text>
               ))}
             </motion.g>
           </AnimatePresence>
         </svg>
+
+        {/* the run being read, in a card by the pointer (chart-overlay.tsx); the hued dots on
+            the curves say which row is which side */}
+        <ChartCard
+          open={dist !== null}
+          x={`${(cardAt / W) * 100}%`}
+          flip={cardAt / W > 0.6}
+          width={184}
+          heading={`±${pct.toFixed(2)}% from the mid`}
+          rows={[
+            { label: `Bids to ${num(bidPrice, priceDp)}`, value: `${num(bidDepth, sizeDp)} ${unit}` },
+            { label: `Asks to ${num(askPrice, priceDp)}`, value: `${num(askDepth, sizeDp)} ${unit}` },
+          ]}
+        />
       </div>
     </div>
   )

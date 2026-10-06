@@ -1,9 +1,12 @@
 "use client"
 
-import { useId, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { LiveFigure } from "@/components/ui/live-figure"
+import { SegmentedControl } from "@/components/ui/segmented-control"
+import { usePointed } from "@/components/ui/use-pointed"
 
 /* Order Book, written new through ssych-component (2026-09-29).
    What it is for: reading how much size rests at each price on both sides of a market,
@@ -15,10 +18,18 @@ import { cn } from "@/lib/utils"
    Sketch used: src/components/lab/OrderBookPro.tsx. Kept: the level shape (price, size),
    grouping into a price step, depth that accumulates from the touch outward, bars scaled
    to the largest total on screen, spread and mid taken from the ungrouped touch, and the
-   hover total. Left out: the simulated feed (the caller passes new levels), the card and
-   its hairlines, the capital column heads.
+   hover total. Left out: the card and its hairlines, the capital column heads.
    Reference ("order book" on browsable, listings only, no code read): the idea of a
    bid against ask balance under the ladder.
+   2026-10-02 audit: his call was that the book should animate and do things on hover, so
+   while the pointer is on it (usePointed) a seeded feed nudges sizes and adds or pulls
+   levels every 600ms; sizes change in place, a changed row flashes once in its side's hue
+   and the bars ease to their new length; the feed stops when the pointer leaves, and the
+   book at rest is the still, complete seeded one. The footer captions that summed the book
+   up at rest are gone: the balance rule stays, and pointing at it (or tabbing to it) reads
+   the split in the middle row; the split is also in the aria-label. The price step uses the
+   shared SegmentedControl, the heads are 10.5px, the mid is 15px so it wins over the 13px
+   symbol, the readouts lost their middle dots, and the default shows 6 levels a side.
    Formulas:
    · bucket      a bid falls to floor(price / step) × step, an ask rises to ceil(price / step) × step,
                  so a grouped book never crosses
@@ -27,12 +38,15 @@ import { cn } from "@/lib/utils"
    · mid         (best bid + best ask) ÷ 2, ungrouped
    · spread      best ask − best bid, and in bps: spread ÷ mid × 10,000
    · money       Σ price × size over the same levels as the total
-   · balance     bid total shown ÷ (bid total shown + ask total shown) */
+   · balance     bid total shown ÷ (bid total shown + ask total shown)
+   · feed        each 600ms tick, 3 levels a side within the first 12 take size × (0.55 to 1.55);
+                 one tick in four a level past the touch is pulled or a new one is added in a gap
+                 (the best bid and ask keep their price, so the mid holds) */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
+const FEED_MS = 600
 
 export interface OrderBookLevel {
   price: number
@@ -56,6 +70,8 @@ export interface OrderBookProps {
   rows?: number
   priceDp?: number
   sizeDp?: number
+  /** run the seeded demo feed while the book is pointed at; turn it off when you pass live levels */
+  feed?: boolean
   className?: string
 }
 
@@ -110,6 +126,28 @@ function ladder(levels: OrderBookLevel[], side: Side, step: number, tick: number
   })
 }
 
+/** one feed step on one side: nudge a few sizes, sometimes pull or add a level past the touch */
+function stepSide(levels: OrderBookLevel[], side: Side, tick: number, rnd: () => number): OrderBookLevel[] {
+  const sorted = [...levels].sort((a, b) => (side === "bid" ? b.price - a.price : a.price - b.price))
+  const reach = Math.min(12, sorted.length)
+  for (let k = 0; k < 3 && reach > 0; k++) {
+    const i = Math.floor(rnd() * reach)
+    const l = sorted[i]
+    sorted[i] = { price: l.price, size: Math.max(0.01, Math.round(l.size * (0.55 + rnd()) * 1000) / 1000) }
+  }
+  if (rnd() < 0.25 && reach > 3) {
+    const i = 1 + Math.floor(rnd() * (reach - 1))
+    if (rnd() < 0.5) sorted.splice(i, 1)
+    else {
+      /* a new level in the gap behind level i-1, when there is one */
+      const dir = side === "bid" ? -1 : 1
+      const p = sorted[i - 1].price + dir * tick
+      if (Math.abs(p - sorted[i].price) > tick / 2) sorted.splice(i, 0, { price: p, size: Math.round((0.08 + rnd() * 0.9) * 1000) / 1000 })
+    }
+  }
+  return sorted
+}
+
 const num = (n: number, dp: number) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })
 const compact = (n: number) =>
   n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `$${(n / 1e3).toFixed(1)}K` : `$${num(n, 0)}`
@@ -121,6 +159,7 @@ const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
  * A two sided ladder: asks above, bids below, the mid and the spread on the row between
  * them. Each level carries a bar of everything resting from the touch out to it. Pointing
  * at a level lights the run up to it and reads its size and money in the middle row.
+ * While the book is pointed at, a demo feed moves it.
  */
 export function OrderBook({
   symbol = "BTC-USD",
@@ -129,22 +168,61 @@ export function OrderBook({
   asks = DEFAULT_BOOK.asks,
   tick = TICK,
   groupings = DEFAULT_GROUPINGS,
-  rows = 8,
+  rows = 6,
   priceDp = 1,
   sizeDp = 3,
+  feed = true,
   className,
 }: OrderBookProps) {
   const reduced = useReducedMotion()
-  const uid = useId().replace(/:/g, "")
+  const { ref, live, bind } = usePointed()
   const [step, setStep] = useState(groupings[0] ?? tick)
   const [hot, setHot] = useState<{ side: Side; i: number } | null>(null)
+  const [balanceOn, setBalanceOn] = useState(false)
 
-  const bidRows = useMemo(() => ladder(bids, "bid", step, tick).slice(0, rows), [bids, step, tick, rows])
-  const askRows = useMemo(() => ladder(asks, "ask", step, tick).slice(0, rows), [asks, step, tick, rows])
+  /* the book the ladder draws: the caller's levels, moved by the demo feed while pointed at */
+  const [book, setBook] = useState({ bids, asks })
+  useEffect(() => setBook({ bids, asks }), [bids, asks])
+  const seed = useRef(4211)
+  useEffect(() => {
+    if (!feed || !live) return
+    const rnd = () => {
+      seed.current = (seed.current * 16807) % 2147483647
+      return seed.current / 2147483647
+    }
+    const id = window.setInterval(() => {
+      setBook((b) => ({ bids: stepSide(b.bids, "bid", tick, rnd), asks: stepSide(b.asks, "ask", tick, rnd) }))
+    }, FEED_MS)
+    return () => window.clearInterval(id)
+  }, [feed, live, tick])
+
+  const bidRows = useMemo(() => ladder(book.bids, "bid", step, tick).slice(0, rows), [book.bids, step, tick, rows])
+  const askRows = useMemo(() => ladder(book.asks, "ask", step, tick).slice(0, rows), [book.asks, step, tick, rows])
+
+  /* a row whose size changed on a feed tick flashes once; a new step is a change of view, not a tick */
+  const prev = useRef<{ step: number; sizes: Map<string, number> } | null>(null)
+  const [flashes, setFlashes] = useState<Record<string, number>>({})
+  useEffect(() => {
+    const sizes = new Map<string, number>()
+    for (const r of bidRows) sizes.set(`bid-${r.price}`, r.size)
+    for (const r of askRows) sizes.set(`ask-${r.price}`, r.size)
+    const before = prev.current
+    prev.current = { step, sizes }
+    if (!before || before.step !== step) return
+    const changed: string[] = []
+    sizes.forEach((s, k) => {
+      if (before.sizes.get(k) !== s) changed.push(k)
+    })
+    if (changed.length) setFlashes((f) => {
+      const next = { ...f }
+      for (const k of changed) next[k] = (next[k] ?? 0) + 1
+      return next
+    })
+  }, [bidRows, askRows, step])
 
   /* the touch is read from the ungrouped book, so a wide step never moves the mid */
-  const bestBid = bids.length ? Math.max(...bids.map((l) => l.price)) : 0
-  const bestAsk = asks.length ? Math.min(...asks.map((l) => l.price)) : 0
+  const bestBid = book.bids.length ? Math.max(...book.bids.map((l) => l.price)) : 0
+  const bestAsk = book.asks.length ? Math.min(...book.asks.map((l) => l.price)) : 0
   const mid = (bestBid + bestAsk) / 2
   const spread = bestAsk - bestBid
   const bps = mid > 0 ? (spread / mid) * 10000 : 0
@@ -162,9 +240,11 @@ export function OrderBook({
     const hue = side === "bid" ? GREEN : RED
     const lit = hot !== null && hot.side === side && i <= hot.i
     const dim = hot !== null && !lit
+    const k = `${side}-${r.price}`
+    const pulse = flashes[k]
     return (
       <button
-        key={`${side}-${r.price}`}
+        key={k}
         type="button"
         aria-label={`${side === "bid" ? "Bid" : "Ask"} ${num(r.price, priceDp)}, size ${num(r.size, sizeDp)}, ${num(r.total, sizeDp)} ${unit} resting up to it`}
         onPointerEnter={() => setHot({ side, i })}
@@ -183,8 +263,20 @@ export function OrderBook({
           }}
           initial={reduced ? false : { scaleX: 0 }}
           animate={{ scaleX: r.total / largest }}
-          transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: i * 0.012 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE }}
         />
+        {/* the flash: one wash in the side's hue each time this level's size changes */}
+        {pulse ? (
+          <motion.span
+            key={pulse}
+            aria-hidden
+            className="absolute inset-y-px inset-x-0 rounded-[2px]"
+            style={{ background: `color-mix(in srgb, ${hue} 22%, transparent)` }}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: EASE }}
+          />
+        ) : null}
         <span className="relative font-medium" style={{ color: ink(hue) }}>
           {num(r.price, priceDp)}
         </span>
@@ -194,48 +286,29 @@ export function OrderBook({
     )
   }
 
+  const stepLabels = groupings.map((g) => num(g, priceDp))
+
   return (
     <div
+      ref={ref}
+      {...bind}
       className={cn("w-[320px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}
       role="group"
-      aria-label={`${symbol} order book, mid ${num(mid, midDp)}, spread ${num(spread, priceDp)}`}
+      aria-label={`${symbol} order book, mid ${num(mid, midDp)}, spread ${num(spread, priceDp)}, bids ${bidShare.toFixed(1)}% of the size shown, asks ${(100 - bidShare).toFixed(1)}%`}
     >
       <div className="mb-2 flex items-center justify-between pl-2">
         <span className="text-[13px] font-medium text-foreground/90">{symbol}</span>
-        <div role="radiogroup" aria-label="Price step" className="flex items-center">
-          {groupings.map((g) => {
-            const on = g === step
-            return (
-              <button
-                key={g}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => setStep(g)}
-                className={cn(
-                  "relative h-7 rounded-full px-2.5 text-[11px] outline-none transition-colors duration-200",
-                  on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-                )}
-              >
-                {on &&
-                  (reduced ? (
-                    <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-                  ) : (
-                    <motion.span
-                      aria-hidden
-                      layoutId={`${uid}-step`}
-                      className="absolute inset-0 rounded-full bg-foreground/[0.08]"
-                      transition={{ duration: 0.25, ease: TAB_EASE }}
-                    />
-                  ))}
-                <span className="relative">{num(g, priceDp)}</span>
-              </button>
-            )
-          })}
-        </div>
+        <SegmentedControl
+          options={stepLabels}
+          value={num(step, priceDp)}
+          onChange={(v) => {
+            const g = groupings[stepLabels.indexOf(v)]
+            if (g !== undefined) setStep(g)
+          }}
+        />
       </div>
 
-      <div className="grid grid-cols-3 px-2 pb-1 text-[10px] text-foreground/45">
+      <div className="grid grid-cols-3 px-2 pb-1 text-[10.5px] text-foreground/45">
         <span>Price</span>
         <span className="text-right">Size</span>
         <span className="text-right">Total</span>
@@ -245,35 +318,51 @@ export function OrderBook({
         {/* asks: the deepest at the top, the best ask against the middle row */}
         <div className="flex flex-col-reverse">{askRows.map((r, i) => level(r, "ask", i))}</div>
 
-        <div role="status" className="flex items-baseline justify-between px-2 py-2">
-          <span className="text-[13px] font-semibold text-foreground/90">{num(mid, midDp)}</span>
-          <motion.span
-            key={hot ? `${hot.side}-${hot.i}` : "spread"}
-            className="text-[10.5px] text-foreground/45"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
+        <div role="status" className="flex items-baseline justify-between gap-3 px-2 py-2">
+          {/* the mid follows the feed in place */}
+          <span className="text-[15px] font-semibold text-foreground/90">{num(mid, midDp)}</span>
+          {/* the readout swaps only when what is pointed at changes; feed ticks change it in place */}
+          <LiveFigure
+            intent={hot ? `${hot.side}-${hot.i}` : balanceOn ? "balance" : null}
+            className="flex items-baseline gap-2 text-[10.5px] text-foreground/45"
           >
             {shown && hot ? (
               <>
                 <span className="font-medium text-foreground/90">
                   {num(shown.total, sizeDp)} {unit}
-                </span>{" "}
-                · {compact(shown.money)} {hot.side === "ask" ? "up" : "down"} to {num(shown.price, priceDp)}
+                </span>
+                <span>
+                  {compact(shown.money)} {hot.side === "ask" ? "up" : "down"} to {num(shown.price, priceDp)}
+                </span>
+              </>
+            ) : balanceOn ? (
+              <>
+                <span style={{ color: ink(GREEN) }}>Bids {bidShare.toFixed(1)}%</span>
+                <span style={{ color: ink(RED) }}>Asks {(100 - bidShare).toFixed(1)}%</span>
               </>
             ) : (
-              `Spread ${num(spread, priceDp)} · ${bps.toFixed(2)} bps`
+              <span>
+                Spread {num(spread, priceDp)}, {bps.toFixed(2)} bps
+              </span>
             )}
-          </motion.span>
+          </LiveFigure>
         </div>
 
         {/* bids: the best bid at the top, falling away below */}
         <div className="flex flex-col">{bidRows.map((r, i) => level(r, "bid", i))}</div>
       </div>
 
-      <div className="mt-3 px-2">
-        {/* the balance: both sides span the rule and a clip cuts each to its share, so the split
-            moves without animating a width */}
+      {/* the balance: both sides span the rule and a clip cuts each to its share, so the split
+          moves without animating a width. Pointing at it reads the split in the middle row. */}
+      <div
+        tabIndex={0}
+        aria-label={`Bids ${bidShare.toFixed(1)}%, ${num(bidTotal, sizeDp)} ${unit}; asks ${(100 - bidShare).toFixed(1)}%, ${num(askTotal, sizeDp)} ${unit}`}
+        onPointerEnter={() => setBalanceOn(true)}
+        onPointerLeave={() => setBalanceOn(false)}
+        onFocus={() => setBalanceOn(true)}
+        onBlur={() => setBalanceOn(false)}
+        className="mt-1 rounded-full px-2 py-2.5 outline-none focus-visible:bg-foreground/[0.04]"
+      >
         <div aria-hidden className="relative h-[3px]">
           <span
             className="absolute inset-0 rounded-full transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
@@ -283,14 +372,6 @@ export function OrderBook({
             className="absolute inset-0 rounded-full transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             style={{ background: `color-mix(in srgb, ${RED} 70%, transparent)`, clipPath: `inset(0 0 0 calc(${bidShare.toFixed(2)}% + 2px) round 999px)` }}
           />
-        </div>
-        <div className="mt-1.5 flex justify-between text-[10px] text-foreground/45">
-          <span>
-            Bids {bidShare.toFixed(1)}% · {num(bidTotal, sizeDp)}
-          </span>
-          <span>
-            {num(askTotal, sizeDp)} · Asks {(100 - bidShare).toFixed(1)}%
-          </span>
         </div>
       </div>
     </div>

@@ -1,27 +1,39 @@
 "use client"
 
-import { useId, useMemo, useRef, useState } from "react"
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
 
-/* Assets Balance Card, rebuilt through the ssych-component skill (2026-09-29).
-   What changed against the version before it (in git history), and why:
-   · no card: the 26px corner, the embossed outline, the wash and the drop shadow are gone,
-     the balance and its line sit on the page
-   · no glow: the bloom behind the line, the line's own drop shadow and the dot's halo are gone
-   · the label is sentence case at full letter fit (it was capitals, letter-spaced)
-   · pointing at the line puts that moment's value and its time where the balance is, as
-     plain text; the floating chip with its border and shadow is gone
-   · the line is 1.8px, the crosshair is one 1px rule the height of the plot
-   · the change is written with a true minus sign, the amount too
-   · the digits still roll in once, in 0.4s (it was 0.9s)
-   · the chart names itself to a screen reader
-   Props are the same. `className="border-0"` no longer does anything: there is no outline.
-   Motion (2026-10-01): nothing runs until the block first comes into view. Then the line and
-   its fill are wiped in from the left by one clip, 850ms, while the balance digits roll in
-   (the odometer was already here, 400ms, 35ms apart). A new `series` of the same length
-   morphs the line and the fill point for point in 380ms. Reduced motion draws it all at once. */
+/* Assets Balance Card, the compact member of the Balance family (with Total Balance).
+   2026-10-02 audit: redesigned. It was a 34px odometer figure, a drag handle that pulled
+   the chart taller (and flipped the layout past 132px), 72px of dead padding on top and a
+   scrub value made up from the line's pixel height; too complicated for what it says, and
+   unlike its family sibling. Now, at Total Balance's 460px:
+   · the three tier header (spec 14.1): the label at /45 with the period at /90 on the
+     right, the balance at 26px with its cents at /35, then the signed move and its percent
+     in the hue. The figure is there at once; nothing rolls in
+   · a low 64px sparkline to the right of the figure (under it when the block is narrow),
+     with a dashed baseline at the open, the line in the hue of the move
+   · the pointed moment reads in the shared ChartCard (time, balance, change from the open),
+     never in place of the balance. Arrow keys walk the line when it has focus, Escape
+     lets go
+   · no odometer, no drag handle, no mask fade, no dead padding
+   · the line carries real dollar values, so every figure in the card is derivable. A new
+     `values` prop takes them directly; the old 0..1 `series` still works and is mapped
+     onto dollars with the formula below
+   Every old prop is kept. `period` now sits on the label row, and the change's sign still
+   follows `up`.
+   Formulas:
+   · change = |changeAbs| signed by `up`; open = balance − change
+   · from `series` s (0..1, n points, t = i ÷ (n − 1)): value_i = open + change × t + amp ×
+     (s_i − s_0 − (s_last − s_0) × t), amp = 1.5 × |change|; it opens at the open and closes
+     on the balance exactly
+   · pointed change = value − open; percent = that ÷ open × 100
+   Motion: the line and its fill wipe in from the left once the block is in view (850ms); a
+   new series of the same length morphs point for point (380ms). Reduced motion draws it
+   all at once. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -57,52 +69,11 @@ const DEFAULT_SERIES = (() => {
   })
 })()
 
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
-/** series value 0..1 → y in the chart's 0..100 viewBox */
-const seriesY = (v: number) => 6 + (1 - clamp01(v)) * 88
-
-/** below this width the balance stacks above the chart, which becomes a full-width band */
-const STACK_AT = 430
-/** the same flip on the other axis: pulled this far, the chart wants the full width */
-const STACK_PULL_AT = 132
-/** chart band height in the stacked arrangement */
-const BAND_H = 132
-
-/** resting height, and how far the bottom handle can pull it down */
-const MIN_H = 196
-const MAX_PULL = 320
-/** one keyboard step on the handle */
-const PULL_STEP = 24
-
-/** digit cell height in em, shared by the rolling stack and the still glyphs */
-const DIGIT_EM = 1.2
-const cell = { display: "block", height: `${DIGIT_EM}em`, lineHeight: `${DIGIT_EM}em` } as const
-
-/** the stacked layout, written once and used twice: by the container query, and by the
- *  .abr-stacked class when the drag has made the block tall enough to want it */
-const stackedRules = (p: string) => `
-${p}.abr-chart{top:auto;bottom:24px;height:var(--abr-band);width:100%;-webkit-mask-image:none;mask-image:none}
-${p}.abr-block{padding-top:4px;padding-bottom:calc(var(--abr-band) + 38px)}`
-
-/** one rolling digit column: a 0 to 9 stack sliding into place once `go` turns on */
-function OdometerDigit({ ch, order, animate, go }: { ch: string; order: number; animate: boolean; go: boolean }) {
-  const d = ch.charCodeAt(0) - 48
-  if (!animate) return <span style={cell}>{ch}</span>
-  return (
-    <span style={{ ...cell, overflow: "hidden" }}>
-      <motion.span
-        style={{ display: "block" }}
-        initial={{ y: "0em" }}
-        animate={{ y: go ? `${(-d * DIGIT_EM).toFixed(2)}em` : "0em" }}
-        transition={{ duration: 0.4, ease: EASE, delay: order * 0.035 }}
-      >
-        {Array.from({ length: 10 }, (_, n) => (
-          <span key={n} style={cell}>{n}</span>
-        ))}
-      </motion.span>
-    </span>
-  )
-}
+/** the plot is drawn in a 100 × 40 box stretched to the band; the stroke keeps its width */
+const VB_W = 100
+const VB_H = 40
+/** the band's height in layout pixels */
+const BAND = 64
 
 /** x position 0..1 → intraday clock label (09:30 to 16:00) */
 const intradayLabel = (t: number) => {
@@ -110,29 +81,28 @@ const intradayLabel = (t: number) => {
   return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`
 }
 
-/** a leading hyphen becomes the true minus sign */
-const trueMinus = (s: string) => s.replace(/^-/, "−")
+const usd = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const num = (s: string) => Number(s.replace(/[^0-9.]/g, "")) || 0
 
 export type AssetsBalanceCardProps = {
   label?: string
   balance?: string
   changePct?: string
   changeAbs?: string
+  /** the window the change covers, on the label row's right */
   period?: string
-  /** flips the whole signal (line and change) from red to green */
+  /** the change's sign, and with it the hue: green when up, red when down */
   up?: boolean
-  /** ambient line values, 0..1 (0 = bottom of the band) */
+  /** ambient line values, 0..1 (0 = bottom of the band); mapped onto dollars between the open and the balance */
   series?: number[]
+  /** the balance through the period in dollars, oldest first; wins over `series` */
+  values?: number[]
   className?: string
 }
 
-type Scrub = { t: number; v: number }
-
 /**
- * A balance and the day that made it: one large figure, its signed change, and the line
- * running out to the right. Pointing at the line reads that moment in place of the balance,
- * with its time. The handle under it pulls the chart taller, and past a point the chart
- * takes the full width under the figure.
+ * A balance and the day that made it: one large figure with its signed move, and a low
+ * line beside it. Pointing at the line reads that moment in a card beside the cursor.
  */
 export function AssetsBalanceCard({
   label = "Assets",
@@ -142,262 +112,180 @@ export function AssetsBalanceCard({
   period = "Today",
   up = false,
   series = DEFAULT_SERIES,
+  values,
   className = "",
 }: AssetsBalanceCardProps) {
   const reduced = useReducedMotion()
-  const frozen = !!reduced
-  const gradientId = useId().replace(/:/g, "")
+  const uid = useId().replace(/:/g, "")
   const signal = up ? GREEN : RED
-  const rootRef = useRef<HTMLDivElement>(null)
-  /* the wipe and the roll wait until the block is on screen */
-  const seen = useInView(rootRef, { once: true, amount: 0.3 })
-  const shown = seen || frozen
+  const plotRef = useRef<HTMLDivElement>(null)
+  const seen = useInView(plotRef, { once: true, amount: 0.3 })
+  const shown = seen || !!reduced
+  const [hi, setHi] = useState<number | null>(null)
 
-  const [scrub, setScrub] = useState<Scrub | null>(null)
-  /** set on the first scrub, so the odometer rolls on mount only */
-  const [scrubbed, setScrubbed] = useState(false)
+  const close = num(balance)
+  const change = num(changeAbs) * (up ? 1 : -1)
+  const open = close - change
 
-  // bottom handle drag: pulls the whole block (and with it the chart) taller
-  const [pull, setPull] = useState(0)
-  const [pulling, setPulling] = useState(false)
-  const drag = useRef<{ y: number; from: number } | null>(null)
-
-  /** numeric base for the scrub readout, derived from the displayed balance */
-  const baseValue = useMemo(() => Number(balance.replace(/[^0-9.]/g, "")) || 0, [balance])
-
-  // ambient line geometry: a 100x100 box stretched to fit, the stroke stays crisp
-  const { linePath, areaPath } = useMemo(() => {
-    const pts = series.map((v, i) => {
-      const px = (i / (series.length - 1 || 1)) * 100
-      return `${px.toFixed(2)} ${seriesY(v).toFixed(2)}`
+  /* real dollar values: given, or mapped from the 0..1 shape (formulas above) */
+  const dollars = useMemo(() => {
+    if (values && values.length > 1) return values
+    const s = series.length > 1 ? series : [0, 0]
+    const n = s.length
+    const amp = 1.5 * Math.abs(change || close * 0.01)
+    return s.map((v, i) => {
+      const t = i / (n - 1)
+      return open + change * t + amp * (v - s[0] - (s[n - 1] - s[0]) * t)
     })
-    const line = pts.map((p, i) => `${i ? "L" : "M"}${p}`).join(" ")
-    return { linePath: line, areaPath: `${line} L100 100 L0 100 Z` }
-  }, [series])
+  }, [values, series, open, change, close])
 
-  const onScrubMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    if (!rect.width || !rect.height) return
-    const t = clamp01((e.clientX - rect.left) / rect.width)
-    const f = t * (series.length - 1)
-    const i0 = Math.floor(f)
-    const i1 = Math.min(series.length - 1, i0 + 1)
-    const v = series[i0] + (series[i1] - series[i0]) * (f - i0)
-    setScrub({ t, v })
-    if (!scrubbed) setScrubbed(true)
+  const n = dollars.length
+  const geo = useMemo(() => {
+    const lo = Math.min(...dollars, open)
+    const top = Math.max(...dollars, open)
+    const y = (v: number) => 4 + (1 - (v - lo) / (top - lo || 1)) * (VB_H - 8)
+    const pts = dollars.map((v, i) => ({ x: (i / (n - 1)) * VB_W, y: y(v) }))
+    const d = pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ")
+    return { pts, d, area: `${d} L${VB_W} ${VB_H} L0 ${VB_H} Z`, openY: y(open) }
+  }, [dollars, n, open])
+
+  const scrubTo = (clientX: number) => {
+    const r = plotRef.current?.getBoundingClientRect()
+    if (!r || !r.width) return
+    setHi(Math.max(0, Math.min(n - 1, Math.round(((clientX - r.left) / r.width) * (n - 1)))))
+  }
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault()
+      const step = e.shiftKey ? 6 : 1
+      setHi((h) => Math.max(0, Math.min(n - 1, (h ?? n - 1) + (e.key === "ArrowLeft" ? -step : step))))
+    } else if (e.key === "Escape") setHi(null)
   }
 
-  const clampPull = (v: number) => Math.min(MAX_PULL, Math.max(0, v))
-
-  const onHandleDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    drag.current = { y: e.clientY, from: pull }
-    setPulling(true)
-    // capture keeps the pull alive once the pointer leaves the grip; a browser that
-    // refuses it still drags inside the grip
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* no capture, still draggable */ }
-  }
-  const onHandleMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!drag.current) return
-    setPull(clampPull(drag.current.from + (e.clientY - drag.current.y)))
-  }
-  const onHandleUp = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    drag.current = null
-    setPulling(false)
-  }
-  const onHandleKey = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === "ArrowDown") setPull((p) => clampPull(p + PULL_STEP))
-    else if (e.key === "ArrowUp") setPull((p) => clampPull(p - PULL_STEP))
-    else if (e.key === "Home") setPull(0)
-    else if (e.key === "End") setPull(MAX_PULL)
-    else return
-    e.preventDefault()
-  }
-
-  /** the value under the pointer: the balance scaled by the line, 0.96 at the floor of
-   *  the band to 1.04 at its top */
-  const scrubValue = scrub ? baseValue * (0.96 + clamp01(scrub.v) * 0.08) : 0
-  // percentage positions, so any scaling of the stage leaves them right
-  const scrubX = scrub ? `${(scrub.t * 100).toFixed(2)}%` : "0%"
-  const scrubY = scrub ? `${seriesY(scrub.v).toFixed(2)}%` : "0%"
-  const stacked = pull >= STACK_PULL_AT
-
-  const pct = `${up ? "+" : "−"}${changePct.replace(/^[+−-]/, "")}`
-  const balanceChars = balance.split("")
-  let digitOrder = -1
+  const [whole, cents] = balance.split(".")
+  const sign = up ? "+" : "−"
+  const pct = `${sign}${changePct.replace(/^[+−-]/, "")}`
+  const abs = `${sign}${changeAbs.replace(/^[+−-]/, "")}`
+  const point = hi === null ? null : geo.pts[hi]
+  const pointedChange = hi === null ? 0 : dollars[hi] - open
+  const t = hi === null ? 1 : hi / (n - 1)
 
   return (
-    <div
-      ref={rootRef}
-      className={cn("abr-root relative tabular-nums", stacked && "abr-stacked", className)}
-      style={{ minHeight: MIN_H + pull, ["--abr-band" as string]: `${BAND_H + pull}px` }}
-      role="group"
-      aria-label={`${label} ${balance}`}
-    >
-      {/* two ways into the stacked arrangement, and either one is enough: the block is
-          narrower than 430px, or it has been pulled taller than its rest height + 132 */}
-      <style>{`
-.abr-root{container-type:inline-size}
-${stackedRules(".abr-root.abr-stacked ")}
-@container (max-width: ${STACK_AT}px){${stackedRules("")}
-}
-      `}</style>
-
-      {/* the day's line, running out to the right of the figure */}
-      {/* the line draws in left to right through a clip on the whole plot: a dash draw
-          breaks on a stretched box with a non-scaling stroke, a clip does not */}
-      <motion.svg
-        className="abr-chart pointer-events-none absolute right-0 top-[8%] h-[74%] w-[58%] overflow-visible"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`${label} over ${period.toLowerCase()}: ${balance}, ${pct}`}
-        style={{
-          maskImage: "linear-gradient(90deg, transparent 0%, black 26%)",
-          WebkitMaskImage: "linear-gradient(90deg, transparent 0%, black 26%)",
-        }}
-        initial={reduced ? false : { clipPath: "inset(-10% 100% -10% 0%)" }}
-        animate={{ clipPath: shown ? "inset(-10% 0% -10% 0%)" : "inset(-10% 100% -10% 0%)" }}
-        transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }}
-      >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={signal} stopOpacity="0.16" />
-            <stop offset="100%" stopColor={signal} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* keyed by length: a same-length series morphs point for point, another length is drawn at once */}
-        <motion.path
-          key={`a${series.length}`}
-          initial={false}
-          animate={{ d: areaPath }}
-          transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
-          fill={`url(#${gradientId})`}
-        />
-        <motion.path
-          key={`l${series.length}`}
-          initial={false}
-          animate={{ d: linePath }}
-          transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
-          fill="none"
-          stroke={signal}
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-          style={{ transition: "stroke 200ms ease-out" }}
-        />
-      </motion.svg>
-
-      {/* the figure; while the line is being pointed at it reads that moment instead */}
-      <div className="abr-block relative pb-10 pt-[72px]">
-        <p className="text-[11px] font-medium text-foreground/45">{label}</p>
-        <div role="status">
-          <p
-            className="mt-1.5 text-[34px] font-semibold tracking-[-0.03em] text-foreground/90"
-            style={{ lineHeight: DIGIT_EM }}
-          >
-            {scrub ? (
-              // the swap from the balance to the pointed moment crosses over (4px, 2px blur,
-              // 150ms); the figure then follows the pointer in place
-              <motion.span
-                key="scrub"
-                style={cell}
-                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.15, ease: EASE }}
-              >
-                {scrubValue.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-              </motion.span>
-            ) : (
-              <>
-                <span className="sr-only">{balance}</span>
-                {/* the digits roll in once, on mount; coming back from a scrub the balance
-                    crosses over like the scrub value did instead of rolling again */}
-                <motion.span
-                  key="balance"
-                  aria-hidden
-                  className="flex"
-                  initial={scrubbed ? (reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }) : false}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ duration: 0.15, ease: EASE }}
-                >
-                  {balanceChars.map((ch, i) =>
-                    /\d/.test(ch) ? (
-                      <OdometerDigit key={i} ch={ch} order={++digitOrder} animate={!frozen && !scrubbed} go={shown} />
-                    ) : (
-                      <span key={i} style={cell}>{ch}</span>
-                    ),
-                  )}
-                </motion.span>
-              </>
-            )}
+    <div className={cn("w-[460px] max-w-full tabular-nums", className)} role="group" aria-label={`${label} ${balance}, ${abs} (${pct}) ${period.toLowerCase()}`}>
+      {/* the header, three tiers (spec 14.1) */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{label}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">{period}</span>
+      </div>
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+        <div className="shrink-0">
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {whole}
+            {cents !== undefined && <span className="text-foreground/35">.{cents}</span>}
           </p>
-          <div className="mt-2 flex items-center gap-2 text-[13px] font-medium">
-            {scrub ? (
-              <motion.span
-                key="scrub-time"
-                className="text-foreground/45"
-                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.15, ease: EASE }}
-              >
-                {intradayLabel(scrub.t)}
-              </motion.span>
-            ) : (
-              <>
-                <span style={{ color: signal }}>{pct}</span>
-                <span className="text-foreground/45">{trueMinus(changeAbs)}</span>
-                <span className="text-foreground/35">{period}</span>
-              </>
+          <p className="mb-0 mt-2 text-[12px] font-medium" style={{ color: signal }}>
+            {abs} ({pct})
+          </p>
+        </div>
+
+        {/* the period's line; under the figure when the block is too narrow for both */}
+        <div className="relative min-w-[200px] flex-1 basis-[200px]">
+          <div
+            ref={plotRef}
+            tabIndex={0}
+            role="slider"
+            aria-label={`${label} through the period`}
+            aria-valuemin={0}
+            aria-valuemax={n - 1}
+            aria-valuenow={hi ?? n - 1}
+            aria-valuetext={`${usd(dollars[hi ?? n - 1])} at ${intradayLabel(t)}`}
+            onKeyDown={onKey}
+            onBlur={() => setHi(null)}
+            onPointerMove={(e) => scrubTo(e.clientX)}
+            onPointerDown={(e) => scrubTo(e.clientX)}
+            onPointerLeave={() => setHi(null)}
+            onPointerCancel={() => setHi(null)}
+            className="relative cursor-crosshair touch-pan-y rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+            style={{ height: BAND, color: signal }}
+          >
+            <motion.div
+              className="h-full"
+              initial={reduced ? false : { clipPath: "inset(-10% 100% -10% -2%)" }}
+              animate={{ clipPath: shown ? "inset(-10% -2% -10% -2%)" : "inset(-10% 100% -10% -2%)" }}
+              transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }}
+            >
+              <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" className="block h-full w-full overflow-visible" aria-hidden>
+                <defs>
+                  <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="currentColor" stopOpacity={0.16} />
+                    <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                {/* the open, a dashed baseline the move is measured from */}
+                <line
+                  x1={0}
+                  x2={VB_W}
+                  y1={geo.openY}
+                  y2={geo.openY}
+                  stroke="var(--foreground)"
+                  strokeOpacity={0.3}
+                  strokeDasharray="2 4"
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                />
+                {/* keyed by length: a same-length series morphs point for point, another length is drawn at once */}
+                <motion.path
+                  key={`a${n}`}
+                  initial={false}
+                  animate={{ d: geo.area }}
+                  transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
+                  fill={`url(#${uid}-fill)`}
+                />
+                <motion.path
+                  key={`l${n}`}
+                  initial={false}
+                  animate={{ d: geo.d }}
+                  transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                  style={{ opacity: hi === null ? 1 : 0.45, transition: reduced ? "none" : "opacity 160ms" }}
+                />
+              </svg>
+            </motion.div>
+            {/* the crosshair: a rule and a dot on the pointed moment, HTML so they keep their shape */}
+            {point && (
+              <div aria-hidden className="pointer-events-none absolute inset-0">
+                <div className="absolute inset-y-0 w-px bg-foreground/[0.18]" style={{ left: `${point.x}%` }} />
+                <div
+                  className="absolute size-[7px] rounded-full bg-current"
+                  style={{ left: `${point.x}%`, top: `${(point.y / VB_H) * 100}%`, transform: "translate(-50%, -50%)", boxShadow: "0 0 0 1.5px var(--background)" }}
+                />
+              </div>
             )}
           </div>
+          {/* the pointed moment, read beside the cursor (chart-overlay.tsx); it flips left past 60% */}
+          <ChartCard
+            open={hi !== null}
+            x={point ? `${point.x}%` : 0}
+            y={-8}
+            flip={t > 0.6}
+            heading={intradayLabel(t)}
+            rows={[
+              { label: "Balance", value: usd(dollars[hi ?? n - 1]) },
+              {
+                label: "Change",
+                value: `${pointedChange < 0 ? "−" : "+"}${usd(Math.abs(pointedChange))} (${pointedChange < 0 ? "−" : "+"}${Math.abs(open ? (pointedChange / open) * 100 : 0).toFixed(2)}%)`,
+                color: pointedChange >= 0 ? GREEN : RED,
+              },
+            ]}
+            width={196}
+          />
         </div>
       </div>
-
-      {/* scrub layer: one rule and a dot riding the line */}
-      <div
-        className="abr-chart absolute right-0 top-[8%] h-[74%] w-[58%] cursor-crosshair touch-none"
-        onPointerMove={onScrubMove}
-        onPointerLeave={() => setScrub(null)}
-        onPointerCancel={() => setScrub(null)}
-      >
-        {scrub && (
-          <div aria-hidden className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-y-0 w-px bg-foreground/[0.22]" style={{ left: scrubX }} />
-            <div
-              className="absolute size-[7px] rounded-full"
-              style={{ left: scrubX, top: scrubY, transform: "translate(-50%, -50%)", background: signal }}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* the handle: pull it down and the chart grows with the block */}
-      <button
-        type="button"
-        role="slider"
-        aria-label="Pull down to make the chart taller"
-        aria-valuemin={0}
-        aria-valuemax={MAX_PULL}
-        aria-valuenow={pull}
-        className="group absolute bottom-0 left-1/2 flex h-6 w-20 -translate-x-1/2 cursor-ns-resize touch-none items-center justify-center outline-none"
-        onPointerDown={onHandleDown}
-        onPointerMove={onHandleMove}
-        onPointerUp={onHandleUp}
-        onPointerCancel={onHandleUp}
-        onKeyDown={onHandleKey}
-        onDoubleClick={() => setPull(0)}
-      >
-        <span
-          className={cn(
-            // the grip widens by scale, not by width: transform stays off layout
-            "h-1 w-14 rounded-full transition-[transform,background-color] duration-200",
-            pulling ? "scale-x-100 bg-foreground/[0.35]" : "scale-x-[0.714] bg-foreground/[0.14] group-hover:bg-foreground/[0.35] group-focus-visible:bg-foreground/[0.35]",
-            reduced && "transition-none",
-          )}
-        />
-      </button>
     </div>
   )
 }

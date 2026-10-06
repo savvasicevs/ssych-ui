@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
 
 /* Tool Call Card, new through ssych-component (2026-09-29).
    What it is for: one call an agent made to a tool, with what went in and what came back.
@@ -22,12 +23,21 @@ import { cn } from "@/lib/utils"
      plain ASCII, one byte per character)
    · the duration is call.durationMs as given, in ms under one second and in s above
    Colour pass (2026-09-30): the state is a pass, a fail or pending, so the mark carries it:
-   green and its word for done, red for failed, amber while it runs. */
+   green and its word for done, red for failed, amber while it runs.
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit: he asked what the green dot by get_quote meant; it only repeated the
+   green Done beside it, so at rest there is no dot and the word carries the state in its
+   hue (Done green, Failed red). While the call runs an ink dot beats beside the word
+   Running, so the one dot always has its label. The padding nests now: the card is 24px
+   with a 6px inset, the head's hover fill is a 36px pill at 18px (24 = 18 + 6) and no longer
+   glues to the card's top, the code blocks sit 12px in at 12px corners (24 = 12 + 12), and
+   Run again is the library's 28px secondary button whose right edge lines up with the code
+   blocks. The footer keeps the call id alone; the returned size moved into the Result
+   label's tooltip (returned = the formula above). */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const RED = "var(--chart-down)"
 const GREEN = "var(--chart-up)"
-const AMBER = "var(--chart-amber)"
 /** the fold and its chevron share one curve and one length, the same both ways */
 const FOLD = "250ms cubic-bezier(0.22, 1, 0.36, 1)"
 
@@ -68,12 +78,13 @@ const pretty = (v: unknown) => JSON.stringify(v, null, 2) ?? ""
 const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
 
 const WORD: Record<ToolCallState, string> = { running: "Running", done: "Done", failed: "Failed" }
-const MARK: Record<ToolCallState, string> = { running: AMBER, done: GREEN, failed: RED }
-const WORD_INK: Record<ToolCallState, string> = { running: ink(45), done: GREEN, failed: RED }
+/** the word carries the state in its hue; running stays in ink beside its beating dot */
+const WORD_INK: Record<ToolCallState, string> = { running: ink(60), done: GREEN, failed: RED }
 /** a text swap: 4px out of a 2px blur over 150ms */
 const SWAP = { initial: { opacity: 0, y: 4, filter: "blur(2px)" }, animate: { opacity: 1, y: 0, filter: "blur(0px)" } } as const
 
-const CODE = "mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[4px] bg-foreground/[0.04] px-2.5 py-2 font-mono text-[11px] leading-[1.5]"
+/* raised on the card; 12 here + the 12px inset (6 card + 6 body) = the card's 24 */
+const CODE = cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[12px] px-3 py-2.5 font-mono text-[11px] leading-[1.5]", RAISED)
 
 /**
  * One tool call as a record: tool, state and time on the head line, the literal arguments
@@ -99,7 +110,8 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
 
   return (
     <div
-      className={cn("w-full max-w-[440px] rounded-lg bg-foreground/[0.03] tabular-nums", className)}
+      /* the library card corner: 24 = 18 (the head pill) + 6 (the p-1.5 inset) = 12 (the code blocks) + 12 */
+      className={cn("w-[440px] max-w-full rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
       role="group"
       aria-label={`Tool call ${call.tool}, ${WORD[state].toLowerCase()}${live ? "" : `, ${took(call.durationMs)}`}`}
     >
@@ -107,17 +119,19 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06]"
+        className="flex h-9 w-full items-center gap-2.5 rounded-[18px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
       >
-        <motion.span
-          aria-hidden
-          className="block h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ background: MARK[state], transition: "background-color 160ms" }}
-          animate={live && !reduced ? { opacity: [1, 0.25, 1] } : { opacity: 1 }}
-          transition={live && !reduced ? { duration: 1, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
-        />
-        <span className="truncate text-[12.5px] font-medium text-foreground/90">{call.tool}</span>
-        <span role="status" className="text-[11px]" style={{ color: WORD_INK[state] }}>
+        <span className="truncate text-[12px] font-medium text-foreground/90">{call.tool}</span>
+        <span role="status" className="flex items-center gap-1.5 text-[11px]" style={{ color: WORD_INK[state] }}>
+          {/* the only dot: an ink beat while the call runs, always beside its word */}
+          {live && (
+            <motion.span
+              aria-hidden
+              className="block h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/90"
+              animate={reduced ? { opacity: 1 } : { opacity: [1, 0.25, 1] }}
+              transition={reduced ? { duration: 0 } : { duration: 1, repeat: Infinity, ease: "easeInOut" }}
+            />
+          )}
           <motion.span
             key={state}
             className="inline-block"
@@ -153,14 +167,24 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
         }}
       >
         <div className="min-h-0 overflow-hidden">
-            <div className="flex flex-col gap-2.5 px-3 pb-3">
+            <div className="flex flex-col gap-2.5 px-1.5 pb-1.5 pt-1">
               <div>
                 <div className="text-[10.5px] text-foreground/45">Arguments</div>
                 <pre className={cn(CODE, "text-foreground/80")}>{pretty(call.args)}</pre>
               </div>
 
               <div>
-                <div className="text-[10.5px] text-foreground/45">{state === "failed" ? "Error" : "Result"}</div>
+                <div className="text-[10.5px] text-foreground/45">
+                  {state === "done" ? (
+                    <span title={`${size(bytes)} returned`} aria-label={`Result, ${size(bytes)} returned`}>
+                      Result
+                    </span>
+                  ) : state === "failed" ? (
+                    "Error"
+                  ) : (
+                    "Result"
+                  )}
+                </div>
                 {/* waiting shimmers; what comes back is revealed out of a 2px blur over 300ms */}
                 <motion.div
                   key={state}
@@ -196,11 +220,8 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
                 </motion.div>
               </div>
 
-              <div className="flex items-baseline justify-between">
-                <span className="text-[10.5px] text-foreground/45">
-                  {call.id}
-                  {state === "done" && ` · ${size(bytes)} returned`}
-                </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] text-foreground/45">{call.id}</span>
                 <button
                   type="button"
                   disabled={live}
@@ -208,7 +229,7 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
                     onRetry?.(call.id)
                     setState("running")
                   }}
-                  className="-mr-2 rounded-full px-2 py-0.5 text-[10.5px] font-medium text-foreground/45 outline-none transition-[color,background-color,scale] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:text-foreground/90 focus-visible:bg-foreground/[0.06] disabled:pointer-events-none disabled:opacity-35"
+                  className={cn(BUTTON, "h-7 px-3 text-[11.5px]")}
                 >
                   Run again
                 </button>

@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag } from "@/components/ui/chart-overlay"
 
 /* Range Navigator, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -20,12 +21,39 @@ import { cn } from "@/lib/utils"
      keyboard: arrows pan, shift + arrows pan by ten, + and − zoom
    Motion (2026-10-01): once the chart is in view the detail line and its fill sweep in left
    to right through one clip (0.9s); a new series glides both lines into place; panning and
-   zooming the window stay 1:1 with the pointer, a tween there would trail the grip */
+   zooming the window stay 1:1 with the pointer, a tween there would trail the grip
+   2026-10-02 audit: the title was an instruction ("drag to navigate") and the one figure
+   was 11px. The header is now the library's three tiers: the name at /45 with the symbol
+   (a new `symbol` prop) at /90, the window's close as the 26px headline, and under it the
+   window's change in its hue then the window's dates at /45. Pointing the detail chart
+   puts a dot in the line's own ink and an outlined tag on the price axis, and the header
+   reads that day: its price, the change from the window's first day to it, and its date.
+   The two end dates under the map went, since the header says them once. The window on the
+   map is the control thumb's fill and its grips are the slider handle, a 2 by 10 bar in
+   ink that no longer turns the accent while held. Axis figures are 9px at /45.
+   Formulas:
+   · window change  = (close of the window's last day − close of its first day) ÷ first × 100
+   · pointed change = (pointed close − close of the window's first day) ÷ first × 100
+   · price ticks    = the window's min and max padded by a tenth of their range, cut in four
+   2026-10-02 round 2: his notes, more roundness and a window that clearly reads as a
+   container you can grab. The map now lies in its own lane, the surface step (7%) with a
+   14px corner; the window is a raised block on it (white in light, 12% in dark) with a 1px
+   ink edge at 14% (28% under the pointer or held), a 12px corner (14 = 12 + the 2px gap)
+   so it stands off the lane. Its grips sit inside it, 6px in from each
+   edge, as 2 by 12 bars, and the cursor turns to a closed hand while it is held. The lines
+   have round caps. Focus on the map is an inset 1px ink ring on the lane's own edge. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
-const ACCENT = "var(--chart-1)"
+/** the map's lane: the surface step (spec 14.8) */
+const LANE_FILL = "color-mix(in srgb, var(--foreground) 7%, var(--background))"
+/** the window: the raised step on the lane, white in light, 12% in dark (spec 14.8) */
+const RAISED_FILL = "fill-background dark:fill-[color-mix(in_srgb,var(--foreground)_12%,var(--background))]"
+/** the lane's corner, and the window's: 14 = 12 + the 2px gap between them */
+const LANE_R = 14
+const WIN_R = 12
+const WIN_GAP = 2
 const INK = "color-mix(in srgb, var(--foreground) 90%, transparent)"
 
 const W = 560 // component width: both charts share one coordinate space
@@ -60,8 +88,10 @@ const DEFAULT_VALUES = walk(240)
 const DEFAULT_END_DATE = new Date(Date.UTC(2026, 6, 30))
 
 export interface RangeNavigatorProps {
-  /** Quiet caption above the detail chart. */
+  /** The name in the header's label row. */
   title?: string
+  /** The symbol on the right of the label row. */
+  symbol?: string
   /** The series, oldest → newest. Defaults to a deterministic sample walk. */
   values?: number[]
   /** Date of the last sample; every earlier point steps back one day. */
@@ -83,11 +113,12 @@ export interface RangeNavigatorProps {
 /**
  * Focus and context: a detail chart over a compressed map of the whole history. Drag the
  * window to pan, pull a grip to zoom, and the detail chart re-windows as you go. Pointing
- * at the detail chart drops a rule on the nearest real point and reads its price and date
- * beside the title. The price ticks and the two end dates come from the current window.
+ * at the detail chart drops a rule on the nearest real point, tags its price on the axis
+ * and reads it in the header. The price ticks and the two end dates come from the current window.
  */
 export function RangeNavigator({
-  title = "Price history · drag to navigate",
+  title = "Price history",
+  symbol = "NVDA",
   values,
   endDate = DEFAULT_END_DATE,
   initialWindow = 72,
@@ -111,6 +142,10 @@ export function RangeNavigator({
   const [hover, setHover] = useState<number | null>(null)
   /** which part of the mini-map is under the pointer or held */
   const [grip, setGrip] = useState<"move" | "left" | "right" | null>(null)
+  /** the window is held (the cursor closes) */
+  const [held, setHeld] = useState(false)
+  /** the map has keyboard focus: its lane's edge brightens */
+  const [focusRing, setFocusRing] = useState(false)
   const navRef = useRef<SVGSVGElement>(null)
   const mainRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ mode: "move" | "left" | "right"; startIdx: number; s: number; e: number } | null>(null)
@@ -178,6 +213,7 @@ export function RangeNavigator({
   const endDrag = (e: React.PointerEvent) => {
     drag.current = null
     setGrip(null)
+    setHeld(false)
     if (navRef.current?.hasPointerCapture(e.pointerId)) navRef.current.releasePointerCapture(e.pointerId)
   }
 
@@ -192,6 +228,7 @@ export function RangeNavigator({
     navRef.current?.setPointerCapture(e.pointerId)
     drag.current = { mode, startIdx: pxToIdx(e.clientX), s: win.start, e: win.end }
     setGrip(mode)
+    setHeld(true)
   }
   const point = (mode: "move" | "left" | "right" | null) => () => {
     if (!drag.current) setGrip(mode)
@@ -265,32 +302,43 @@ export function RangeNavigator({
   const first = series[win.start]
   const close = series[win.end]
   const change = first ? ((close - first) / Math.abs(first)) * 100 : 0
-  const changeText = `${change >= 0 ? "+" : "−"}${Math.abs(change).toFixed(1)}%`
+  const signed = (pct: number) => `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%`
+  const changeText = signed(change)
+  /* the header reads the pointed day while scrubbing, the window's close at rest */
+  const shownPrice = hv ? hv.v : close
+  const shownChange = hv && first ? ((hv.v - first) / Math.abs(first)) * 100 : change
+  const [headWhole, headDecimals] = (() => {
+    const t = money(shownPrice)
+    const at = t.lastIndexOf(".")
+    return at < 0 ? [t, ""] : [t.slice(0, at), t.slice(at)]
+  })()
   const span = `${fmtDay(win.start, crossesYear)} to ${fmtDay(win.end, crossesYear)}`
 
   return (
     <div ref={rootRef} className={cn("w-[560px] tabular-nums", className)}>
-      <div className="mb-1 flex items-baseline justify-between gap-4 px-1">
-        <span className="text-[13px] font-medium text-foreground/90">{title}</span>
-        {/* going between the window's close and the pointed day, the readout crosses over
-            (4px, 2px blur, 150ms); while scrubbing it follows the pointer in place */}
-        <motion.span
+      {/* the header, three tiers (spec 14.1): name and symbol, the price, the move and its window */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{title}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">{symbol}</span>
+      </div>
+      {/* going between the window's close and the pointed day, the readout crosses over
+          (4px, 2px blur, 150ms); while scrubbing it follows the pointer in place */}
+      <div role="status">
+        <motion.div
           key={hv ? "scrub" : "rest"}
-          role="status"
-          className="flex items-baseline gap-2 whitespace-nowrap text-[11px]"
           initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.15, ease: EASE }}
         >
-          <span className="font-semibold text-foreground/90">{money(hv ? hv.v : close)}</span>
-          {hv ? (
-            <span className="text-foreground/45">{fmtDay(win.start + hv.i, crossesYear)}</span>
-          ) : (
-            <span className="font-medium" style={{ color: change >= 0 ? GREEN : RED }}>
-              {changeText}
-            </span>
-          )}
-        </motion.span>
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {headWhole}
+            <span className="text-foreground/35">{headDecimals}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: shownChange >= 0 ? GREEN : RED }}>
+            <span>{signed(shownChange)}</span>
+            <span className="font-normal text-foreground/45">{hv ? fmtDay(win.start + hv.i, crossesYear) : span}</span>
+          </p>
+        </motion.div>
       </div>
 
       {/* detail chart */}
@@ -299,7 +347,7 @@ export function RangeNavigator({
         width={W}
         height={MAIN_H}
         viewBox={`0 0 ${W} ${MAIN_H}`}
-        className="block cursor-crosshair touch-none"
+        className="mt-4 block cursor-crosshair touch-none"
         onPointerMove={onMainMove}
         onPointerLeave={() => setHover(null)}
         onPointerCancel={() => setHover(null)}
@@ -335,9 +383,11 @@ export function RangeNavigator({
               <text
                 x={W - PAD.r + 8}
                 y={ty + (f === 0 ? 4 : f === 1 ? 0 : 3)}
-                fontSize={8.5}
+                fontSize={9}
                 fill="var(--foreground)"
-                fillOpacity={0.35}
+                fillOpacity={0.45}
+                /* a figure under the pointed tag fades aside for it */
+                style={{ opacity: hv && Math.abs(hv.y - ty) < 12 ? 0 : 1, transition: "opacity 150ms" }}
               >
                 {money(detail.max - f * (detail.max - detail.min), detail.axisPrecision)}
               </text>
@@ -362,7 +412,10 @@ export function RangeNavigator({
         {hv && (
           <g pointerEvents="none">
             <line x1={hv.x} y1={PAD.t} x2={hv.x} y2={MAIN_H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.22} strokeWidth={1} />
-            <circle cx={hv.x} cy={hv.y} r={3} fill={ACCENT} />
+            <circle cx={hv.x} cy={hv.y} r={3} fill={color} stroke="var(--background)" strokeWidth={1.5} />
+            <AxisTag x={W - PAD.r + 4} y={hv.y} width={PAD.r - 6} color={color}>
+              {money(hv.v, detail.axisPrecision)}
+            </AxisTag>
           </g>
         )}
       </svg>
@@ -377,7 +430,9 @@ export function RangeNavigator({
         aria-valuenow={win.start}
         aria-valuetext={span}
         onKeyDown={onNavKey}
-        className="mt-1 rounded-[4px] outline-none transition-colors duration-150 focus-visible:bg-foreground/[0.04]"
+        onFocus={(e) => setFocusRing(e.currentTarget.matches(":focus-visible"))}
+        onBlur={() => setFocusRing(false)}
+        className="mt-2 outline-none"
       >
         <svg
           ref={navRef}
@@ -385,6 +440,7 @@ export function RangeNavigator({
           height={NAV_H}
           viewBox={`0 0 ${W} ${NAV_H}`}
           className="block touch-none select-none"
+          style={held ? { cursor: grip === "move" ? "grabbing" : "ew-resize" } : undefined}
           onPointerMove={onNavMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
@@ -394,38 +450,67 @@ export function RangeNavigator({
         >
           <defs>
             <clipPath id={`${uid}-win`}>
-              <rect x={wx0} y={0} width={Math.max(0, wx1 - wx0)} height={NAV_H} />
+              <rect x={wx0} y={WIN_GAP} width={Math.max(0, wx1 - wx0)} height={NAV_H - WIN_GAP * 2} rx={WIN_R} />
             </clipPath>
           </defs>
+          {/* the lane the whole history lies in, 2px wider than the plot each side so the
+              window keeps the same gap at its ends as above and below; keyboard focus rings
+              the lane's own edge, inset, in ink */}
+          <rect
+            x={PAD.l - WIN_GAP}
+            y={0}
+            width={PLOT_W + WIN_GAP * 2}
+            height={NAV_H}
+            rx={LANE_R}
+            fill={LANE_FILL}
+          />
+          {focusRing && (
+            <rect
+              x={PAD.l - WIN_GAP + 0.5}
+              y={0.5}
+              width={PLOT_W + WIN_GAP * 2 - 1}
+              height={NAV_H - 1}
+              rx={LANE_R - 0.5}
+              fill="none"
+              stroke="var(--foreground)"
+              strokeOpacity={0.3}
+              strokeWidth={1}
+              pointerEvents="none"
+            />
+          )}
           {/* the history outside the window is the same line, a step back */}
           <motion.path
             fill="none"
             stroke="var(--foreground)"
-            strokeOpacity={0.18}
+            strokeOpacity={0.2}
             strokeWidth={1}
+            strokeLinecap="round"
             strokeLinejoin="round"
             initial={false}
             animate={{ d: nav.line }}
             transition={morph}
           />
-          {/* the window itself: grab anywhere inside to pan */}
+          {/* the window itself, a raised block on the lane: grab anywhere inside to pan */}
           <rect
             x={wx0}
-            y={1}
+            y={WIN_GAP}
             width={Math.max(0, wx1 - wx0)}
-            height={NAV_H - 2}
-            rx={3}
-            fill="var(--foreground)"
-            fillOpacity={grip === "move" ? 0.1 : 0.06}
+            height={NAV_H - WIN_GAP * 2}
+            rx={WIN_R}
+            className={RAISED_FILL}
+            stroke="var(--foreground)"
+            strokeOpacity={grip === "move" || grip === "left" || grip === "right" ? 0.28 : 0.14}
+            strokeWidth={1}
             onPointerDown={startDrag("move")}
             onPointerEnter={point("move")}
-            style={{ cursor: "grab", transition: "fill-opacity 150ms ease-out" }}
+            style={{ cursor: held ? "grabbing" : "grab", transition: "stroke-opacity 150ms ease-out" }}
           />
           <motion.path
             fill="none"
             stroke="var(--foreground)"
             strokeOpacity={0.9}
-            strokeWidth={1}
+            strokeWidth={1.2}
+            strokeLinecap="round"
             strokeLinejoin="round"
             clipPath={`url(#${uid}-win)`}
             pointerEvents="none"
@@ -433,31 +518,28 @@ export function RangeNavigator({
             animate={{ d: nav.line }}
             transition={morph}
           />
-          {/* grips: pull to zoom */}
+          {/* grips: pull to zoom; each handle sits inside the window, 6px in from its edge */}
           {[
-            { x: wx0, mode: "left" as const },
-            { x: wx1, mode: "right" as const },
-          ].map(({ x, mode }) => (
+            { x: wx0, mode: "left" as const, hx: wx0 + 6 },
+            { x: wx1, mode: "right" as const, hx: wx1 - 6 },
+          ].map(({ x, mode, hx }) => (
             <g key={mode} onPointerDown={startDrag(mode)} onPointerEnter={point(mode)} style={{ cursor: "ew-resize" }}>
-              <rect x={x - 5} y={0} width={10} height={NAV_H} fill="transparent" />
+              <rect x={mode === "left" ? x - 6 : x - 10} y={0} width={16} height={NAV_H} fill="transparent" />
+              {/* the handle: a 2 by 12 bar in ink, a step stronger under the pointer */}
               <rect
-                x={x - 1.5}
-                y={NAV_H / 2 - 8}
-                width={3}
-                height={16}
-                rx={1.5}
-                fill={grip === mode ? ACCENT : "var(--foreground)"}
-                fillOpacity={grip === mode ? 1 : 0.45}
-                style={{ transition: "fill 150ms ease-out, fill-opacity 150ms ease-out" }}
+                x={hx - 1}
+                y={NAV_H / 2 - 6}
+                width={2}
+                height={12}
+                rx={1}
+                fill="var(--foreground)"
+                fillOpacity={grip === mode ? 0.9 : 0.5}
+                pointerEvents="none"
+                style={{ transition: "fill-opacity 150ms ease-out" }}
               />
             </g>
           ))}
         </svg>
-      </div>
-
-      <div className="mt-1 flex justify-between px-1 text-[9px] text-foreground/35">
-        <span>{fmtDay(win.start, crossesYear)}</span>
-        <span>{fmtDay(win.end, crossesYear)}</span>
       </div>
     </div>
   )

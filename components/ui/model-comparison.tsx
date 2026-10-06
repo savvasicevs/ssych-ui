@@ -1,20 +1,20 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
+import { ModelMark, modelMaker, type ModelMaker } from "@/components/ui/model-comparison-marks"
 
 /* Model Comparison, written new through ssych-component (2026-09-29).
    What it is for: choosing between two to four models on the same four measures.
-   Read first: the full-strength value in each row. It is the best one on that measure;
-   the others step back to label ink.
-   The pointer: pointing at a value keeps its row and its column and dims the rest, brings
-   its bar to full strength, and the line under the grid reads how far it is from the best.
-   Colour: each model takes its own hue (--chart-1, --chart-5, --chart-3, --chart-amber), in
-   the dot by its name and in its bars, so the columns are told apart (colour pass,
-   2026-09-30); the best bar of a row is that hue at full strength, the rest at 40%.
-   Pointing at a cost also reads how the blended cost was reached.
+   Read first: the full-ink value in each row. It is the best one on that measure; the
+   others step back to /60 with their bars at /25.
+   The pointer: pointing at a value lights its row and its column with one glide fill and
+   opens a card beside it (the model, the value, how far behind the best, and on the cost
+   row the blend). A click pins the cell; a second click lets it go.
+   Colour: none. The columns are already apart in space, so every bar is ink.
    Reference: browsable "model comparison" (descriptions only, no source read). Idea taken:
    the winner of a row is shown by strength and the others are dimmed, with no badge.
    Formulas:
@@ -24,11 +24,27 @@ import { cn } from "@/lib/utils"
      where less is better (latency, cost); equal values share it
    · bar length = value / best where more is better, best / value where less is better
    · gap = value − best, shown without its sign and named "behind"
-   · "best on" under a name = count of rows where that model holds the best value
-   The values are sample values, not published figures. */
+   The values are sample values, not published figures.
+   2026-10-02 audit: redesigned as a plain table on his note about the dots. The coloured dot
+   by each name and the per-model hues are gone (the columns are apart in space, so the bars
+   are ink: the best of a row full ink, the rest /25, the pointed one full); the "best on"
+   line under each name is cut; model names are table heads at 10.5px /45 (the pointed one
+   /90); the unit moved into the measure label at 11px /60; the explainer line under the grid
+   is gone, the blend formula now sits in the Cost label's tooltip and in the cost card;
+   pointing lights the row and the column together with one glide fill and opens a ChartCard
+   by the cell; a click pins the cell. Width 440, the AI and operations list width.
+   2026-10-02 round 2: his note asked for real icons for the actual models. The default models
+   are one from each maker now, Claude Opus 5.5, GPT-5 and Gemini 3 Pro, with plausible
+   figures (sample values still, not published ones), and each column head carries its
+   maker's mark at 12px beside the name. The marks are the Claude, OpenAI and Google Gemini
+   marks from Simple Icons (CC0), drawn inline in model-comparison-marks.tsx. They come in
+   through a `renderIcon(name, size, model)` prop whose default draws these marks (the maker
+   is read from the name, or from the new optional `maker` field); pass your own to draw
+   other marks, or null for none. The blend on the defaults: Claude (3 × $5.00 + $25.00) ÷ 4
+   = $10.00, GPT-5 (3 × $1.25 + $10.00) ÷ 4 = $3.44, Gemini (3 × $2.00 + $12.00) ÷ 4 = $4.50. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const MODEL_HUES = ["var(--chart-1)", "var(--chart-5)", "var(--chart-3)", "var(--chart-amber)"]
+const GLIDE = { type: "spring", stiffness: 520, damping: 40 } as const
 /** input tokens per output token in the blended cost */
 const MIX = 3
 
@@ -44,29 +60,39 @@ export interface ComparedModel {
   outputPrice: number
   /** context size in tokens */
   context: number
+  /** whose model it is, for its mark; read from the name when absent */
+  maker?: ModelMaker
 }
 
 export interface ModelComparisonProps {
   /** two to four models; more than four are cut to the first four */
   models?: ComparedModel[]
-  /** the grid's screen-reader name; the model names head the columns, so nothing is drawn */
+  /** the table's screen-reader name; the model names head the columns, so nothing is drawn */
   title?: string
+  /** draws a model's mark beside its column head; the Claude, OpenAI and Gemini marks by
+   *  default, null for none */
+  renderIcon?: ((name: string, size: number, model: ComparedModel) => ReactNode) | null
   className?: string
 }
 
+const defaultIcon = (name: string, size: number, model: ComparedModel) => <ModelMark maker={model.maker ?? modelMaker(name)} size={size} />
+
 const DEFAULT_MODELS: ComparedModel[] = [
-  { name: "Claude Opus 5.5", quality: 92.4, latency: 1.9, inputPrice: 5, outputPrice: 25, context: 1000000 },
-  { name: "Claude Sonnet 5", quality: 88.1, latency: 1.1, inputPrice: 3, outputPrice: 15, context: 1000000 },
-  { name: "Claude Haiku 4.5", quality: 79.6, latency: 0.5, inputPrice: 1, outputPrice: 5, context: 200000 },
+  { name: "Claude Opus 5.5", maker: "anthropic", quality: 92.4, latency: 1.9, inputPrice: 5, outputPrice: 25, context: 1000000 },
+  { name: "GPT-5", maker: "openai", quality: 90.6, latency: 2.4, inputPrice: 1.25, outputPrice: 10, context: 400000 },
+  { name: "Gemini 3 Pro", maker: "google", quality: 91.3, latency: 1.4, inputPrice: 2, outputPrice: 12, context: 1000000 },
 ]
 
 const blended = (m: ComparedModel) => (MIX * m.inputPrice + m.outputPrice) / (MIX + 1)
 const dollars = (v: number) => `$${v.toFixed(2)}`
 const tokens = (v: number) => (v >= 1e6 ? `${Number((v / 1e6).toFixed(1))}M` : `${Math.round(v / 1e3)}K`)
+const BLEND = `Blended ${MIX} to 1, input to output: (${MIX} × input + output) ÷ ${MIX + 1}`
 
 interface Measure {
   id: string
+  /** the label with its unit, as drawn */
   label: string
+  /** the unit as read aloud */
   unit: string
   more: boolean
   get: (m: ComparedModel) => number
@@ -75,22 +101,27 @@ interface Measure {
 }
 
 const MEASURES: Measure[] = [
-  { id: "quality", label: "Quality", unit: "score of 100", more: true, get: (m) => m.quality, show: (v) => v.toFixed(1), gap: (v) => `${v.toFixed(1)} points` },
-  { id: "latency", label: "Latency", unit: "to first token", more: false, get: (m) => m.latency, show: (v) => `${v.toFixed(1)} s`, gap: (v) => `${v.toFixed(1)} s` },
-  { id: "cost", label: "Cost", unit: "per million tokens", more: false, get: blended, show: dollars, gap: dollars },
-  { id: "context", label: "Context", unit: "tokens", more: true, get: (m) => m.context, show: tokens, gap: (v) => `${tokens(v)} tokens` },
+  { id: "quality", label: "Quality, of 100", unit: "score of 100", more: true, get: (m) => m.quality, show: (v) => v.toFixed(1), gap: (v) => `${v.toFixed(1)} pts` },
+  { id: "latency", label: "Latency, s", unit: "seconds to first token", more: false, get: (m) => m.latency, show: (v) => `${v.toFixed(1)} s`, gap: (v) => `${v.toFixed(1)} s` },
+  { id: "cost", label: "Cost per 1M", unit: "per million tokens", more: false, get: blended, show: dollars, gap: dollars },
+  { id: "context", label: "Context", unit: "tokens", more: true, get: (m) => m.context, show: tokens, gap: tokens },
 ]
 
-type Hot = { row: number; col: number }
+type Cell = { row: number; col: number }
+type Box = { left: number; top: number; width: number; height: number }
 
 /**
- * Models side by side in the Linear register: one column per model, one row per measure,
- * a value over a thin bar in every cell. The best value of a row carries full ink and
- * the rest sit at label ink, so the winner of each measure is read without a legend.
+ * Models side by side as a plain table: one column per model, one row per measure, a value
+ * over a 2px ink bar in every cell. The best value of a row is full ink, the rest step back,
+ * so the winner of each measure reads without a legend or a colour.
  */
-export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", className }: ModelComparisonProps) {
+export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", renderIcon = defaultIcon, className }: ModelComparisonProps) {
   const reduced = useReducedMotion()
-  const [hot, setHot] = useState<Hot | null>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [hover, setHover] = useState<Cell | null>(null)
+  const [pin, setPin] = useState<Cell | null>(null)
+  const [boxes, setBoxes] = useState<Record<string, Box>>({})
+  const hot = hover ?? pin
   const cols = models.slice(0, 4)
 
   const rows = MEASURES.map((ms) => {
@@ -98,111 +129,165 @@ export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", cla
     const best = ms.more ? Math.max(...values) : Math.min(...values)
     return { ...ms, values, best, leader: cols[values.indexOf(best)]?.name ?? "" }
   })
-  const wins = cols.map((_, c) => rows.filter((r) => r.values[c] === r.best).length)
 
-  const template = { gridTemplateColumns: `92px repeat(${cols.length}, minmax(0, 1fr))` }
-
-  let readout = `Cost blended ${MIX} to 1, input to output`
-  if (hot) {
-    const r = rows[hot.row]
-    const m = cols[hot.col]
-    const v = r.values[hot.col]
-    const gap = Math.abs(v - r.best)
-    readout = `${m.name} · ${r.label.toLowerCase()} ${r.show(v)} · ${v === r.best ? "best" : `${r.gap(gap)} behind ${r.leader}`}`
-    if (r.id === "cost") readout += ` · (${MIX} × ${dollars(m.inputPrice)} + ${dollars(m.outputPrice)}) ÷ ${MIX + 1}`
+  const template = { gridTemplateColumns: `96px repeat(${cols.length}, minmax(0, 1fr))` }
+  const key = (c: Cell) => `${c.row}-${c.col}`
+  /* each cell reports where it sits once it is pointed at, so the glide fill and the card
+     can find it without measuring the whole table */
+  const note = (c: Cell, el: HTMLElement) => {
+    const table = boxRef.current
+    const root = table?.getBoundingClientRect()
+    const own = el.getBoundingClientRect()
+    if (!table || !root) return
+    /* the drawn box is in screen pixels, which a scaled preview shrinks; the fills are laid out in
+       the table's own pixels, so the offset is turned back by that scale (2026-10-02: in a scaled
+       card the row and column fills landed off their cells) */
+    const k = root.width / (table.offsetWidth || root.width) || 1
+    const b = { left: (own.left - root.left) / k, top: (own.top - root.top) / k, width: el.offsetWidth, height: el.offsetHeight }
+    setBoxes((all) => (all[key(c)]?.left === b.left && all[key(c)]?.top === b.top ? all : { ...all, [key(c)]: b }))
   }
+  const box = hot ? boxes[key(hot)] : undefined
+  const full = boxRef.current
+  const totalW = full?.offsetWidth ?? 440
+  const totalH = full?.offsetHeight ?? 0
+  const flip = box ? box.left + box.width / 2 > totalW * 0.6 : false
+
+  const r = hot ? rows[hot.row] : undefined
+  const m = hot ? cols[hot.col] : undefined
+  const v = hot && r ? r.values[hot.col] : 0
+  const isBest = r ? v === r.best : false
 
   return (
     <div
-      className={cn("w-full max-w-[500px] tabular-nums", className)}
-      role="group"
-      aria-label={`${title}: ${cols.map((m) => m.name).join(", ")} compared on ${rows.map((r) => r.label.toLowerCase()).join(", ")}`}
+      ref={boxRef}
+      className={cn("relative w-[440px] max-w-full tabular-nums", className)}
+      role="table"
+      aria-label={`${title}: ${cols.map((x) => x.name).join(", ")} compared on ${rows.map((x) => x.id).join(", ")}`}
+      onPointerLeave={() => setHover(null)}
     >
-      <div className="grid items-end gap-x-4 pb-2.5" style={template}>
+      {/* one glide fill for the pointed row and one for its column: they light together */}
+      {box && (
+        <>
+          <motion.span
+            aria-hidden
+            className="pointer-events-none absolute left-0 right-0 rounded-[12px] bg-foreground/[0.04]"
+            initial={false}
+            animate={{ top: box.top, height: box.height }}
+            transition={reduced ? { duration: 0 } : GLIDE}
+          />
+          <motion.span
+            aria-hidden
+            className="pointer-events-none absolute top-0 rounded-[12px] bg-foreground/[0.04]"
+            initial={false}
+            animate={{ left: box.left, width: box.width, height: totalH }}
+            transition={reduced ? { duration: 0 } : GLIDE}
+          />
+        </>
+      )}
+
+      <div role="row" className="relative grid h-8 items-center gap-x-2 border-b border-foreground/[0.04]" style={template}>
         {/* the corner over the measure names stays empty: the column heads already say these are models */}
-        <span aria-hidden />
-        {cols.map((m, c) => (
+        <span role="columnheader" aria-label="Measure" />
+        {cols.map((x, c) => (
           <span
-            key={m.name}
-            className="min-w-0 transition-opacity duration-200 motion-reduce:transition-none"
-            style={{ opacity: hot && hot.col !== c ? 0.45 : 1 }}
+            key={x.name}
+            role="columnheader"
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 px-2 text-[10.5px] transition-colors duration-200 motion-reduce:transition-none",
+              hot?.col === c ? "text-foreground/90" : "text-foreground/45",
+            )}
+            title={x.name}
           >
-            <span className="block truncate text-[12px] font-medium text-foreground/90">
-              <span aria-hidden className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: MODEL_HUES[c] }} />
-              {m.name}
-            </span>
-            <span className="block text-[10px] text-foreground/45">
-              best on {wins[c]} of {rows.length}
-            </span>
+            {renderIcon?.(x.name, 12, x)}
+            <span className="min-w-0 truncate">{x.name}</span>
           </span>
         ))}
       </div>
 
-      <div className="flex flex-col gap-0.5" onPointerLeave={() => setHot(null)}>
-        {rows.map((r, ri) => (
-          <div key={r.id} className="grid items-center gap-x-4" style={template}>
-            <span
-              className="transition-opacity duration-200 motion-reduce:transition-none"
-              style={{ opacity: hot && hot.row !== ri ? 0.45 : 1 }}
-            >
-              <span className="block text-[11.5px] text-foreground/70">{r.label}</span>
-              <span className="block text-[9.5px] text-foreground/35">{r.unit}</span>
+      {rows.map((row, ri) => (
+        <div key={row.id} role="row" className="relative grid items-center gap-x-2" style={template}>
+          <span
+            role="rowheader"
+            className={cn("pl-2 text-[11px] transition-colors duration-200 motion-reduce:transition-none", hot?.row === ri ? "text-foreground/90" : "text-foreground/60")}
+            title={row.id === "cost" ? BLEND : undefined}
+          >
+            {row.label}
+          </span>
+
+          {row.values.map((val, c) => {
+            const best = val === row.best
+            const on = hot?.row === ri && hot.col === c
+            const pinned = pin?.row === ri && pin.col === c
+            const len = row.more ? val / (row.best || 1) : row.best / (val || 1)
+            return (
+              <span key={cols[c].name} role="cell" className="min-w-0">
+              <button
+                type="button"
+                aria-label={`${cols[c].name}, ${row.id} ${row.show(val)} ${row.unit}${best ? ", best" : `, ${row.gap(Math.abs(val - row.best))} behind ${row.leader}`}`}
+                aria-pressed={pinned}
+                onPointerEnter={(e) => {
+                  note({ row: ri, col: c }, e.currentTarget)
+                  setHover({ row: ri, col: c })
+                }}
+                onFocus={(e) => {
+                  note({ row: ri, col: c }, e.currentTarget)
+                  setHover({ row: ri, col: c })
+                }}
+                onBlur={() => setHover(null)}
+                onClick={() => setPin((p) => (p && p.row === ri && p.col === c ? null : { row: ri, col: c }))}
+                className="block w-full rounded-[12px] px-2 py-2.5 text-left outline-none transition-[scale] duration-150 focus-visible:bg-foreground/[0.04] active:scale-[0.97] motion-reduce:active:scale-100"
+              >
+                <span className={cn("block text-[12.5px]", best ? "font-medium text-foreground/90" : "text-foreground/60")}>{row.show(val)}</span>
+                <span aria-hidden className="mt-1.5 block h-[2px] w-full rounded-full bg-foreground/[0.06]">
+                  <motion.span
+                    className="block h-full origin-left rounded-full"
+                    style={{
+                      width: `${Math.max(0.03, Math.min(1, len)) * 100}%`,
+                      background: `color-mix(in srgb, var(--foreground) ${on || best ? 90 : 25}%, transparent)`,
+                      transition: reduced ? "none" : "background 160ms",
+                    }}
+                    initial={reduced ? false : { scaleX: 0 }}
+                    animate={{ scaleX: 1 }}
+                    transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: ri * 0.035 + c * 0.02 }}
+                  />
+                </span>
+              </button>
+              </span>
+            )
+          })}
+        </div>
+      ))}
+
+      {/* the pointed cell reads out in the library popover beside it (spec 13.5, 14.6) */}
+      <ChartCard
+        open={!!(hot && box && r && m)}
+        x={box ? (flip ? box.left : box.left + box.width - 12) : 0}
+        y={box ? box.top : 0}
+        flip={flip}
+        width={156}
+        heading={m?.name ?? ""}
+        rows={
+          r && m
+            ? [
+                { label: r.id === "cost" ? "Cost per 1M" : r.label.split(",")[0], value: r.show(v) },
+                { label: "Behind best", value: isBest ? "Best" : r.gap(Math.abs(v - r.best)) },
+                ...(r.id === "cost"
+                  ? [
+                      { label: "Input", value: dollars(m.inputPrice) },
+                      { label: "Output", value: dollars(m.outputPrice) },
+                    ]
+                  : []),
+              ]
+            : []
+        }
+        footer={
+          r?.id === "cost" && m ? (
+            <span className="text-foreground/60">
+              ({MIX} × {dollars(m.inputPrice)} + {dollars(m.outputPrice)}) ÷ {MIX + 1}
             </span>
-
-            {r.values.map((v, c) => {
-              const best = v === r.best
-              const on = hot?.row === ri && hot.col === c
-              const dim = hot !== null && hot.row !== ri && hot.col !== c
-              const len = r.more ? v / (r.best || 1) : r.best / (v || 1)
-              return (
-                <button
-                  key={cols[c].name}
-                  type="button"
-                  aria-label={`${cols[c].name}, ${r.label.toLowerCase()} ${r.show(v)} ${r.unit}${best ? ", best" : ""}`}
-                  aria-pressed={on}
-                  onPointerEnter={() => setHot({ row: ri, col: c })}
-                  onFocus={() => setHot({ row: ri, col: c })}
-                  onBlur={() => setHot(null)}
-                  onClick={() => setHot({ row: ri, col: c })}
-                  className="-mx-2 rounded-[4px] px-2 py-2 text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 hover:bg-foreground/[0.03] active:scale-[0.97] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none"
-                  style={{ opacity: dim ? 0.35 : 1 }}
-                >
-                  <span className={cn("block text-[12.5px]", best ? "font-semibold text-foreground/90" : "text-foreground/45")}>
-                    {r.show(v)}
-                  </span>
-                  <span aria-hidden className="mt-1.5 block h-[2px] w-full rounded-full bg-foreground/[0.06]">
-                    <motion.span
-                      className="block h-full origin-left rounded-full"
-                      style={{
-                        width: `${Math.max(0.03, Math.min(1, len)) * 100}%`,
-                        background: `color-mix(in srgb, ${MODEL_HUES[c]} ${on || best ? 100 : 40}%, transparent)`,
-                        transition: reduced ? "none" : "background 160ms",
-                      }}
-                      initial={reduced ? false : { scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: ri * 0.035 + c * 0.02 }}
-                    />
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-
-      <div role="status" className="mt-2.5 text-[10.5px] text-foreground/45">
-        {/* the line swaps in place as the pointer moves (text swap: 4px, 2px blur, 150ms) from a
-            dimmed copy, so it never blinks out; reduced motion keeps the fade */}
-        <motion.span
-          key={readout}
-          className="inline-block"
-          initial={reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-        >
-          {readout}
-        </motion.span>
-      </div>
+          ) : undefined
+        }
+      />
     </div>
   )
 }

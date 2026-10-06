@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
+import { ChartCard } from "@/components/ui/chart-overlay"
+import { parkBeside, squarify as squarifyBox } from "@/components/ui/market-heatmap-squarify"
 import { cn } from "@/lib/utils"
 
 /* Allocation Treemap, new through ssych-component (2026-09-29).
@@ -10,11 +12,11 @@ import { cn } from "@/lib/utils"
    the book it holds.
    Read first: the largest tile, top left, the strongest ink.
    The pointer: pointing at a tile, or tabbing to it, turns it the accent, dims the rest
-   and reads its weight and its value in the line above the map.
+   and reads its share and its value in a card parked beside it (since 2026-10-02).
    Sketch: lab/AllocationTreemap. Kept from it: the holdings and their weights, the book,
    the squarified layout that measures its own box so tiles stay near square at any
    shape, the `height` prop for a plot band, the eased re-tiling when the weights change,
-   and the readout in the header.
+   and the readout (in the header until 2026-10-02, now in a card beside the tile).
    Rebuilt: the per-holding colour is dropped from the data (it was blue, green, amber and
    purple by position). Tiles are one ink at several strengths, strongest for the largest
    weight, and only the pointed tile takes var(--chart-1). The outlined, filled frame
@@ -28,7 +30,13 @@ import { cn } from "@/lib/utils"
    Motion (2026-10-01): once the map first comes into view the tiles settle in largest first,
    a fade and 0.96 to full size, 40ms apart, done by about 700ms (it ran on mount, in 280ms).
    New weights or a new box re-tile in one 320ms glide, still by layout transforms. Reduced
-   motion draws the end state and does not glide. */
+   motion draws the end state and does not glide.
+   2026-10-02 audit: the Treemap family now shares one look and one width with Market Heatmap,
+   so the map is 460 wide in a 460 by 280 frame, tiles have a 6px corner with a 2px gap, and
+   the squarifier is the family's shared one (market-heatmap-squarify). The readout line above
+   the map, with its dot separators, is gone; the pointed tile reads in the shared ChartCard
+   parked beside it (Share, Value), the same card the heatmap uses. The share printed on a
+   tile is 10.5px at /60 and money is written with a capital K. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const ACCENT = "var(--chart-1)"
@@ -45,7 +53,7 @@ export interface AllocationTreemapProps {
   book?: number
   /** the map's name, read to assistive tech only */
   title?: string
-  /** map height in px; left out, the map keeps a 100:62 frame */
+  /** map height in px; left out, the map keeps the Treemap family's 460:280 frame (100:62 before 2026-10-02) */
   height?: number
   className?: string
 }
@@ -68,54 +76,37 @@ const DEFAULT_HOLDINGS: TreemapHolding[] = [
 const STEPS = [32, 26, 21, 17, 14, 11, 9, 7]
 const inkAt = (rank: number) => `color-mix(in srgb, var(--foreground) ${STEPS[Math.min(rank, STEPS.length - 1)]}%, transparent)`
 
-const RATIO = 100 / 62
+/** the Treemap family's frame, the same as Market Heatmap's 460 × 280 */
+const FRAME_W = 460
+const FRAME_H = 280
+const RATIO = FRAME_W / FRAME_H
 
 /** tile geometry in percent of the box on both axes */
 type Tile = TreemapHolding & { x: number; y: number; w: number; h: number; rank: number }
 
 /** Squarified layout in a box `ratio` wide and 1 tall, so square means square on screen. */
 function squarify(items: TreemapHolding[], ratio: number): Tile[] {
-  const sorted = [...items].filter((it) => it.weight > 0).sort((a, b) => b.weight - a.weight)
-  const total = sorted.reduce((s, it) => s + it.weight, 0) || 1
-  const queue = sorted.map((it, rank) => ({ ...it, rank, area: (it.weight / total) * ratio }))
-  const sum = (row: { area: number }[]) => row.reduce((s, r) => s + r.area, 0)
-  const worst = (row: { area: number }[], side: number) => {
-    const s = sum(row)
-    const areas = row.map((r) => r.area)
-    return Math.max((side * side * Math.max(...areas)) / (s * s), (s * s) / (side * side * Math.min(...areas)))
-  }
-
-  const out: Tile[] = []
-  let box = { x: 0, y: 0, w: ratio, h: 1 }
-  let i = 0
-  while (i < queue.length) {
-    const side = Math.min(box.w, box.h)
-    const row = [queue[i]]
-    let k = i + 1
-    while (k < queue.length && worst([...row, queue[k]], side) <= worst(row, side)) {
-      row.push(queue[k])
-      k += 1
-    }
-    const depth = sum(row) / side
-    let run = 0
-    for (const r of row) {
-      const len = r.area / depth
-      const tile = box.w >= box.h ? { x: box.x, y: box.y + run, w: depth, h: len } : { x: box.x + run, y: box.y, w: len, h: depth }
-      out.push({ name: r.name, weight: r.weight, rank: r.rank, x: (tile.x / ratio) * 100, y: tile.y * 100, w: (tile.w / ratio) * 100, h: tile.h * 100 })
-      run += len
-    }
-    box = box.w >= box.h ? { x: box.x + depth, y: box.y, w: box.w - depth, h: box.h } : { x: box.x, y: box.y + depth, w: box.w, h: box.h - depth }
-    i = k
-  }
-  return out
+  return squarifyBox(items, (it) => it.weight, ratio, 1).map((t) => ({
+    name: t.item.name,
+    weight: t.item.weight,
+    rank: t.rank,
+    x: (t.x / ratio) * 100,
+    y: t.y * 100,
+    w: (t.w / ratio) * 100,
+    h: t.h * 100,
+  }))
 }
 
-const usd = (v: number) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`)
+/** the readout card: 132 wide, and its height from its fixed type (10px heading, two 11px rows) */
+const CARD_W = 132
+const CARD_H = 84
+
+const usd = (v: number) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}K` : `$${v.toFixed(0)}`)
 
 /**
  * Holdings as a treemap: the area of a tile is its share of the book, in one ink that is
- * strongest for the largest. Pointing at a tile turns it the accent and reads its weight
- * and value above the map.
+ * strongest for the largest. Pointing at a tile turns it the accent and reads its share
+ * and value in a card parked beside it.
  */
 export function AllocationTreemap({ holdings = DEFAULT_HOLDINGS, book = DEFAULT_BOOK, title = "Allocation", height, className }: AllocationTreemapProps) {
   const reduced = useReducedMotion()
@@ -143,36 +134,19 @@ export function AllocationTreemap({ holdings = DEFAULT_HOLDINGS, book = DEFAULT_
   const shareOf = (t: Tile) => (t.weight / total) * 100
   const shown = tiles.find((t) => t.name === hot) ?? null
   const largest = tiles[0]
+  /* the card parks clear of the pointed tile, in px of the measured box */
+  const bw = box?.w ?? FRAME_W
+  const bh = box?.h ?? (height ?? FRAME_H)
+  const park = shown ? parkBeside({ x: (shown.x / 100) * bw, y: (shown.y / 100) * bh, w: (shown.w / 100) * bw, h: (shown.h / 100) * bh }, CARD_W, CARD_H, bw, bh) : null
 
   return (
-    <div className={cn("w-full max-w-[480px] tabular-nums", className)}>
-      <div className="mb-2.5 flex items-baseline gap-4">
-        <span role="status" className="text-[10.5px] text-foreground/45">
-          {/* the readout swaps in place: 4px and a 2px blur, 150ms */}
-          <motion.span
-            key={hot ?? ""}
-            className="inline-block"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-          {shown ? (
-            <>
-              <span className="font-medium text-foreground/90">{shown.name}</span> · {shareOf(shown).toFixed(1)}% · <span className="font-medium text-foreground/90">{usd((shown.weight / total) * book)}</span>
-            </>
-          ) : (
-            `${tiles.length} positions · ${usd(book)} book`
-          )}
-          </motion.span>
-        </span>
-      </div>
-
+    <div className={cn("w-[460px] max-w-full tabular-nums", className)}>
       <div
         ref={boxRef}
         role="group"
         aria-label={`${title}, ${tiles.length} positions in a ${usd(book)} book${largest ? `. Largest: ${largest.name} ${shareOf(largest).toFixed(1)}%` : ""}`}
         className="relative w-full"
-        style={height ? { height } : { aspectRatio: "100 / 62" }}
+        style={height ? { height } : { aspectRatio: `${FRAME_W} / ${FRAME_H}` }}
         onPointerLeave={() => setHot(null)}
       >
         {tiles.map((t) => {
@@ -202,7 +176,7 @@ export function AllocationTreemap({ holdings = DEFAULT_HOLDINGS, book = DEFAULT_
                 transition={{ layout: { duration: 0.32, ease: EASE } }}
                 className="absolute inset-[1px] flex flex-col justify-end p-2 text-left"
                 style={{
-                  borderRadius: 3,
+                  borderRadius: 6,
                   background: on ? ACCENT : inkAt(t.rank),
                   opacity: dim ? 0.4 : 1,
                   transition: reduced ? "none" : "background-color 160ms, opacity 160ms",
@@ -210,14 +184,31 @@ export function AllocationTreemap({ holdings = DEFAULT_HOLDINGS, book = DEFAULT_
               >
                 {big && (
                   <>
-                    <span className="text-[11px] font-semibold leading-none text-foreground/90">{t.name}</span>
-                    <span className={cn("mt-1 text-[9.5px] leading-none", on ? "text-foreground/90" : "text-foreground/45")}>{shareOf(t).toFixed(1)}%</span>
+                    <span className="text-[11px] font-medium leading-none text-foreground/90">{t.name}</span>
+                    <span className={cn("mt-1 text-[10.5px] leading-none", on ? "text-foreground/90" : "text-foreground/60")}>{shareOf(t).toFixed(1)}%</span>
                   </>
                 )}
               </motion.span>
             </motion.button>
           )
         })}
+
+        {/* the pointed tile reads here; ChartCard sits 12px right of x */}
+        <ChartCard
+          open={!!shown && !!park}
+          x={(park?.left ?? 0) - 12}
+          y={park?.top ?? 0}
+          width={CARD_W}
+          heading={shown ? <span className="font-medium text-foreground/90">{shown.name}</span> : null}
+          rows={
+            shown
+              ? [
+                  { label: "Share", value: `${shareOf(shown).toFixed(1)}%` },
+                  { label: "Value", value: usd((shown.weight / total) * book) },
+                ]
+              : []
+          }
+        />
       </div>
     </div>
   )

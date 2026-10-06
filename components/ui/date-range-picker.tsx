@@ -9,10 +9,11 @@ import { cn } from "@/lib/utils"
    What it is for: choosing the window a board plots, by preset or by two presses on a
    two-month sheet.
    Read first: the filled run of days, and under it the same window in words with its
-   length, "Aug 30 – Sep 28, 2026 · 30 days".
+   length, "Aug 30 – Sep 28, 2026" and "30 days".
    The pointer: the first press drops an end, the days under the pointer fill in behind
-   it in the accent, in either direction, and the second press sets the window. Over a
-   day with no end down, the line under the sheet reads that day and how far back it is.
+   it in the accent, in either direction, and the second press sets the window. The line
+   under the sheet always reads a window: the one that is set, or, while an end is down,
+   the one the pointer would make.
    Arrow keys move the day by one or by a week, Page up and Page down by a month, Home
    and End to the ends of the week; Enter presses, Escape lifts a dropped end.
    Sketch: src/components/lab/DateRangePicker.tsx. Kept: two presses with a live band
@@ -31,7 +32,16 @@ import { cn } from "@/lib/utils"
    · length of a window = to − from + 1, in days, both ends counted
    · 7d, 30d, 90d = today − 6, − 29, − 89 to today; year to date = 1 Jan of today's
      year to today
-   · days ago = today − the day being pointed at */
+   · a window being swept = the dropped end to the day pointed at, either way round
+   2026-10-02: the line under the sheet keeps the window (his call: the selected time
+   frame should be there once it is selected, and also while you point at dates). It
+   reads the set window at rest and while the pointer wanders the sheet, where it used to
+   swap to the single day under the pointer; once an end is down it reads the window from
+   that end to the day pointed at, at 60%, and the sheet lights that run as a preview,
+   fainter than a set window: a 10% accent wash, the dropped end solid, the pointed end at
+   35%. The line swaps in place (4px, 2px blur, 150ms) only when what it reads changes
+   kind: an end dropped, a window set, a preset pressed; the days of a sweep change in
+   place. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const ACCENT = "var(--chart-1)"
@@ -117,8 +127,9 @@ const short = (z: number, year: boolean) => {
   return `${MONTHS[c.m - 1].slice(0, 3)} ${c.d}${year ? `, ${c.y}` : ""}`
 }
 const long = (z: number) => `${WEEKDAYS[weekday(z)]}, ${short(z, true)}`
-/** one year when the window stays inside it, two when it straddles */
-const rangeText = (from: number, to: number) => `${short(from, fromDay(from).y !== fromDay(to).y)} – ${short(to, true)}`
+/** one year when the window stays inside it, two when it straddles; one day reads once */
+const rangeText = (from: number, to: number) =>
+  from === to ? short(to, true) : `${short(from, fromDay(from).y !== fromDay(to).y)} – ${short(to, true)}`
 const daysText = (n: number) => `${n} ${n === 1 ? "day" : "days"}`
 
 export const DEFAULT_PRESETS: DateRangePreset[] = [
@@ -170,7 +181,6 @@ export function DateRangePicker({
   const [pick, setPick] = useState<number | null>(null)
   /** the day the band runs to while an end is down */
   const [peek, setPeek] = useState<number | null>(null)
-  const [hot, setHot] = useState<number | null>(null)
   /** the day the arrow keys move from */
   const [cursor, setCursor] = useState(set.to)
 
@@ -244,7 +254,6 @@ export function DateRangePicker({
     next = clamp(next, lo, hi)
     follow.current = true
     setCursor(next)
-    setHot(next)
     if (pick !== null) setPeek(next)
     show(next)
   }
@@ -258,7 +267,10 @@ export function DateRangePicker({
   /** the one day Tab lands on */
   const stop = cursor >= viewFrom && cursor <= viewTo ? cursor : clamp(viewFrom, lo, hi)
 
-  const fill = sweeping ? `color-mix(in srgb, ${ACCENT} 18%, transparent)` : ink(8)
+  /* a sweep is a preview, so it is fainter than a set window: a 10% accent wash, the
+     dropped end solid, the end under the pointer at 35% */
+  const fill = sweeping ? `color-mix(in srgb, ${ACCENT} 10%, transparent)` : ink(8)
+  const PEEK_END = `color-mix(in srgb, ${ACCENT} 35%, transparent)`
   const ease = reduced ? "none" : "background-color 150ms, color 150ms"
 
   return (
@@ -306,7 +318,7 @@ export function DateRangePicker({
         })}
       </div>
 
-      <div ref={sheet} className="mt-4 flex gap-6" onKeyDown={onKey} onPointerLeave={() => setHot(null)}>
+      <div ref={sheet} className="mt-4 flex gap-6" onKeyDown={onKey}>
         {[ym, ym + 1].map((m, side) => {
           const first = firstOf(m)
           const count = firstOf(m + 1) - first
@@ -349,6 +361,8 @@ export function DateRangePicker({
                   const off = d < lo || d > hi
                   const inBand = d >= band.from && d <= band.to
                   const edge = d === band.from || d === band.to
+                  /* while sweeping, only the dropped end is solid */
+                  const solid = edge && (!sweeping || d === pick)
                   const opens = inBand && (d === band.from || col === 0 || d === first)
                   const closes = inBand && (d === band.to || col === 6 || d === first + count - 1)
                   return (
@@ -369,22 +383,19 @@ export function DateRangePicker({
                         onClick={() => choose(d)}
                         onPointerEnter={() => {
                           viaKey.current = false
-                          setHot(d)
                           if (pick !== null) setPeek(d)
                         }}
                         onFocus={() => {
                           setCursor(d)
-                          setHot(d)
                           if (pick !== null) setPeek(d)
                         }}
-                        onBlur={() => setHot(null)}
                         className={cn(
                           "relative h-7 w-7 rounded-[4px] text-[10.5px] outline-none disabled:pointer-events-none",
                           edge ? "font-semibold" : "hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.1]",
                         )}
                         style={{
-                          background: edge ? (sweeping ? ACCENT : ink(90)) : undefined,
-                          color: edge ? "var(--background)" : ink(off ? 20 : inBand ? 90 : 70),
+                          background: edge ? (sweeping ? (solid ? ACCENT : PEEK_END) : ink(90)) : undefined,
+                          color: solid ? "var(--background)" : ink(off ? 20 : inBand ? 90 : 70),
                           transition: ease,
                         }}
                       >
@@ -401,26 +412,18 @@ export function DateRangePicker({
       </div>
 
       <div role="status" className="mt-3 border-t border-foreground/[0.05] pt-2 text-[10.5px]">
-        {/* the line crosses over as the pointer moves between days (4px, 2px blur, 150ms);
-            a key press changes it at once */}
+        {/* the line crosses over (4px, 2px blur, 150ms) only on a change of intent: an end
+            dropped, a window set; the days of a sweep change in place, and a key press
+            changes it at once */}
         <motion.div
-          key={hot !== null && !sweeping ? `d${hot}` : `r${band.from}-${band.to}`}
+          key={sweeping ? `p${pick}` : `r${set.from}-${set.to}`}
           className="flex items-baseline justify-between"
           initial={viaKey.current ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.15, ease: EASE }}
         >
-        {hot !== null && !sweeping ? (
-          <>
-            <span className="font-medium text-foreground/90">{long(hot)}</span>
-            <span className="text-foreground/45">{hot === hi ? "today" : `${daysText(hi - hot)} ago`}</span>
-          </>
-        ) : (
-          <>
-            <span className="font-medium text-foreground/90">{rangeText(band.from, band.to)}</span>
-            <span className="text-foreground/45">{daysText(length)}</span>
-          </>
-        )}
+          <span className={cn("font-medium", sweeping ? "text-foreground/60" : "text-foreground/90")}>{rangeText(band.from, band.to)}</span>
+          <span className="text-foreground/45">{daysText(length)}</span>
         </motion.div>
       </div>
     </div>

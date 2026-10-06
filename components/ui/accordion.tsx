@@ -19,6 +19,7 @@ export type AccordionItem = {
  * Accordion (WAI-ARIA) — a vertical list of titles; the active row expands to
  * reveal its body + deliverables alongside a visual supplied by `stage(i)`.
  * Pulled from the /pro-services "Variant 02 · accordion".
+ * 2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
  */
 export function Accordion({
   items = [],
@@ -109,7 +110,7 @@ export function Accordion({
                         <ul className="mt-5 flex flex-col gap-2.5">
                           {it.deliverables.map((d) => (
                             <li key={d} className="flex items-start gap-2.5 text-[13px] leading-snug text-foreground/55">
-                              <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-foreground/[0.03]">
+                              <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none">
                                 <Check className="h-4 w-4 text-foreground opacity-70" />
                               </span>
                               <span>{d}</span>

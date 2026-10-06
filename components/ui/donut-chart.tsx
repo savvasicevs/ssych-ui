@@ -3,6 +3,8 @@
 import { useId, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
+import { THUMB } from "@/components/ui/control-classes"
+import { LiveFigure } from "@/components/ui/live-figure"
 import { cn } from "@/lib/utils"
 
 /* Donut Chart, rebuilt through the ssych-component skill (2026-09-29).
@@ -17,7 +19,16 @@ import { cn } from "@/lib/utils"
    Props: `color` on a datum is now optional and is no longer drawn. Callers that pass it
    keep compiling. Nothing else changed.
    Motion (2026-10-01): the ring sweeps open clockwise from the top once, 800ms, when the
-   chart first comes into view (it used to run on mount, in 400ms). Reduced motion starts it whole. */
+   chart first comes into view (it used to run on mount, in 400ms). Reduced motion starts it whole.
+   2026-10-02 audit: legend chips are 6px round dots, not squares; a legend row is a fully
+   round pill and a picked one wears the shared control thumb (control-classes), not a 4px
+   corner with a bare token; the share reads at /90 medium as the value, the name at /60 and
+   the amount at /60; the tail band is named "11 others" with no dot separator; the name
+   column is 120px like Sectors Donut's and the row layout is 350px wide (gap 24), the
+   Donut family's width; the centre label is /60 and the centre swaps through LiveFigure.
+   Formulas, all from `data`: share = value / sum of values × 100, 1dp; arc span = share ×
+   360° less a 1.6° gap; the centre at rest is `total` (by default the sum of the sample's
+   values, abbreviated K/M/B/T), and pointed it is that slice's value. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -68,7 +79,7 @@ const DEFAULT_SLICES: DonutDatum[] = [
   { name: "Solana", value: 4144 },
   { name: "Avalanche", value: 3283.2 },
   { name: "Dogecoin", value: 2997 },
-  { name: "Other · 11", value: 13955.9 },
+  { name: "11 others", value: 13955.9 },
 ]
 
 const usdAbbr = (n: number) => {
@@ -97,6 +108,7 @@ function arcPath(a: number, b: number, rOut: number, rIn: number) {
  * Allocation as a ring: shares as arcs of one ink around an open centre that the total
  * sits in. Slices sort descending. Pointing at an arc or a row turns it the accent, dims
  * the rest and puts its amount in the middle; with `onSelect` the rows pick a slice.
+ * 2026-10-02: the picked row takes the segmented control's thumb fill so it reads on white and on black.
  */
 export function DonutChart({
   data = DEFAULT_SLICES,
@@ -191,17 +203,11 @@ export function DonutChart({
         ))}
       </svg>
       <div role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        {/* the readout swaps in place: 4px rise, 2px blur, 150ms */}
-        <motion.span
-          key={centred ? centred.name : "total"}
-          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-          className="flex flex-col items-center"
-        >
-          <span className="max-w-[88px] truncate text-center text-[9.5px] text-foreground/45">{centred ? centred.name : label}</span>
+        {/* the readout swaps in place when the pointed slice changes (LiveFigure: 4px rise, 2px blur, 150ms) */}
+        <LiveFigure intent={centred ? centred.name : null} className="flex flex-col items-center">
+          <span className="max-w-[88px] truncate text-center text-[9.5px] text-foreground/60">{centred ? centred.name : label}</span>
           <span className="mt-0.5 text-[13px] font-semibold text-foreground/90">{centred ? usdAbbr(centred.value) : total}</span>
-        </motion.span>
+        </LiveFigure>
       </div>
     </div>
   )
@@ -222,17 +228,17 @@ export function DonutChart({
             onBlur={() => setHot(null)}
             /* selection is a fill, never an outline, so the column cannot reflow */
             className={cn(
-              "flex items-center gap-2.5 rounded-[4px] px-2 py-[5px] text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 focus-visible:bg-foreground/[0.06]",
+              "flex items-center gap-2.5 rounded-full px-2 py-[5px] text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 focus-visible:bg-foreground/[0.06]",
               !stacked && "-mx-2",
               onSelect ? "cursor-pointer hover:bg-foreground/[0.03] active:scale-[0.97]" : "cursor-default",
-              on && "bg-foreground/[0.05]",
+              on && THUMB,
               focus && focus !== s.name && "opacity-35",
             )}
           >
-            <span aria-hidden className="h-2 w-2 shrink-0 rounded-[2px]" style={{ background: fillOf(s), transition: "background 160ms" }} />
-            <span className={cn("truncate text-[11.5px] text-foreground/90", stacked ? "min-w-0 flex-1" : "w-24")}>{s.name}</span>
-            <span className="w-[38px] text-right text-[11px] text-foreground/45">{(s.frac * 100).toFixed(1)}%</span>
-            {s.amount && <span className="w-[86px] text-right text-[10.5px] text-foreground/45">{s.amount}</span>}
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ background: fillOf(s), transition: "background 160ms" }} />
+            <span className={cn("truncate text-[11.5px] text-foreground/60", stacked ? "min-w-0 flex-1" : "w-[120px]")}>{s.name}</span>
+            <span className="w-[38px] text-right text-[11px] font-medium text-foreground/90">{(s.frac * 100).toFixed(1)}%</span>
+            {s.amount && <span className="w-[86px] text-right text-[10.5px] text-foreground/60">{s.amount}</span>}
           </button>
         )
       })}
@@ -240,7 +246,16 @@ export function DonutChart({
   )
 
   return (
-    <div ref={rootRef} className={cn("tabular-nums", stacked ? "flex w-full flex-col items-center gap-4" : "flex items-center gap-8", className)}>
+    <div
+      ref={rootRef}
+      /* the Donut family's width, 350 (Sectors Donut: ring 132 + gap 32 + legend 186); here ring 140 + gap 24 + legend 184;
+         rows that carry an amount need more, so they size to their content */
+      className={cn(
+        "tabular-nums",
+        stacked ? "flex w-full flex-col items-center gap-4" : cn("flex items-center gap-6", data.some((d) => d.amount) ? "w-fit" : "w-[350px]"),
+        className,
+      )}
+    >
       {ring}
       {legend}
     </div>

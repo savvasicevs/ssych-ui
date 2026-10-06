@@ -4,16 +4,17 @@ import { useMemo, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
 
 /* Stacked Bars, written new through ssych-component (2026-09-29).
    What it is for: a total over time and what it is made of, here twelve months of
    inference spend split by model.
    Read first: the height of the bars, the total climbing month on month. The split is
    second: one ink at four strengths, strongest for the largest series.
-   The pointer: over a segment turns it the accent, keeps its series at full strength in
-   the other months and dims the rest; the line beside the title gives its value and its
-   share of that bar. Over a name in the list under the chart the whole series takes the
-   accent and the line gives its sum and its share of everything. Left and right arrows
+   The pointer: over a segment keeps its series at full strength in the other months and
+   dims the rest; a card beside the bar reads the month, segments highest first, and the
+   bar's total. Over a name in the legend the whole series is lit and the header gives its sum and
+   its share of everything. Left and right arrows
    walk the months, up and down the segments of a bar, Escape lets go.
    Sketch: src/components/lab/StackedBarChart.tsx, which shows
    src/components/ui/stacked-bar-chart.tsx. Kept: its data shape (rows of named
@@ -35,7 +36,25 @@ import { cn } from "@/lib/utils"
    swatch; pointing keeps it at full strength and dims the rest to 0.35.
    Motion (2026-10-01): the bars rise from the baseline once the chart is a third in view,
    25ms apart over 450ms (725ms in all); reduced motion shows them standing. No data changes
-   here, so nothing else moves. */
+   here, so nothing else moves.
+   2026-10-02: the header and the line beside it read oddly, and the square chips under the
+   plot did not match the legends of Model Comparison, SMA Chart and Performance Chart. So
+   the header now has the library's three tiers like Market Snapshot (spec 14.1): the title
+   at /45 with the period on the right, the total of every bar as the headline with its
+   decimals at /35, and under it the window at /45. Pointing reads the segment or the series
+   in the same two lines (its value as the headline, then its name, its month and its share).
+   The data has no change worth a hue, so none is shown. The legend moved up under the
+   header (spec 14.3): a 6px round dot in the series colour and the name at /60, still a
+   button that lights its series. The default formatter now groups thousands.
+   2026-10-02 audit: pointing a segment rewrote the headline, so the total you read first
+   left the screen. Now the headline stays the total while a segment is pointed, and a card
+   over the chart beside the bar (chart-overlay.tsx) reads that month: every segment highest
+   first, then the bar's total. Pointing a name in the legend still reads the series in the
+   header. The year under the months was 8.5px and is now 9px like the other ticks, and the
+   axis and month figures moved from /35 to /45, the floor for axis text.
+   2026-10-02 round 2: the series are named for current models, Claude Opus 5.5, GPT-5 and
+   Gemini 3 Pro (the set Model Comparison shows), in place of claude-sonnet-4.5, gpt-4.1 and
+   gemini-2.5-pro. The monthly figures are unchanged, so every total and share holds. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /** the house order for things that must be told apart; nothing on this chart means up */
@@ -61,7 +80,7 @@ export interface StackedBarsProps {
   className?: string
 }
 
-const SERIES = ["claude-sonnet-4.5", "gpt-4.1", "gemini-2.5-pro", "Other"]
+const SERIES = ["Claude Opus 5.5", "GPT-5", "Gemini 3 Pro", "Other"]
 /** monthly spend in thousands of dollars, one column for each name in SERIES */
 const SPEND: [string, string, number[]][] = [
   ["Oct", "2025", [31.2, 22.4, 9.8, 6.1]],
@@ -83,7 +102,12 @@ const DEFAULT_ROWS: StackedBarRow[] = SPEND.map(([label, caption, values]) => ({
   segments: values.map((value, i) => ({ label: SERIES[i], value })),
 }))
 
-const formatValue = (v: number) => `$${v.toFixed(1)}K`
+const formatValue = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`
+/** the headline's figure, its decimals (and any unit after them) split off to sit at /35 */
+const splitDecimals = (text: string) => {
+  const m = text.match(/^(.*?\d)(\.\d+\D*)$/)
+  return m ? [m[1], m[2]] : [text, ""]
+}
 
 
 const W = 480
@@ -163,37 +187,71 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
 
   const seg = hot && hot.row !== null ? rows[hot.row]?.segments.find((s) => s.label === hot.series) : undefined
   const last = rows.length - 1
+  /* the headline: the total of every bar, or the pointed series' sum while a legend name is
+     pointed; a pointed segment leaves it on the total and reads in the card */
+  const seriesHot = hot && hot.row === null ? hot.series : null
+  const headValue = seriesHot !== null ? (sums.get(seriesHot) ?? 0) : grand
+  /* the card goes to the bar's left once the bar is past 60% of the plot */
+  const cardFlip = hot !== null && hot.row !== null && (hot.row + 0.5) / Math.max(1, rows.length) > 0.6
+  const [headWhole, headDecimals] = splitDecimals(valueFormatter(headValue))
 
   return (
     <div className={cn("w-[480px] max-w-full tabular-nums", className)}>
-      <div className="flex items-baseline justify-between gap-4">
-        <span className="shrink-0 text-[13px] font-medium text-foreground/90">{title}</span>
-        <span role="status" className="truncate text-[10.5px] text-foreground/45">
-          {/* the line swaps in place for the pointer: 4px out of a 2px blur over 150ms */}
-          <motion.span
-            key={hot ? `${hot.row ?? "all"}-${hot.series}` : "rest"}
-            className="inline-block max-w-full truncate align-bottom"
-            initial={reduced || byKey ? false : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-          {hot && hot.row !== null && seg ? (
-            <>
-              {period(rows[hot.row])} · {seg.label} · <span className="font-medium text-foreground/90">{valueFormatter(seg.value)}</span> ·{" "}
-              {((seg.value / (totals[hot.row] || 1)) * 100).toFixed(1)}% of {valueFormatter(totals[hot.row])}
-            </>
-          ) : hot ? (
-            <>
-              {hot.series} · <span className="font-medium text-foreground/90">{valueFormatter(sums.get(hot.series) ?? 0)}</span> ·{" "}
-              {(((sums.get(hot.series) ?? 0) / (grand || 1)) * 100).toFixed(1)}% of {valueFormatter(grand)}
-            </>
-          ) : (
-            <>
-              {period(rows[0])} to {period(rows[last])} · <span className="font-medium text-foreground/90">{valueFormatter(grand)}</span>
-            </>
-          )}
-          </motion.span>
+      {/* the header, three tiers (spec 14.1): title and period, the figure, then what it is */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{title}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">
+          {period(rows[0])} to {period(rows[last])}
         </span>
+      </div>
+      <div role="status">
+        {/* the pointer swaps the readout in place: 4px out of a 2px blur over 150ms; arrow keys change it at once */}
+        <motion.div
+          key={seriesHot !== null ? `series-${seriesHot}` : "rest"}
+          initial={reduced || byKey ? false : { opacity: 0, y: 4, filter: "blur(2px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.15, ease: EASE }}
+        >
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {headWhole}
+            <span className="text-foreground/35">{headDecimals}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] truncate text-[12px]">
+            {seriesHot !== null ? (
+              <>
+                <span className="truncate font-medium text-foreground/60">{seriesHot}</span>
+                <span className="shrink-0 text-foreground/45">{(((sums.get(seriesHot) ?? 0) / (grand || 1)) * 100).toFixed(1)}% of the total</span>
+              </>
+            ) : (
+              <span className="text-foreground/45">Total over {rows.length === 1 ? "1 month" : `${rows.length} months`}</span>
+            )}
+          </p>
+        </motion.div>
+      </div>
+
+      {/* the legend, at the top under the header (spec 14.3): a 6px round dot and the name;
+          pointing at a name lights its series */}
+      <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1" onPointerLeave={() => setHot(null)}>
+        {rank.map((label) => {
+          const on = hot?.series === label
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-label={`${label}, ${valueFormatter(sums.get(label) ?? 0)}, ${(((sums.get(label) ?? 0) / (grand || 1)) * 100).toFixed(1)}% of the total`}
+              onPointerEnter={() => point({ row: null, series: label })}
+              onFocus={() => setHot({ row: null, series: label })}
+              onBlur={() => setHot(null)}
+              className={cn(
+                "-mx-1 flex items-center gap-1.5 rounded-full px-1 text-[11px] text-foreground/60 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
+                hot !== null && !on && "opacity-35",
+              )}
+            >
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: hueOf(label) }} />
+              {label}
+            </button>
+          )
+        })}
       </div>
 
       <div
@@ -203,7 +261,7 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
         aria-label={`${title} by segment, ${rows.length} bars`}
         onKeyDown={onKey}
         onBlur={() => setHot(null)}
-        className="mt-3 rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+        className="relative mt-4 rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
       >
         <svg
           width={W}
@@ -217,7 +275,7 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
           {[0.5, 1].map((t) => (
             <g key={t}>
               <line x1={PAD.l} x2={PAD.l + PLOT_W} y1={y(top * t)} y2={y(top * t)} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
-              <text x={W} y={y(top * t) + 3} textAnchor="end" fontSize={9} fill="var(--foreground)" fillOpacity={0.35}>
+              <text x={W} y={y(top * t) + 3} textAnchor="end" fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
                 {valueFormatter(top * t)}
               </text>
             </g>
@@ -266,14 +324,14 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
                   textAnchor="middle"
                   fontSize={9}
                   fill="var(--foreground)"
-                  fillOpacity={hot?.row === ri ? 0.9 : 0.35}
+                  fillOpacity={hot?.row === ri ? 0.9 : 0.45}
                   style={{ transition: reduced ? "none" : "fill-opacity 160ms" }}
                 >
                   {r.label}
                 </text>
                 {/* the year is written once, under the first bar that belongs to it */}
                 {r.caption && r.caption !== rows[ri - 1]?.caption && (
-                  <text x={cx} y={BASE + 25} textAnchor="middle" fontSize={8.5} fill="var(--foreground)" fillOpacity={0.35}>
+                  <text x={cx} y={BASE + 25} textAnchor="middle" fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
                     {r.caption}
                   </text>
                 )}
@@ -281,33 +339,26 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
             )
           })}
         </svg>
-      </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-1" onPointerLeave={() => setHot(null)}>
-        {rank.map((label) => {
-          const on = hot?.series === label
-          return (
-            <button
-              key={label}
-              type="button"
-              aria-label={`${label}, ${valueFormatter(sums.get(label) ?? 0)}, ${(((sums.get(label) ?? 0) / (grand || 1)) * 100).toFixed(1)}% of the total`}
-              onPointerEnter={() => point({ row: null, series: label })}
-              onFocus={() => setHot({ row: null, series: label })}
-              onBlur={() => setHot(null)}
-              className={cn(
-                "flex h-7 items-center gap-1.5 rounded-full px-2 text-[11px] text-foreground/70 outline-none transition-opacity duration-200 first:-ml-2 focus-visible:bg-foreground/[0.06]",
-                hot !== null && !on && "opacity-35",
-              )}
-            >
-              <span
-                aria-hidden
-                className="h-2 w-2 shrink-0 rounded-[2px]"
-                style={{ background: hueOf(label) }}
-              />
-              {label}
-            </button>
-          )
-        })}
+        {/* the pointed month, read in a card beside its bar (chart-overlay.tsx): segments
+            highest first, then the bar's total; it flips to the bar's left past 60% */}
+        <ChartCard
+          open={hot !== null && hot.row !== null && seg !== undefined}
+          x={hot && hot.row !== null ? `${((PAD.l + slot * hot.row + slot / 2 + (cardFlip ? -bar / 2 : bar / 2)) / W) * 100}%` : 0}
+          flip={cardFlip}
+          width={168}
+          heading={hot && hot.row !== null ? period(rows[hot.row]) : ""}
+          rows={
+            hot && hot.row !== null && rows[hot.row]
+              ? [
+                  ...[...rows[hot.row].segments]
+                    .sort((a, b) => b.value - a.value)
+                    .map((s) => ({ label: s.label, value: valueFormatter(s.value) })),
+                  { label: "Total", value: valueFormatter(totals[hot.row] ?? 0) },
+                ]
+              : []
+          }
+        />
       </div>
     </div>
   )

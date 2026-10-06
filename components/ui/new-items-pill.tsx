@@ -5,6 +5,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ArrowUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { LiveToggle } from "@/components/ui/live-toggle"
+import { usePointed } from "@/components/ui/use-pointed"
 
 /* New Items Pill, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -20,7 +22,28 @@ import { cn } from "@/lib/utils"
    · the pill is a real button inside a status region (it was a button with the status role,
      which hid it from a screen reader as a button)
    · corners of 8px and under, every figure tabular from the root
-   Props are the same. */
+   Props are the same.
+   2026-10-02 audit: the tape fed a fill every interval from mount; now it feeds only while
+   it is pointed at, or while you are scrolled away (that is when the pill counts), and it
+   rests still and complete otherwise (his call, usePointed). The static dot and the word
+   Live became a real control, an IconToggle with a pulsing green dot for Live and a pause
+   mark for Paused, at a fixed width, that pauses the tape. The visible title is gone (it is
+   the log's aria-label); the column heads are 10.5px /45 over the 4% hairline; the tape
+   hides its scrollbar and fades at the bottom edge (and the top while scrolled away). Each
+   row is coloured once: the side tick carries the direction, the price is ink /90 at
+   weight 400, the Buy and Sell words went to the screen reader. Time at /45, size at /60,
+   the pill's count changes in place. Width 440 like the other AI and operations lists.
+   The `live` prop now sets where the toggle starts.
+   2026-10-02 round 2: his note on the Live control, no green dot. The toggle is the shared
+   LiveToggle (live-toggle.tsx), the same as the tapes', in ink without a dot, its look
+   picked by the LiveToggleVariant around it. It reads Live while the tape may run, and its
+   signal moves only while fills actually land (pointed at, or scrolled away). The sample
+   tape is on topic: invented tickers became a desk's real mix (BTC-USD, ETH-USD, SOL-USD
+   and TAO-USD on Coinbase, NVDA on Nasdaq) at plausible prices, sizes in each one's unit,
+   and the venue after the symbol; the default title (aria only) is "Desk fills, Coinbase and Nasdaq".
+   Formulas:
+   · price = base × (1 + (g − 0.5) × 0.2%), g a hash of the fill's number
+   · size  = the instrument's range at a second hash h (BTC 0.005 to 0.825, NVDA 5 to 900 shares) */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -33,9 +56,19 @@ export interface FeedFill {
   symbol: string
   size: string
   price: string
+  /** where it printed (Coinbase, Nasdaq…); shown after the symbol when given */
+  venue?: string
 }
 
-const SYMBOLS = ["NOVX", "ARDN", "MRDX", "ZTH", "ORBN"]
+/* a desk's mixed tape: four crypto pairs on Coinbase and one stock on Nasdaq. Size is in
+   the instrument's own unit (coins, or shares for NVDA); price walks within ±0.1% of base */
+const INSTRUMENTS = [
+  { symbol: "BTC-USD", venue: "Coinbase", base: 97482.5, size: (g: number) => (0.005 + g * 0.82).toFixed(4) },
+  { symbol: "ETH-USD", venue: "Coinbase", base: 3714.2, size: (g: number) => (0.05 + g * 18).toFixed(3) },
+  { symbol: "NVDA", venue: "Nasdaq", base: 138.27, size: (g: number) => String(Math.round(5 + g * 895)) },
+  { symbol: "SOL-USD", venue: "Coinbase", base: 214.63, size: (g: number) => (1 + g * 340).toFixed(2) },
+  { symbol: "TAO-USD", venue: "Coinbase", base: 486.9, size: (g: number) => (0.5 + g * 64).toFixed(2) },
+]
 
 /** Fixed session anchor so the tape never depends on the wall clock: the same
  *  index always renders the same second, on the server and on every re-render. */
@@ -51,15 +84,17 @@ function clock(i: number) {
    tape gives byte-identical rows. */
 function makeFill(i: number): FeedFill {
   const g = Math.abs(Math.sin(i * 12.9898 + 78.233) * 43758.5453) % 1
-  const symbol = SYMBOLS[i % SYMBOLS.length]
-  const base = 120 + (i % SYMBOLS.length) * 37
+  const ins = INSTRUMENTS[i % INSTRUMENTS.length]
+  /* a second hash for the size, so size and price do not move together */
+  const h = Math.abs(Math.sin(i * 7.1337 + 11.17) * 24634.6345) % 1
   return {
     id: i,
     time: clock(i),
     side: g > 0.5 ? "buy" : "sell",
-    symbol,
-    size: (Math.floor(g * 900) + 25).toLocaleString("en-US"),
-    price: (base + g * 4).toFixed(2),
+    symbol: ins.symbol,
+    venue: ins.venue,
+    size: ins.size(h),
+    price: (ins.base * (1 + (g - 0.5) * 0.002)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   }
 }
 
@@ -86,12 +121,13 @@ export function NewItemsPill({
   fills = DEFAULT_FILLS,
   intervalMs = 2600,
   live = true,
-  title = "Sample tape",
+  title = "Desk fills, Coinbase and Nasdaq",
   className,
 }: {
   fills?: FeedFill[]
-  /** gap between arrivals; the tape freezes when live is false */
+  /** gap between arrivals while the tape runs */
   intervalMs?: number
+  /** where the Live toggle starts; false starts it paused */
   live?: boolean
   title?: string
   className?: string
@@ -107,9 +143,16 @@ export function NewItemsPill({
   const [tape, setTape] = useState(fills)
   const [pending, setPending] = useState(0)
   const [away, setAway] = useState(false)
+  /* the toggle; the prop sets where it starts and follows it when it changes */
+  const [on, setOn] = useState(live)
+  useEffect(() => setOn(live), [live])
+  /* fills land only while the tape is looked at: pointed, or scrolled away from the top
+     (his call, 2026-10-02); at rest it holds still */
+  const { ref, live: pointed, bind } = usePointed()
+  const running = on && (pointed || away)
 
   useEffect(() => {
-    if (!live) return
+    if (!running) return
     const t = window.setInterval(() => {
       const el = scroller.current
       before.current = el ? el.scrollHeight : 0
@@ -118,7 +161,7 @@ export function NewItemsPill({
       if (!parked) setPending((n) => n + 1)
     }, intervalMs)
     return () => window.clearInterval(t)
-  }, [live, intervalMs])
+  }, [running, intervalMs])
 
   /* Runs before paint: add back exactly the height that was inserted above the
      viewport, so the visible rows never move. useEffect is too late and shows a jump. */
@@ -146,20 +189,18 @@ export function NewItemsPill({
   const showPill = pending > 0 && away
 
   return (
-    <div className={cn("relative w-full max-w-[480px] tabular-nums", className)}>
-      <div className="flex items-baseline justify-between px-3 pb-2">
-        <span className="text-[13px] font-medium text-foreground/90">{title}</span>
-        <span className="flex items-center gap-1.5">
-          <span
-            aria-hidden
-            className={cn("h-1.5 w-1.5 rounded-full transition-colors duration-200", !live && "bg-foreground/25")}
-            style={live ? { background: GREEN } : undefined}
-          />
-          <span className="text-[10px] text-foreground/45">{live ? "Live" : "Paused"}</span>
-        </span>
+    <div ref={ref} {...bind} role="group" aria-label={title} className={cn("relative w-[440px] max-w-full tabular-nums", className)}>
+      {/* no visible title (spec 14.1): the heads name the tape; Live is a real toggle */}
+      <div className="flex justify-end pb-1.5">
+        <LiveToggle
+          live={on}
+          onLiveChange={setOn}
+          animate={running}
+          aria-label={on ? "Live, press to pause the tape" : "Paused, press to resume the tape"}
+        />
       </div>
 
-      <div className={cn(COLS, "border-b border-foreground/[0.05] pb-1.5 text-[9px] text-foreground/35")}>
+      <div className={cn(COLS, "border-b border-foreground/[0.04] pb-1.5 text-[10.5px] text-foreground/45")}>
         <span>Time</span>
         <span>Symbol</span>
         <span className="text-right">Size</span>
@@ -186,16 +227,8 @@ export function NewItemsPill({
                 className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--foreground)_14%,var(--background))] px-2.5 py-1 text-[11px] outline-none transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] focus-visible:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] motion-reduce:transition-none"
               >
                 <ArrowUp className="h-3 w-3 text-foreground/45" strokeWidth={1.8} aria-hidden />
-                {/* each new arrival pops the count in from below (4px, 2px blur, 150ms) */}
-                <motion.span
-                  key={pending}
-                  className="inline-block font-semibold text-foreground/90"
-                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ duration: 0.15, ease: EASE }}
-                >
-                  {pending}
-                </motion.span>
+                {/* the count changes in place with each arrival: a live tick, so no re-entry (spec 13.4) */}
+                <span className="font-semibold text-foreground/90">{pending}</span>
                 <span className="text-foreground/45">new</span>
               </motion.button>
             )}
@@ -212,8 +245,13 @@ export function NewItemsPill({
           onScroll={onScroll}
           role="log"
           aria-label={`${title}, newest first`}
-          className="group/tape h-[264px] overflow-y-auto"
-          style={{ overflowAnchor: "none" }}
+          className="group/tape h-[264px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{
+            overflowAnchor: "none",
+            /* no scrollbar; the edges fade instead, the top one only once you have scrolled away */
+            maskImage: `linear-gradient(to bottom, ${away ? "transparent 0, black 20px" : "black 0"}, black calc(100% - 24px), transparent 100%)`,
+            WebkitMaskImage: `linear-gradient(to bottom, ${away ? "transparent 0, black 20px" : "black 0"}, black calc(100% - 24px), transparent 100%)`,
+          }}
         >
           {tape.map((f, i) => {
             const fresh = !seeded.current.has(f.id)
@@ -233,19 +271,19 @@ export function NewItemsPill({
                 <div
                   className={cn(
                     COLS,
-                    "rounded-[4px] py-2.5 transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] group-hover/tape:[&:not(:hover)]:opacity-50 motion-reduce:transition-none",
+                    "rounded-[8px] py-2.5 transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] group-hover/tape:[&:not(:hover)]:opacity-50 motion-reduce:transition-none",
                   )}
                 >
-                  <span className="text-[10.5px] text-foreground/35">{f.time}</span>
-                  <span className="flex items-center gap-2">
+                  <span className="text-[10.5px] text-foreground/45">{f.time}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {/* the side tick is the one mark of direction; the word is for a screen reader */}
                     <span aria-hidden className="h-3 w-[2px] rounded-full" style={{ background: up ? GREEN : RED }} />
-                    <span className="text-[12.5px] text-foreground/90">{f.symbol}</span>
-                    <span className="text-[9px] text-foreground/35">{up ? "Buy" : "Sell"}</span>
+                    <span className="sr-only">{up ? "Buy" : "Sell"}</span>
+                    <span className="truncate text-[12.5px] text-foreground/90">{f.symbol}</span>
+                    {f.venue && <span className="shrink-0 text-[10.5px] text-foreground/45">{f.venue}</span>}
                   </span>
-                  <span className="text-right text-[12px] text-foreground/45">{f.size}</span>
-                  <span className="text-right text-[12.5px] font-semibold" style={{ color: up ? GREEN : RED }}>
-                    {f.price}
-                  </span>
+                  <span className="text-right text-[12px] text-foreground/60">{f.size}</span>
+                  <span className="text-right text-[12.5px] text-foreground/90">{f.price}</span>
                 </div>
               </motion.div>
             )

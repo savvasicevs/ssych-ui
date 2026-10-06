@@ -5,14 +5,18 @@ import type { KeyboardEvent, PointerEvent } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
+import { ICON_BUTTON } from "@/components/ui/control-classes"
+import { Tip } from "@/components/ui/browser-window-tip"
 
 /* Flow Bars, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: money in and out by the day. Thin signed bars off a zero line, twelve
    weeks to a page.
-   Read first: the net for the window, in the line above the plot.
-   The pointer: moving over the plot reads one day. Dragging sums a run of days, and that
-   run stays until the next press. Left and right arrows walk the days, Escape lets go.
-   The two arrows under the plot page the window back and forward through time.
+   Read first: the net for the window, the headline.
+   The pointer: moving over the plot reads one day in a card by the cursor. Dragging sums a
+   run of days in the same card, and that run stays until the next press. Left and right
+   arrows walk the days, Escape lets go. The two arrows in the header page the window back
+   and forward through time.
    Sketch: lab/FlowBars. Kept: 84 signed bars to a page over a seeded series of three
    pages, the zero axis, the hover reading, drag to sum a window, the pager.
    Changed: inflow is green and outflow red (it was ink and amber); the reading is a line
@@ -33,7 +37,16 @@ import { cn } from "@/lib/utils"
    A page turn tweens every bar from the old day's flow to the new one in 350ms, crossing the
    zero line when the sign flips, and the dates under the plot cross-fade. Each bar is drawn
    at half the plot and scaled to its flow, so all of it is CSS transitions on transform.
-   Reduced motion draws every state at once. */
+   Reduced motion draws every state at once.
+   2026-10-02 audit: a summary line sat where the headline belongs and every reading was a
+   line of text above the plot. The header is now the library's three tiers: the title at
+   /45 with the window's dates at /90 and the pager on the right (two icon buttons with a
+   tip each, Earlier and Later, the "page 1 of 3" text gone), the net of the window as the
+   26px headline, and a sub line saying in its hue whether the window netted in or out, then
+   its length at /45. Hovering a day draws the crosshair, tags the day's flow on the axis and
+   reads it in a card by the cursor; a dragged run reads its range, net and days in in the
+   same card. Gridlines are solid at 5%, figures carry the dollar sign (a new `prefix`
+   prop, "$" by default) and axis text is at /45. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)"
@@ -50,6 +63,8 @@ export interface FlowBarsProps {
   title?: string
   /** written after every figure */
   unit?: string
+  /** written before every figure, after the sign */
+  prefix?: string
   className?: string
 }
 
@@ -92,7 +107,8 @@ const niceStep = (raw: number) => {
   const n = raw / pow
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow
 }
-const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}`
+const CHEVRON_LEFT = "M6.5 1.5L3 5l3.5 3.5"
+const CHEVRON_RIGHT = "M3.5 1.5L7 5 3.5 8.5"
 
 /**
  * Daily net flows as thin signed bars: green above the zero line, red below. Hover reads
@@ -104,6 +120,7 @@ export function FlowBars({
   perPage = 84,
   title = "Daily net flows",
   unit = "M",
+  prefix = "$",
   className,
 }: FlowBarsProps) {
   const reduced = useReducedMotion()
@@ -185,58 +202,85 @@ export function FlowBars({
     setSel(null)
   }
 
-  const reading = (v: number) => (
-    <span className="font-medium" style={{ color: v >= 0 ? GREEN : RED }}>
-      {signed(v)}
-      {unit}
-    </span>
-  )
+  /** "+$12.3M": the sign, the prefix, one decimal, the unit */
+  const money = (v: number) => `${v >= 0 ? "+" : "−"}${prefix}${Math.abs(v).toFixed(1)}${unit}`
+  /** the axis tag drops the unit to fit the axis column: "+$4.2" */
+  const tagText = (v: number) => `${v >= 0 ? "+" : "−"}${prefix}${Math.abs(v).toFixed(1)}`
   const axis = [...new Set([0, Math.round((n - 1) / 3), Math.round(((n - 1) * 2) / 3), n - 1])]
-  const mode = brush && brush.hi > brush.lo ? "brush" : hover !== null ? "hover" : "rest"
+  /** the dragged run, once it spans two days or more */
+  const run = brush && brush.hi > brush.lo ? brush : null
+  const brushing = run !== null
+  /* the card: the dragged run, else the hovered day; it rides the run's end or the day and
+     turns to the left past 60% of the plot */
+  const cardAt = run ? run.hi : hover
+  const flip = cardAt !== null && (cardAt + 0.5) / n > 0.6
+  const cardX = cardAt === null ? 0 : PAD.l + (run && flip ? run.lo * slot : (cardAt + (flip ? 0 : 1)) * slot)
+  const hoverY = hover !== null ? zero - days[hover] * scale : 0
+  const [netWhole, netDecimals] = (() => {
+    const t = money(net)
+    const at = t.lastIndexOf(".")
+    return at < 0 ? [t, ""] : [t.slice(0, at), t.slice(at)]
+  })()
   /* 84 bars share one 300ms stagger, so the last starts by 300ms */
   const stagger = Math.min(0.02, 0.3 / Math.max(1, n))
   const half = PLOT_H / 2
 
   return (
     <div role="group" aria-label={title} className={cn("w-[480px] max-w-full tabular-nums", className)}>
-      {/* no visible title (2026-10-01): the net line says what the bars are */}
-      <div className="flex items-baseline gap-4">
-        <span role="status" className="whitespace-nowrap text-[10.5px] text-foreground/45">
-          {/* the line cross-fades when it changes kind or page; within a kind the figures follow at once */}
-          <motion.span
-            key={`${mode}-${at}`}
-            className="inline-block"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-          {brush && brush.hi > brush.lo ? (
-            <>
-              <span className="font-medium text-foreground/90">
-                {label(brush.lo)} to {label(brush.hi)}
-              </span>{" "}
-              · {brush.hi - brush.lo + 1} days · net {reading(sum(brush.lo, brush.hi))}
-            </>
-          ) : hover !== null ? (
-            <>
-              <span className="font-medium text-foreground/90">{label(hover)}</span> · {reading(days[hover])}
-            </>
-          ) : (
-            <>
-              {label(0)} to {label(n - 1)} · {daysIn} of {n} days in · net {reading(net)}
-            </>
-          )}
-          </motion.span>
+      {/* the header, three tiers (spec 14.1): title, window and pager; the net; in or out */}
+      <div className="mb-3 flex items-center justify-between gap-3 text-[12px]">
+        <span className="truncate text-foreground/45">{title}</span>
+        <span className="flex shrink-0 items-center gap-1">
+          <span className="mr-1 font-medium text-foreground/90">
+            {label(0)} to {label(n - 1)}
+          </span>
+          {[
+            { d: -1, tip: "Earlier", path: CHEVRON_LEFT, off: at === 0 },
+            { d: 1, tip: "Later", path: CHEVRON_RIGHT, off: at === pages - 1 },
+          ].map((b) => (
+            <Tip key={b.tip} tip={b.tip} side="top" disabled={b.off}>
+              <button
+                type="button"
+                aria-label={`${b.tip} days`}
+                onClick={() => turn(b.d)}
+                disabled={b.off}
+                className={cn(ICON_BUTTON, "h-7 w-7 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35 motion-reduce:active:scale-100")}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
+                  <path d={b.path} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </Tip>
+          ))}
         </span>
       </div>
+      <div role="status">
+        {/* a page turn swaps the net in place (4px, 2px blur, 150ms) */}
+        <motion.div
+          key={at}
+          initial={reduced || !grown ? false : { opacity: 0, y: 4, filter: "blur(2px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.15, ease: EASE }}
+        >
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {netWhole}
+            <span className="text-foreground/35">{netDecimals}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: net >= 0 ? GREEN : RED }}>
+            <span>{net >= 0 ? "Net inflow" : "Net outflow"}</span>
+            <span className="font-normal text-foreground/45">over {n === 1 ? "1 day" : `${n} days`}</span>
+          </p>
+        </motion.div>
+      </div>
 
+      <div className="relative mt-4">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        className="mt-2 block w-full cursor-crosshair touch-none select-none overflow-visible outline-none"
+        className="block w-full cursor-crosshair touch-none select-none overflow-visible outline-none"
         role="img"
         tabIndex={0}
-        aria-label={`${title}, ${label(0)} to ${label(n - 1)}: net ${signed(net)}${unit} over ${n} days, ${daysIn} of them in`}
+        aria-label={`${title}, ${label(0)} to ${label(n - 1)}: net ${money(net)} over ${n} days, ${daysIn} of them in`}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={endDrag}
@@ -269,10 +313,17 @@ export function FlowBars({
               stroke="var(--foreground)"
               strokeOpacity={v === 0 ? 0.14 : 0.05}
               strokeWidth={1}
-              strokeDasharray={v === 0 ? undefined : "2 4"}
             />
-            <text x={W - PAD.r + 6} y={zero - v * scale + 3} fontSize={9} fill="var(--foreground)" fillOpacity={0.35}>
-              {v === 0 ? "0" : `${v > 0 ? "+" : "−"}${Math.abs(v)}${unit}`}
+            <text
+              x={W - PAD.r + 6}
+              y={zero - v * scale + 3}
+              fontSize={9}
+              fill="var(--foreground)"
+              fillOpacity={0.45}
+              /* a figure under the hovered day's tag fades aside for it */
+              style={{ opacity: hover !== null && !brushing && Math.abs(zero - v * scale - hoverY) < 12 ? 0 : 1, transition: "opacity 150ms" }}
+            >
+              {v === 0 ? `${prefix}0` : `${v > 0 ? "+" : "−"}${prefix}${Math.abs(v)}${unit}`}
             </text>
           </g>
         ))}
@@ -310,17 +361,22 @@ export function FlowBars({
           })}
         </g>
 
-        {hover !== null && !(brush && brush.hi > brush.lo) && (
-          <line
-            x1={PAD.l + hover * slot + slot / 2}
-            y1={PAD.t}
-            x2={PAD.l + hover * slot + slot / 2}
-            y2={PAD.t + PLOT_H}
-            stroke="var(--foreground)"
-            strokeOpacity={0.18}
-            strokeWidth={1}
-            pointerEvents="none"
-          />
+        {/* the crosshair on the hovered day, its flow tagged on the axis in its hue */}
+        {hover !== null && !brushing && (
+          <g pointerEvents="none">
+            <line
+              x1={PAD.l + hover * slot + slot / 2}
+              y1={PAD.t}
+              x2={PAD.l + hover * slot + slot / 2}
+              y2={PAD.t + PLOT_H}
+              stroke="var(--foreground)"
+              strokeOpacity={0.18}
+              strokeWidth={1}
+            />
+            <AxisTag x={W - PAD.r + 2} y={hoverY} width={PAD.r - 2} color={days[hover] >= 0 ? GREEN : RED}>
+              {tagText(days[hover])}
+            </AxisTag>
+          </g>
         )}
 
         {/* the dates cross-fade on a page turn */}
@@ -332,7 +388,7 @@ export function FlowBars({
             textAnchor={k === 0 ? "start" : k === axis.length - 1 ? "end" : "middle"}
             fontSize={9}
             fill="var(--foreground)"
-            fillOpacity={0.35}
+            fillOpacity={0.45}
             initial={reduced || !grown ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.25, ease: EASE }}
@@ -342,32 +398,25 @@ export function FlowBars({
         ))}
       </svg>
 
-      <div className="mt-1 flex items-center justify-center gap-2">
-        <button
-          type="button"
-          aria-label="Earlier days"
-          onClick={() => turn(-1)}
-          disabled={at === 0}
-          className="grid h-7 w-7 place-items-center rounded-full text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-            <path d="M6.5 1.5L3 5l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <span className="w-[72px] text-center text-[10.5px] text-foreground/45">
-          page {at + 1} of {pages}
-        </span>
-        <button
-          type="button"
-          aria-label="Later days"
-          onClick={() => turn(1)}
-          disabled={at === pages - 1}
-          className="grid h-7 w-7 place-items-center rounded-full text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-            <path d="M3.5 1.5L7 5 3.5 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+
+      {/* the hovered day or the dragged run, read in a card by the cursor (chart-overlay.tsx) */}
+      <ChartCard
+        open={cardAt !== null}
+        x={`${(cardX / W) * 100}%`}
+        flip={flip}
+        width={brushing ? 168 : 132}
+        heading={run ? `${label(run.lo)} to ${label(run.hi)}` : hover !== null ? label(hover) : ""}
+        rows={
+          run
+            ? [
+                { label: "Net", value: money(sum(run.lo, run.hi)), color: sum(run.lo, run.hi) >= 0 ? GREEN : RED },
+                { label: "In days", value: `${days.slice(run.lo, run.hi + 1).filter((v) => v >= 0).length} of ${run.hi - run.lo + 1}` },
+              ]
+            : hover !== null
+              ? [{ label: "Net", value: money(days[hover]), color: days[hover] >= 0 ? GREEN : RED }]
+              : []
+        }
+      />
       </div>
     </div>
   )

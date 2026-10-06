@@ -3,7 +3,7 @@
   "name": "sidebar",
   "type": "registry:ui",
   "title": "Sidebar",
-  "description": "Collapsible accordion sidebar with icon'd sections, an active rail, and socials.",
+  "description": "A collapsible sidebar navigation for SaaS admin panels and trading dashboards, with accordion sections, an active rail and a mobile drawer.",
   "categories": [
     "layout"
   ],

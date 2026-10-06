@@ -4,6 +4,25 @@ import { useId, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag } from "@/components/ui/chart-overlay"
+import { SegmentedControl } from "@/components/ui/segmented-control"
+
+/* Price Scrubber: the wide price chart (560px, the Price chart family's width).
+   A magnet crosshair snaps to the real datum, the pointed price is tagged on the axis,
+   and scrubbing reads the point into the header in place, recolouring the chart off the
+   window's first price. A soft wash rides the cursor.
+   2026-10-02 audit: brought into the one chart language. The header has the three tiers
+   (spec 14.1): the name at /45 with the symbol at /90 on the right, the price at 26px with
+   its cents at /35, then the move in its hue and the window ("past year", or the pointed
+   time) at /45; a new `name` prop carries the company, and the sample is Broadcom (AVGO)
+   so the two ends of the label row do not read the same. The pointed value is the shared
+   AxisTag (it drew its own square badges) and the time badge on the foot is gone since the
+   header reads the time. Gridlines are solid at 5%, the axis prints dollars at 9px /45,
+   and the timeframe pills are the shared SegmentedControl in the header, not a hand made
+   row under the plot.
+   Formulas:
+   · move = the pointed price (or the last) − the window's first price
+   · percent = move ÷ the window's first price × 100 */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -55,6 +74,10 @@ const AXES: Record<ScrubTimeframe, string[]> = {
   All: ["’22", "’23", "’24", "’25", "’26"],
 }
 
+/** what the move is measured over, at rest */
+const WINDOW: Record<ScrubTimeframe, string> = { "1D": "today", "1W": "past week", "1M": "past month", "1Y": "past year", All: "all time" }
+
+const axisUsd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`
 const fmtPrice = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const W = 560
@@ -83,17 +106,20 @@ const SPOT_STOPS: [number, number][] = [
 ]
 
 /**
- * The scrub chart: a magnet crosshair snaps to the real datum with price and
- * time badges riding the axes, and scrubbing updates the hero number, which
- * recolours the whole chart off the reference price. A soft wash rides the
+ * The scrub chart: a magnet crosshair snaps to the real datum with the price
+ * tagged on the axis, and scrubbing updates the header, which recolours the
+ * whole chart off the reference price. A soft wash rides the
  * cursor, so the line reads lighter under the pointer and settles back on the
  * far sides. Timeframe pills morph the chart in place.
  */
 export function PriceScrubber({
-  symbol = "NVDA",
+  name = "Broadcom",
+  symbol = "AVGO",
   timeframe = "1Y",
   className,
 }: {
+  /** the company or market's name, on the label row's left */
+  name?: string
   symbol?: string
   /** the timeframe the chart opens on */
   timeframe?: ScrubTimeframe
@@ -137,23 +163,41 @@ export function PriceScrubber({
   const area = `${line} L${x(n - 1).toFixed(1)},${H - PAD.b} L${x(0).toFixed(1)},${H - PAD.b} Z`
   const badgeY = y(activeVal)
   const crossX = x(activeIdx)
+  const tagY = Math.max(PAD.t + 8, Math.min(H - PAD.b - 8, badgeY))
+  const [whole, cents] = fmtPrice(activeVal).split(".")
 
   return (
     <div className={cn("w-[560px]", className)}>
-      {/* hero: scrubbing updates the number and the delta, everything recolours off the reference */}
-      <div className="mb-1 px-1">
-        <div className="flex items-center gap-2 text-[11px] text-foreground/45">
-          <span className="font-semibold text-foreground/90">{symbol}</span>
-          <span>· {hi === null ? "Today" : timeLabel(tf, activeIdx / (n - 1))}</span>
+      {/* the header, three tiers (spec 14.1); scrubbing reads the point in place, the timeframe switch sits on its right */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{name}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">{symbol}</span>
+      </div>
+      <div className="mb-2 flex items-end justify-between gap-4 tabular-nums" role="status">
+        <div>
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            {whole}
+            <span className="text-foreground/35">.{cents}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: hue }}>
+            <span>
+              {up ? "+" : "−"}
+              {fmtPrice(Math.abs(delta))} · {up ? "+" : "−"}
+              {Math.abs(deltaPct).toFixed(2)}%
+            </span>
+            <span className="font-normal text-foreground/45">{hi === null ? WINDOW[tf] : timeLabel(tf, activeIdx / (n - 1))}</span>
+          </p>
         </div>
-        <div className="mt-0.5 flex items-baseline gap-2.5">
-          <span className="text-[26px] font-semibold tabular-nums tracking-[-0.02em] text-foreground/90">{fmtPrice(activeVal)}</span>
-          <span className="text-[13px] font-medium tabular-nums" style={{ color: hue }}>
-            {up ? "+" : "−"}
-            {fmtPrice(Math.abs(delta))} · {up ? "+" : "−"}
-            {Math.abs(deltaPct).toFixed(2)}%
-          </span>
-        </div>
+        <SegmentedControl
+          options={[...TF]}
+          value={tf}
+          onChange={(v) => {
+            setTf(v as ScrubTimeframe)
+            setHi(null)
+          }}
+          label="Timeframe"
+          className="shrink-0"
+        />
       </div>
 
       <svg
@@ -163,7 +207,7 @@ export function PriceScrubber({
         viewBox={`0 0 ${W} ${H}`}
         className="block cursor-crosshair touch-none"
         role="img"
-        aria-label={`${symbol} price over ${tf}, ${fmtPrice(data[n - 1])}`}
+        aria-label={`${name} (${symbol}) price over the ${WINDOW[tf]}, ${fmtPrice(data[n - 1])}`}
         onPointerMove={onMove}
         onPointerLeave={() => setHi(null)}
       >
@@ -180,18 +224,28 @@ export function PriceScrubber({
 
         {[0.25, 0.5, 0.75].map((f) => {
           const gy = PAD.t + f * PLOT_H
+          /* a figure steps aside while the pointed tag sits on it */
+          const under = hi !== null && Math.abs(gy - tagY) < 12
           return (
             <g key={f}>
-              <line x1={PAD.l} y1={gy} x2={W - PAD.r} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} strokeDasharray="2 5" />
-              <text x={W - PAD.r + 8} y={gy + 3} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.3} className="tabular-nums">
-                {(max - f * (max - min)).toFixed(0)}
+              <line x1={PAD.l} y1={gy} x2={W - PAD.r} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} />
+              <text
+                x={W - PAD.r + 8}
+                y={gy + 3}
+                fontSize={9}
+                fill="var(--foreground)"
+                fillOpacity={0.45}
+                className="tabular-nums"
+                style={{ opacity: under ? 0 : 1, transition: reduced ? "none" : "opacity 150ms" }}
+              >
+                {axisUsd(max - f * (max - min))}
               </text>
             </g>
           )
         })}
 
         {AXES[tf].map((t, idx, arr) => (
-          <text key={t} x={PAD.l + (idx / (arr.length - 1)) * PLOT_W} y={H - 8} textAnchor={idx === 0 ? "start" : idx === arr.length - 1 ? "end" : "middle"} fontSize={8.5} fill="var(--foreground)" fillOpacity={0.3}>
+          <text key={t} x={PAD.l + (idx / (arr.length - 1)) * PLOT_W} y={H - 8} textAnchor={idx === 0 ? "start" : idx === arr.length - 1 ? "end" : "middle"} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
             {t}
           </text>
         ))}
@@ -225,46 +279,18 @@ export function PriceScrubber({
           )}
         </AnimatePresence>
 
-        {/* magnet crosshair: rule, snapped dot and the two axis badges */}
+        {/* magnet crosshair: rule, snapped dot and the pointed price tagged on the axis (chart-overlay.tsx) */}
         {hi !== null && (
           <g pointerEvents="none">
             <line x1={crossX} y1={PAD.t} x2={crossX} y2={H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.2} strokeWidth={1} />
-            <circle cx={crossX} cy={badgeY} r={3.5} fill={hue} stroke="var(--card)" strokeWidth={1.75} />
-            <g transform={`translate(${W - PAD.r + 2}, ${Math.max(PAD.t + 8, Math.min(H - PAD.b - 8, badgeY))})`}>
-              <rect x={0} y={-8} width={58} height={16} rx={4} fill="var(--card)" stroke={hue} strokeOpacity={0.7} />
-              <text x={6} y={3.5} fontSize={9.5} fontWeight={600} fill={hue} className="tabular-nums">
-                {activeVal.toFixed(2)}
-              </text>
-            </g>
-            <g transform={`translate(${Math.max(PAD.l + 20, Math.min(W - PAD.r - 20, crossX))}, ${H - PAD.b + 2})`}>
-              <rect x={-22} y={0} width={44} height={15} rx={4} fill="var(--card)" stroke={hue} strokeOpacity={0.7} />
-              <text x={0} y={11} textAnchor="middle" fontSize={9} fontWeight={600} fill={hue}>
-                {timeLabel(tf, activeIdx / (n - 1))}
-              </text>
-            </g>
+            <line x1={PAD.l} y1={badgeY} x2={W - PAD.r} y2={badgeY} stroke="var(--foreground)" strokeOpacity={0.14} strokeDasharray="3 3" strokeWidth={1} />
+            <circle cx={crossX} cy={badgeY} r={3.5} fill={hue} stroke="var(--background)" strokeWidth={1.75} />
+            <AxisTag x={W - PAD.r + 4} y={tagY} width={58} color={hue}>
+              {fmtPrice(activeVal)}
+            </AxisTag>
           </g>
         )}
       </svg>
-
-      {/* timeframe pills: the chart morphs in place */}
-      <div className="mt-2 flex justify-center gap-1">
-        {TF.map((t) => {
-          const on = t === tf
-          return (
-            <button
-              key={t}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setTf(t)}
-              className={cn("relative h-7 rounded-full px-3 text-[11px] font-semibold tabular-nums transition-colors duration-150", on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/70")}
-            >
-              {on && !reduced && <motion.span layoutId={`${uid}-tf`} className="absolute inset-0 rounded-full bg-foreground/[0.08]" transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} />}
-              {on && reduced && <span className="absolute inset-0 rounded-full bg-foreground/[0.08]" />}
-              <span className="relative">{t}</span>
-            </button>
-          )
-        })}
-      </div>
     </div>
   )
 }

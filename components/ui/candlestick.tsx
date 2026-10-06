@@ -1,27 +1,47 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { motion, useInView, useReducedMotion } from "motion/react"
+import { useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { useWidth } from "@/components/ui/use-width"
+import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
 
-/* Candlestick, rebuilt through the ssych-component skill (2026-09-29).
-   What changed against the version before it (in git history), and why:
-   · the legend says Open, High, Low, Close as written words: no capitals set by style
-   · the price on the right axis is plain text in the candle's colour, the outlined badge
-     is gone; an axis figure steps aside while the price sits on it
-   · the other candles dim to 0.35 over 160ms when one is pointed at
-   · the legend is the readout (role status) and the chart's name carries the last close
-   · tabular figures are set once on the root
-   Motion (2026-10-01): once the chart first comes into view, every candle rises out of its
-   own middle (0.6 to full height, with a fade) and every volume bar grows off the floor,
-   left to right under one 380ms stagger, done by about 830ms. CSS transitions on transform,
-   so the 92 marks cost no script per frame. Reduced motion draws the end state. */
+/* Candlestick, in the trading terminal's chart language (user call, 2026-10-02: "fix the
+   candlestick chart to be similar to the one on the trading terminal"). The version before
+   this one is in git history. What it took from the terminal's price pane:
+   · many thin candles, the wick a 1px line, the body ~62% of a slot; direction is the only hue
+   · solid faint gridlines with dollar figures on the right
+   · a dashed guide at the last close, across the whole plot
+   · the crosshair: a rule on the candle, a dashed rule on its close, a dot where they meet,
+     the close as an outlined tag on the axis, and a card beside the cursor reading the bar's
+     time, open, high, low, close and change
+   · a volume pane under its own hairline, the same hue at 0.6
+   · dates along the foot
+   The header reads the last close and the move across the whole run.
+   2026-10-02: the header looked weird (symbol, price, move and a "15d" all on one small
+   line), so it now has the library's three tiers like Market Snapshot (spec 14.1): the
+   company name at /45 with the symbol on the right, the last close as the headline with its
+   cents at /35, then the run's move in its hue and the window at /45. A new `name` prop
+   carries the company name.
+   2026-10-02 audit: the sample company is now Alphabet (GOOGL), because NVIDIA and NVDA
+   read the same at both ends of the label row (his call). The last close guide is named on
+   the axis as plain 9px text (the close at /90, "Last" at /45) and steps aside under the
+   pointed tag, the price ticks are 9px like the dates, and the card gains a Volume row so
+   the volume pane is readable; a new `volumeUnit` prop says how many shares one unit of
+   `v` stands for.
+   Formulas:
+   · change on a bar    = (close − open) ÷ open × 100
+   · move across the run = last close − first open, and ÷ first open × 100
+   · volume bar height  = volume ÷ the run's largest volume × the pane's height
+   · volume in the card = v × volumeUnit shares
+   Motion (2026-10-01, kept): once the chart first comes into view every candle rises out of
+   its own middle and every volume bar grows off the floor, left to right under one 380ms
+   stagger. CSS transitions on transform. Reduced motion draws the end state. */
 
-const EASE = [0.16, 1, 0.3, 1] as const
 const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)"
-const GREEN = "var(--chart-up)"
-const RED = "var(--chart-down)"
+const UP = "var(--chart-up)"
+const DOWN = "var(--chart-candle-down, var(--chart-down))"
 
 export interface Candle {
   o: number
@@ -32,7 +52,7 @@ export interface Candle {
   v: number
 }
 
-/** Deterministic walk so every render agrees (LCG, one seed). */
+/** Deterministic walk so every render agrees (LCG, one seed): a slow climb with pullbacks. */
 const DEFAULT_CANDLES: Candle[] = (() => {
   let s = 20260729
   const rnd = () => {
@@ -40,67 +60,77 @@ const DEFAULT_CANDLES: Candle[] = (() => {
     return s / 0x7fffffff
   }
   const out: Candle[] = []
-  let close = 174
-  for (let i = 0; i < 46; i++) {
+  let close = 168
+  for (let i = 0; i < 90; i++) {
     const o = close
-    const move = (rnd() - 0.47) * 3.4
+    const move = (rnd() - 0.44) * 1.9
     const c = o + move
-    const h = Math.max(o, c) + rnd() * 1.5
-    const l = Math.min(o, c) - rnd() * 1.5
-    const v = 0.4 + rnd() * 0.7 + Math.abs(move) * 0.12
+    const h = Math.max(o, c) + rnd() * 0.9
+    const l = Math.min(o, c) - rnd() * 0.9
+    const v = 0.35 + rnd() * 0.8 + Math.abs(move) * 0.18
     out.push({ o, h, l, c, v })
     close = c
   }
   return out
 })()
 
-const W = 560
-const H = 250
-const PAD = { l: 8, r: 54, t: 14, b: 20 }
-const PLOT_W = W - PAD.l - PAD.r
-const VOL_H = 40
-const PRICE_TOP = PAD.t
-const PRICE_BOT = H - PAD.b - VOL_H - 10
-const VOL_BOT = H - PAD.b
+/** the price axis on the right, the date row under the volume pane */
+const AXIS_W = 52
+const DATE_H = 20
+const GAP = 10
+const PRICE_TOP = 8
+/** how many dates along the foot */
+const DATES = 5
 
-/** a readout figure that changes on hover re-enters 4px out of a 2px blur over 150ms;
-    reduced motion keeps the fade and drops the travel */
-function Swap({ k, reduced, children }: { k: string; reduced: boolean; children: React.ReactNode }) {
-  return (
-    <motion.span
-      key={k}
-      className="inline-block"
-      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      transition={{ duration: 0.15, ease: EASE }}
-    >
-      {children}
-    </motion.span>
-  )
-}
-
-const FIELDS = [
-  { k: "o", name: "Open" },
-  { k: "h", name: "High" },
-  { k: "l", name: "Low" },
-  { k: "c", name: "Close" },
-] as const
+/** shares, compact: 18.4M */
+const shares = (v: number) =>
+  v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : `${Math.round(v)}`
+const usd = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const axisUsd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`
+const day = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
+const stamp = (t: number) =>
+  `${new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} ${new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC`
 
 /**
- * Candles over a volume histogram that share one x. A crosshair snaps to the candle under
- * the pointer, keeps it full and dims the rest, writes its close on the right axis and its
- * open, high, low and close in the legend. Green up, red down.
+ * Candles over a volume pane that share one x. The crosshair snaps to the candle under the
+ * pointer, keeps it full and dims the rest, tags its close on the axis and reads the bar in a
+ * card beside the cursor. Green up, red down.
  */
 export function Candlestick({
-  symbol = "NVDA",
+  name = "Alphabet",
+  symbol = "GOOGL",
   candles = DEFAULT_CANDLES,
+  start = Date.UTC(2026, 4, 12),
+  interval = 4 * 3600_000,
+  volumeUnit = 20_000_000,
+  markers = [],
+  height = 300,
   className,
 }: {
+  /** the chart's height in px (2026-10-06); the volume pane keeps its share */
+  height?: number
+  /** signals on the bars (2026-10-06): a buy sits under its bar's low, a sell over its high */
+  markers?: { at: number; side: "buy" | "sell" }[]
+  /** the company or market's name, read in the header's label row */
+  name?: string
   symbol?: string
   /** open, high, low, close and a relative volume per bar */
   candles?: Candle[]
+  /** the first bar's open time, ms since epoch (UTC) */
+  start?: number
+  /** one bar's length, ms */
+  interval?: number
+  /** shares one unit of a candle's `v` stands for; the card reads v × volumeUnit */
+  volumeUnit?: number
   className?: string
 }) {
+  // laid out at the width it is given (2026-10-06), so the text keeps its size
+  const [boxRef, W] = useWidth<HTMLDivElement>(560) // the default width, as before
+  const PLOT_W = W - AXIS_W
+  const H = height
+  const VOL_H = Math.round(H * 0.18)
+  const PRICE_BOT = H - DATE_H - VOL_H - GAP
+  const VOL_BOT = H - DATE_H
   const reduced = useReducedMotion() ?? false
   const svgRef = useRef<SVGSVGElement>(null)
   const seen = useInView(svgRef, { once: true, amount: 0.3 })
@@ -108,7 +138,7 @@ export function Candlestick({
   const [hi, setHi] = useState<number | null>(null)
   const n = candles.length
 
-  const { pMin, pMax, vMax } = useMemo(() => {
+  const { pMin, pMax, vMax, ticks } = useMemo(() => {
     let lo = Number.POSITIVE_INFINITY
     let top = Number.NEGATIVE_INFINITY
     let vm = 0
@@ -117,135 +147,213 @@ export function Candlestick({
       top = Math.max(top, d.h)
       vm = Math.max(vm, d.v)
     }
-    const pad = (top - lo) * 0.06
-    return { pMin: lo - pad, pMax: top + pad, vMax: vm || 1 }
+    const pad = (top - lo) * 0.06 || 1
+    const a = lo - pad
+    const b = top + pad
+    return { pMin: a, pMax: b, vMax: vm || 1, ticks: [0.1, 0.37, 0.63, 0.9].map((f) => b - f * (b - a)) }
   }, [candles])
 
   const step = PLOT_W / Math.max(1, n)
-  const cw = Math.min(9, step * 0.6)
-  const cx = (i: number) => PAD.l + (i + 0.5) * step
+  const bodyW = Math.max(1, Math.min(9, step * 0.62))
+  const cx = (i: number) => (i + 0.5) * step
   const yP = (v: number) => PRICE_TOP + (1 - (v - pMin) / (pMax - pMin || 1)) * (PRICE_BOT - PRICE_TOP)
-  const yV = (v: number) => VOL_BOT - (v / vMax) * VOL_H
+  const yV = (v: number) => VOL_BOT - (v / vMax) * (VOL_H - 4)
+  const time = (i: number) => start + i * interval
 
   const onMove = (e: React.PointerEvent) => {
     const el = svgRef.current
-    if (!el) return
+    if (!el || n === 0) return
     const r = el.getBoundingClientRect()
     const px = ((e.clientX - r.left) / r.width) * W
-    setHi(Math.max(0, Math.min(n - 1, Math.floor((px - PAD.l) / step))))
+    setHi(px > PLOT_W ? n - 1 : Math.max(0, Math.min(n - 1, Math.floor(px / step))))
   }
 
-  const lastCandle = candles[n - 1] ?? { o: 0, h: 0, l: 0, c: 0, v: 0 }
-  const active = candles[hi ?? n - 1] ?? lastCandle
-  const up = active.c >= active.o
-  /** (close − open) ÷ open */
-  const change = (d: Candle) => (d.o ? ((d.c - d.o) / d.o) * 100 : 0)
-  const signedPct = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`
-  const hue = up ? GREEN : RED
-  const priceY = Math.max(PRICE_TOP + 8, Math.min(PRICE_BOT - 8, yP(active.c)))
+  const first = candles[0] ?? { o: 0, h: 0, l: 0, c: 0, v: 0 }
+  const last = candles[n - 1] ?? first
+  const runMove = last.c - first.o
+  const runPct = first.o ? (runMove / first.o) * 100 : 0
+  const runUp = runMove >= 0
+  const active = hi !== null ? candles[hi] : null
+  const up = active ? active.c >= active.o : runUp
+  const hue = up ? UP : DOWN
+  const barPct = active && active.o ? ((active.c - active.o) / active.o) * 100 : 0
+  const sign = (v: number) => (v >= 0 ? "+" : "−")
+  const tagY = active ? Math.max(PRICE_TOP + 8, Math.min(PRICE_BOT - 8, yP(active.c))) : 0
   const fade = reduced ? "none" : "opacity 160ms"
-  /* the entrance: every candle rises from its own middle, about 8ms apart, the whole run under 380ms */
+  /* the entrance: every candle rises from its own middle, the whole run under 380ms */
   const stagger = Math.min(0.02, 0.38 / Math.max(1, n))
   const grow = (i: number) => (reduced ? "none" : `transform 0.45s ${EASE_CSS} ${(i * stagger).toFixed(3)}s, opacity 0.45s ${EASE_CSS} ${(i * stagger).toFixed(3)}s`)
+  const dates = Array.from({ length: DATES }, (_, k) => Math.round((k / (DATES - 1)) * (n - 1)))
+  /* the card sits right of the cursor, and flips left past 60% of the plot */
+  const flip = hi !== null && cx(hi) > PLOT_W * 0.6
+  const [closeWhole, closeCents] = usd(last.c).split(".")
+  const windowDays = Math.round((n * interval) / 86_400_000)
+  /* the last close, named on the axis; it and any tick under it step aside for the pointed tag */
+  const lastY = yP(last.c)
+  const lastHidden = active !== null && Math.abs(lastY - tagY) < 13
 
   return (
-    <div className={cn("w-[560px] tabular-nums", className)}>
-      <div role="status" className="mb-1 flex items-baseline gap-3 px-1 text-[11px] text-foreground/45">
-        <span className="text-[12.5px] font-semibold text-foreground/90">{symbol}</span>
-        {FIELDS.map((f) => (
-          <span key={f.k}>
-            {f.name}{" "}
-            <span className="font-medium" style={{ color: hue }}>
-              <Swap k={`${hi ?? "last"}-${f.k}`} reduced={reduced}>
-                {active[f.k].toFixed(2)}
-              </Swap>
-            </span>
-          </span>
-        ))}
-        <span className="font-medium" style={{ color: hue }}>
-          <Swap k={`${hi ?? "last"}-chg`} reduced={reduced}>
-            {signedPct(change(active))}
-          </Swap>
-        </span>
+    <div ref={boxRef} className={cn("w-[560px] max-w-full tabular-nums", className)}>
+      {/* the header, three tiers (spec 14.1): name and symbol, the last close, then the run's move and its window */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{name}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">{symbol}</span>
       </div>
+      <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+        {closeWhole}
+        <span className="text-foreground/35">.{closeCents}</span>
+      </p>
+      <p className="mb-4 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: runUp ? UP : DOWN }}>
+        <span>
+          {sign(runMove)}
+          {usd(Math.abs(runMove))} · {sign(runPct)}
+          {Math.abs(runPct).toFixed(1)}%
+        </span>
+        <span className="font-normal text-foreground/45">{windowDays === 1 ? "1 day" : `${windowDays} days`}</span>
+      </p>
 
-      <svg
-        ref={svgRef}
-        width={W}
-        height={H}
-        viewBox={`0 0 ${W} ${H}`}
-        className="block cursor-crosshair touch-none"
-        role="img"
-        aria-label={`${symbol} candlestick chart, ${n} bars. Last close ${lastCandle.c.toFixed(2)}, ${signedPct(change(lastCandle))} on the bar`}
-        onPointerMove={onMove}
-        onPointerLeave={() => setHi(null)}
-      >
-        {/* price gridlines and the right axis */}
-        {[0.25, 0.5, 0.75].map((f) => {
-          const gy = PRICE_TOP + f * (PRICE_BOT - PRICE_TOP)
-          const under = hi !== null && Math.abs(gy - priceY) < 11
-          return (
-            <g key={f}>
-              <line x1={PAD.l} y1={gy} x2={W - PAD.r} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} strokeDasharray="2 5" />
-              <text
-                x={W - PAD.r + 8}
-                y={gy + 3}
-                fontSize={8.5}
-                fill="var(--foreground)"
-                fillOpacity={0.35}
-                style={{ opacity: under ? 0 : 1, transition: fade }}
-              >
-                {(pMax - f * (pMax - pMin)).toFixed(0)}
-              </text>
-            </g>
-          )
-        })}
-
-        {candles.map((d, i) => {
-          const barHue = d.c >= d.o ? GREEN : RED
-          const dim = hi !== null && hi !== i
-          const bodyTop = yP(Math.max(d.o, d.c))
-          const bodyH = Math.max(1, Math.abs(yP(d.o) - yP(d.c)))
-          return (
-            <g key={i} style={{ opacity: dim ? 0.35 : 1, transition: fade }}>
-              {/* volume is the same hue at a lower strength; it grows off the floor */}
-              <rect
-                x={cx(i) - cw / 2}
-                y={yV(d.v)}
-                width={cw}
-                height={VOL_BOT - yV(d.v)}
-                rx={1}
-                fill={barHue}
-                fillOpacity={0.45}
-                style={{ transformOrigin: `0px ${VOL_BOT}px`, transform: shown ? "none" : "scaleY(0)", transition: grow(i) }}
-              />
-              {/* the candle rises out of its own middle, between its high and its low */}
-              <g
-                style={{
-                  transformOrigin: `0px ${((yP(d.h) + yP(d.l)) / 2).toFixed(1)}px`,
-                  transform: shown ? "none" : "scaleY(0.6)",
-                  opacity: shown ? 1 : 0,
-                  transition: grow(i),
-                }}
-              >
-                <line x1={cx(i)} y1={yP(d.h)} x2={cx(i)} y2={yP(d.l)} stroke={barHue} strokeWidth={1} />
-                <rect x={cx(i) - cw / 2} y={bodyTop} width={cw} height={bodyH} rx={1} fill={barHue} />
+      <div className="relative">
+        <svg
+          ref={svgRef}
+          width={W}
+          height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          className="block h-auto w-full cursor-crosshair touch-none"
+          role="img"
+          aria-label={`${name} (${symbol}) candlestick chart, ${n} bars. Last close ${usd(last.c)}, ${sign(runPct)}${Math.abs(runPct).toFixed(2)}% across the run`}
+          onPointerMove={onMove}
+          onPointerLeave={() => setHi(null)}
+        >
+          {/* price gridlines and the right-hand scale; a figure steps aside while the tag sits on it */}
+          {ticks.map((t) => {
+            const gy = yP(t)
+            const under = (active !== null && Math.abs(gy - tagY) < 12) || Math.abs(gy - lastY) < 11
+            return (
+              <g key={t}>
+                <line x1={0} x2={PLOT_W} y1={gy} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
+                <text x={W - 4} y={gy + 3} textAnchor="end" fontSize={9} fill="var(--foreground)" fillOpacity={0.45} style={{ opacity: under ? 0 : 1, transition: fade }}>
+                  {axisUsd(t)}
+                </text>
               </g>
-            </g>
-          )
-        })}
+            )
+          })}
+          {/* the volume pane's own floor rule */}
+          <line x1={0} x2={W} y1={VOL_BOT + 0.5} y2={VOL_BOT + 0.5} stroke="var(--foreground)" strokeOpacity={0.06} strokeWidth={1} />
 
-        {/* the crosshair: a rule on the candle, a rule on its close, the close written on the axis */}
-        {hi !== null && (
-          <g pointerEvents="none">
-            <line x1={cx(hi)} y1={PRICE_TOP} x2={cx(hi)} y2={VOL_BOT} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} />
-            <line x1={PAD.l} y1={yP(active.c)} x2={W - PAD.r} y2={yP(active.c)} stroke="var(--foreground)" strokeOpacity={0.16} strokeWidth={1} strokeDasharray="3 3" />
-            <text x={W - PAD.r + 8} y={priceY + 3.5} fontSize={9.5} fontWeight={600} fill={hue}>
-              {active.c.toFixed(2)}
+          {/* last-close guide, named on the axis as plain text (spec 14.7): the close at /90, its name at /45 */}
+          <line x1={0} x2={PLOT_W} y1={lastY} y2={lastY} stroke={runUp ? UP : DOWN} strokeOpacity={0.4} strokeDasharray="2 4" strokeWidth={1} />
+          <text
+            x={W - 4}
+            y={lastY + 3}
+            textAnchor="end"
+            fontSize={9}
+            fill="var(--foreground)"
+            pointerEvents="none"
+            style={{ opacity: lastHidden ? 0 : 1, transition: fade }}
+          >
+            <tspan fontWeight={500} fillOpacity={0.9}>
+              {axisUsd(last.c)}
+            </tspan>
+            <tspan fillOpacity={0.45}> Last</tspan>
+          </text>
+
+          {candles.map((d, i) => {
+            const barHue = d.c >= d.o ? UP : DOWN
+            const dim = hi !== null && hi !== i
+            const top = yP(Math.max(d.o, d.c))
+            const bodyH = Math.max(1, Math.abs(yP(d.o) - yP(d.c)))
+            return (
+              <g key={i} style={{ opacity: dim ? 0.45 : 1, transition: fade }}>
+                {/* volume: the same hue at 0.6, growing off the pane's floor */}
+                <rect
+                  x={cx(i) - bodyW / 2}
+                  y={yV(d.v)}
+                  width={bodyW}
+                  height={VOL_BOT - yV(d.v)}
+                  fill={barHue}
+                  fillOpacity={0.6}
+                  style={{ transformOrigin: `0px ${VOL_BOT}px`, transform: shown ? "none" : "scaleY(0)", transition: grow(i) }}
+                />
+                {/* the candle rises out of its own middle, between its high and its low */}
+                <g
+                  style={{
+                    transformOrigin: `0px ${((yP(d.h) + yP(d.l)) / 2).toFixed(1)}px`,
+                    transform: shown ? "none" : "scaleY(0.6)",
+                    opacity: shown ? 1 : 0,
+                    transition: grow(i),
+                  }}
+                >
+                  <line x1={cx(i)} y1={yP(d.h)} x2={cx(i)} y2={yP(d.l)} stroke={barHue} strokeWidth={1} />
+                  <rect x={cx(i) - bodyW / 2} y={top} width={bodyW} height={bodyH} fill={barHue} />
+                </g>
+              </g>
+            )
+          })}
+
+          {/* dates along the foot */}
+          {dates.map((i, k) => (
+            <text
+              key={`${i}-${k}`}
+              x={k === 0 ? 2 : k === DATES - 1 ? PLOT_W - 2 : cx(i)}
+              y={H - 5}
+              textAnchor={k === 0 ? "start" : k === DATES - 1 ? "end" : "middle"}
+              fontSize={9}
+              fill="var(--foreground)"
+              fillOpacity={0.45}
+            >
+              {day(time(i))}
             </text>
-          </g>
-        )}
-      </svg>
+          ))}
+
+          {/* signal markers (2026-10-06): a small triangle pointing at the bar, in the side's hue */}
+          {markers.filter((m) => m.at >= 0 && m.at < n).map((m) => {
+            const d = candles[m.at]
+            const x = cx(m.at)
+            const y = m.side === "buy" ? yP(d.l) + 9 : yP(d.h) - 9
+            const tip = m.side === "buy" ? -1 : 1
+            return (
+              <path
+                key={`${m.side}${m.at}`}
+                d={`M ${x} ${y + tip * 4} L ${x - 4.5} ${y - tip * 3.5} L ${x + 4.5} ${y - tip * 3.5} Z`}
+                fill={m.side === "buy" ? UP : DOWN}
+                style={{ opacity: shown ? 1 : 0, transition: fade }}
+              />
+            )
+          })}
+
+          {/* the crosshair: a rule on the candle, a dashed rule on its close, a dot, and the close tagged on the axis */}
+          {active && hi !== null && (
+            <g pointerEvents="none">
+              <line x1={cx(hi)} y1={PRICE_TOP - 8} x2={cx(hi)} y2={VOL_BOT} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} />
+              <line x1={0} y1={yP(active.c)} x2={PLOT_W} y2={yP(active.c)} stroke="var(--foreground)" strokeOpacity={0.14} strokeDasharray="3 3" strokeWidth={1} />
+              <circle cx={cx(hi)} cy={yP(active.c)} r={3} fill={hue} stroke="var(--background)" strokeWidth={1.5} />
+              <AxisTag x={PLOT_W + 2} y={tagY} width={AXIS_W - 4} color={hue}>
+                {axisUsd(active.c)}
+              </AxisTag>
+            </g>
+          )}
+        </svg>
+
+        {/* the bar under the cursor, read out beside it (chart-overlay.tsx) */}
+        <ChartCard
+          open={active !== null && hi !== null}
+          x={hi !== null ? `${(cx(hi) / W) * 100}%` : 0}
+          flip={flip}
+          heading={hi !== null ? stamp(time(hi)) : ""}
+          rows={
+            active
+              ? [
+                  { label: "Open", value: usd(active.o) },
+                  { label: "High", value: usd(active.h) },
+                  { label: "Low", value: usd(active.l) },
+                  { label: "Close", value: usd(active.c) },
+                  { label: "Volume", value: shares(active.v * volumeUnit) },
+                  { label: "Change", value: `${sign(barPct)}${Math.abs(barPct).toFixed(2)}%`, color: hue },
+                ]
+              : []
+          }
+        />
+      </div>
     </div>
   )
 }

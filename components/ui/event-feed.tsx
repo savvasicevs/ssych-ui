@@ -4,14 +4,16 @@ import { useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { SURFACE } from "@/components/ui/control-classes"
+import { LiveFigure } from "@/components/ui/live-figure"
 
 /* Event Feed, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: what happened to the names being watched, grouped by day, with the
    price each event left behind.
    Read first: the headline of each event. The ticker and the time sit above it, the price
    and the signed move to the right.
-   The pointer: point at an event, or tab to it, and the others dim; the readout at the top
-   turns the percent into dollars. Press an event to keep it read out while the
+   The pointer: point at an event, or tab to it, and the others dim; its percent turns into
+   the dollar move in place. Press an event to keep it read out while the
    pointer moves on; press it again to let go.
    Lab sketch: src/components/lab/EventFeed.tsx. Kept: days as groups, the data shape
    (symbol, time, headline, price, delta) and the tabular price column. Changed: no card
@@ -20,12 +22,23 @@ import { cn } from "@/lib/utils"
    plausible (one ticker at two far prices) and the headlines did not belong to their
    tickers: both are rewritten, and the two AAPL prints now agree with each other.
    Formulas:
-   · price before = price / (1 + delta / 100)      (228.02 / 0.987 = 231.02)
-   · move         = price − price before           (228.02 − 231.02 = −3.00)
-   · up and down  = count of events by the sign of delta (sample: 2 up, 2 down)    Marks (2026-09-30): a token shows its real mark (TokenIcon), a company or a wallet its
+   · price before = price / (1 + delta / 100)      (SMCI 41.86 / 0.918 = 45.60)
+   · move         = price − price before           (41.86 − 45.60 = −3.74)
+   · up and down  = count of events by the sign of delta (sample: 4 up, 1 down)
+   Marks (2026-09-30): a token shows its real mark (TokenIcon), a company or a wallet its
    real logo (BrandIcon); two letters on an ink disc only where no mark exists.
    Shipped alone: a mark is a disc in the brand's colour with the ticker's first letters in
-   white; pass `renderIcon` to draw the real marks instead. */
+   white; pass `renderIcon` to draw the real marks instead.
+   2026-10-02 audit: the empty readout band at the top is gone (it was an nbsp at rest and
+   on hover repeated the row's own price); the pointed row now swaps its percent for the
+   dollar move in place. Ticker at weight 500, day heads at the 10.5px list head size, time
+   at /45, hairlines at 4% and none under a day head, the pinned and pointed row on 12px
+   corners, and the width set to 440 like the other AI and operations lists.
+   2026-10-02 round 2: the sample is market moving events in place of consumer tech news:
+   an NVDA earnings beat with EPS against the estimate, a TAO exchange listing and spot SOL
+   ETF inflows today, an SMCI guidance cut and an MSFT analyst upgrade yesterday, each with
+   the move it left. Prices stay under $1,000 so the price column holds. The formulas below
+   use the SMCI print. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -81,17 +94,18 @@ function Mark({ symbol, size, renderIcon }: { symbol: string; size: number; rend
 
 const DEFAULT_DAYS: FeedDay[] = [
   {
-    day: "Today, September 1",
+    day: "Today, October 2",
     events: [
-      { symbol: "AAPL", time: "12:30", headline: "Hotel chains add room keys to phone wallets; 14% of guests at branded hotels now open the door with a phone.", price: 228.02, delta: -1.3 },
-      { symbol: "SMCI", time: "11:05", headline: "Server maker files its delayed annual report and clears the exchange's listing deadline.", price: 41.86, delta: 6.4 },
+      { symbol: "NVDA", time: "16:20", headline: "Q3 EPS of $1.24 against $1.12 expected; data center revenue up 48% on the year.", price: 186.42, delta: 4.6 },
+      { symbol: "TAO", time: "14:05", headline: "Listed for spot trading on two Korean exchanges; KRW and USDT books opened at 14:00.", price: 412.3, delta: 9.8 },
+      { symbol: "SOL", time: "11:30", headline: "Spot SOL ETFs take $184M of net inflows, the fifth straight day of inflows.", price: 148.2, delta: 3.1 },
     ],
   },
   {
-    day: "Yesterday, August 31",
+    day: "Yesterday, October 1",
     events: [
-      { symbol: "AAPL", time: "16:10", headline: "Teardown shows the new desktop's power board is cut out to seat taller parts and save height.", price: 231.02, delta: -0.6 },
-      { symbol: "MSFT", time: "14:45", headline: "On-device models now rewrite text and sum up notifications without a round trip to the cloud.", price: 441.2, delta: 0.8 },
+      { symbol: "SMCI", time: "16:10", headline: "Cuts full year revenue guidance to $21B from $23B on delayed rack shipments.", price: 41.86, delta: -8.2 },
+      { symbol: "MSFT", time: "09:15", headline: "Analyst upgrade to buy with a $560 target, up from $500, on Azure AI capacity.", price: 512.4, delta: 1.9 },
     ],
   },
 ]
@@ -103,8 +117,9 @@ const before = (e: FeedEvent) => e.price / (1 + e.delta / 100)
  * A market feed in the Ink register: events under their day, each a ticker, a two-line
  * headline and the price it left. Pointing at one dims the rest and reads its move in
  * dollars in the readout at the top.
+ * 2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
  */
-export function EventFeed({ days = DEFAULT_DAYS, title = "What's happening", renderIcon, className }: EventFeedProps) {
+export function EventFeed({ days = DEFAULT_DAYS, title = "Market events", renderIcon, className }: EventFeedProps) {
   const reduced = useReducedMotion()
   const [hover, setHover] = useState<string | null>(null)
   const [pin, setPin] = useState<string | null>(null)
@@ -117,35 +132,17 @@ export function EventFeed({ days = DEFAULT_DAYS, title = "What's happening", ren
   let order = 0
 
   return (
-    <div className={cn("w-full max-w-[520px] tabular-nums", className)} role="group" aria-label={`${title}, ${all.length} events, ${ups} up, ${all.length - ups} down`}>
-      {/* no visible title (2026-10-01): the name lives in the group's aria-label; the readout leads */}
-      <div className="flex items-baseline gap-3 px-3 pb-1">
-        <span role="status" className="truncate text-[10.5px] text-foreground/45">
-          {/* the line crosses over when the event changes (4px, 2px blur, 150ms) */}
-          <motion.span
-          key={shown?.id ?? "rest"}
-          className="inline-block"
-          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-        >
-          {shown ? (
-            <>
-              <span className="font-medium text-foreground/90">{shown.symbol}</span> ${before(shown).toFixed(2)} to ${shown.price.toFixed(2)},{" "}
-              <span style={{ color: shown.delta >= 0 ? GREEN : RED }}>{signed(shown.price - before(shown))}</span>
-            </>
-          ) : (
-            `${all.length} events · ${ups} up, ${all.length - ups} down`
-          )}
-          </motion.span>
-        </span>
-      </div>
-
+    <div className={cn("w-[440px] max-w-full tabular-nums", className)} role="group" aria-label={`${title}, ${all.length} events, ${ups} up, ${all.length - ups} down`}>
+      {/* no visible title (2026-10-01) and no readout line (2026-10-02 audit): the name lives
+          in the group's aria-label, the pointed row reads its dollar move in place */}
+      <span role="status" className="sr-only">
+        {shown ? `${shown.symbol} $${before(shown).toFixed(2)} to $${shown.price.toFixed(2)}, ${signed(shown.price - before(shown))}` : ""}
+      </span>
       <div onPointerLeave={() => setHover(null)}>
         {days.map((d, di) => (
           <div key={d.day} role="group" aria-label={`${d.day}, ${d.events.length} events`}>
-            <div className="px-3 pb-1.5 pt-4">
-              <span className="text-[11px] text-foreground/45">{d.day}</span>
+            <div className={cn("px-3 pb-1.5", di === 0 ? "pt-0" : "pt-4")}>
+              <span className="text-[10.5px] text-foreground/45">{d.day}</span>
             </div>
             {d.events.map((e, ei) => {
               const id = `${di}-${ei}`
@@ -153,7 +150,9 @@ export function EventFeed({ days = DEFAULT_DAYS, title = "What's happening", ren
               const up = e.delta >= 0
               return (
                 /* the outer wrapper owns the dim so it never fights the entrance inside */
-                <div key={id} className="transition-opacity duration-200 motion-reduce:transition-none" style={{ opacity: hot !== null && hot !== id ? 0.45 : 1 }}>
+                /* the hairline sits on the wrapper so the row's fill can round inside it; the first
+                   row of a day takes none, the day head's gap separates it */
+                <div key={id} className={cn("transition-opacity duration-200 motion-reduce:transition-none", ei > 0 && "border-t border-foreground/[0.04]")} style={{ opacity: hot !== null && hot !== id ? 0.45 : 1 }}>
                   <motion.button
                     type="button"
                     aria-pressed={pin === id}
@@ -163,8 +162,8 @@ export function EventFeed({ days = DEFAULT_DAYS, title = "What's happening", ren
                     onBlur={() => setHover(null)}
                     onClick={() => setPin((p) => (p === id ? null : id))}
                     className={cn(
-                      "flex w-full items-start gap-3 border-t border-foreground/[0.05] px-3 py-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
-                      pin === id && "bg-foreground/[0.03]",
+                      "flex w-full items-start gap-3 rounded-[12px] px-3 py-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
+                      pin === id && cn(SURFACE, "hover:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))]"),
                     )}
                     initial={reduced ? false : { opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -173,15 +172,19 @@ export function EventFeed({ days = DEFAULT_DAYS, title = "What's happening", ren
                     <Mark symbol={e.symbol} size={24} renderIcon={renderIcon} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
-                        <span className="text-[11.5px] font-semibold text-foreground/90">{e.symbol}</span>
-                        <span className="text-[10px] text-foreground/35">{e.time}</span>
+                        <span className="text-[11.5px] font-medium text-foreground/90">{e.symbol}</span>
+                        <span className="text-[10px] text-foreground/45">{e.time}</span>
                       </span>
                       <span className="mt-1 block text-[12px] leading-[1.5] text-foreground/70">{e.headline}</span>
                     </span>
                     <span className="flex shrink-0 items-baseline gap-2.5 pt-px">
                       <span className="w-[52px] text-right text-[11.5px] text-foreground/90">${e.price.toFixed(2)}</span>
-                      <span className="w-[46px] text-right text-[11px] font-medium" style={{ color: up ? GREEN : RED }}>
-                        {signed(e.delta)}%
+                      {/* the pointed row reads its move in dollars here; it swaps once on point and
+                          once on let go (an intent change), never on its own */}
+                      <span className="w-[50px] text-right text-[11px] font-medium" style={{ color: up ? GREEN : RED }}>
+                        <LiveFigure intent={hot === id ? id : null}>
+                          {hot === id ? `${signed(e.price - before(e)).replace(/^([+−])/, "$1$")}` : `${signed(e.delta)}%`}
+                        </LiveFigure>
                       </span>
                     </span>
                   </motion.button>

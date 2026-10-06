@@ -24,6 +24,13 @@ import { cn } from "@/lib/utils"
  *
  * THE POINTER NEVER DRAWS. It writes a target and the rAF loop owns painting,
  * so a burst of pointermove costs one frame, not one repaint each.
+ *
+ * 2026-10-02 audit: the loop rendered WebGL and repainted the glyph grid from mount even off
+ * screen, which weighs on Browse all where many previews sit at once; an IntersectionObserver
+ * now stops the loop while the field is out of view and starts it again when it comes back
+ * (the idle sway stays). The pointer was the only way to turn it, so the field is now
+ * focusable and the left and right arrow keys turn it 10 degrees a press within the sweep
+ * (Home brings it back to the centre); under reduced motion each press redraws one still.
  */
 
 export type TurntableShape = "ring" | "bars" | "token"
@@ -292,6 +299,25 @@ export function AsciiTurntable({
     }
     host.addEventListener("pointermove", onMove, { passive: true })
 
+    /* the keyboard turns it too: 10 degrees a press, held inside the sweep */
+    const STEP = THREE.MathUtils.degToRad(10)
+    const onKey = (e: KeyboardEvent) => {
+      const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0
+      if (!dir && e.key !== "Home") return
+      e.preventDefault()
+      const from = engaged ? target : current
+      target = dir ? THREE.MathUtils.clamp(from + dir * STEP, -SWEEP, SWEEP) : 0
+      engaged = true
+      if (reduce) {
+        current = target
+        group.rotation.y = current
+        group.rotation.x = -current * 0.06
+        renderer.render(scene, camera)
+        draw()
+      }
+    }
+    host.addEventListener("keydown", onKey)
+
     const ro = new ResizeObserver(() => {
       resize()
       if (reduce) {
@@ -316,17 +342,27 @@ export function AsciiTurntable({
 
     resize()
     canvas.style.opacity = "0"; // renders for sampling only
+    let io: IntersectionObserver | undefined
     if (reduce) {
       renderer.render(scene, camera)
       draw()
-    } else {
+    } else if (typeof IntersectionObserver === "undefined") {
       raf = requestAnimationFrame(tick)
+    } else {
+      /* the loop runs only while the field is on screen */
+      io = new IntersectionObserver(([entry]) => {
+        cancelAnimationFrame(raf)
+        raf = entry.isIntersecting ? requestAnimationFrame(tick) : 0
+      })
+      io.observe(host)
     }
 
     return () => {
       cancelAnimationFrame(raf)
+      io?.disconnect()
       ro.disconnect()
       host.removeEventListener("pointermove", onMove)
+      host.removeEventListener("keydown", onKey)
       group.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose()
       })
@@ -339,6 +375,9 @@ export function AsciiTurntable({
     <div
       ref={hostRef}
       /* no card: the glyph field sits straight on the page ground */
+      tabIndex={0}
+      role="img"
+      aria-label="A solid drawn in characters; the left and right arrow keys turn it"
       className={cn("relative w-full overflow-hidden text-foreground/[0.85]", className)}
       style={{ height }}
     >

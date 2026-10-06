@@ -3,7 +3,7 @@
   "name": "card-grid",
   "type": "registry:ui",
   "title": "Card Grid",
-  "description": "Responsive grid of project cards with hover-reveal actions and a shared details modal.",
+  "description": "A responsive card grid for products, strategies or case studies, with hover actions on each card and a shared detail modal.",
   "categories": [
     "cards"
   ],
@@ -13,6 +13,7 @@
     "tailwind-merge"
   ],
   "registryDependencies": [
+    "https://ssych.com/r/bento-gallery.json",
     "https://ssych.com/r/project-card.json"
   ],
   "cssVars": {
@@ -68,6 +69,12 @@
       "content": "\"use client\"\n\nimport { motion, useReducedMotion } from \"motion/react\"\nimport { cn } from \"@/lib/utils\"\nimport { ProjectCard } from \"@/components/ui/project-card\"\nimport { useProjectDetails, type CardData } from \"@/components/ui/project-card-utils\"\n\n/** Responsive grid of project cards. Click to open the shared details modal. */\nexport function CardGrid({ cards, className }: { cards: CardData[]; className?: string }) {\n  const { open, modal } = useProjectDetails(cards)\n  const reduced = useReducedMotion()\n\n  if (!cards.length) return null\n\n  return (\n    <div className={cn(\"mx-auto w-full max-w-5xl\", className)}>\n      <div className=\"grid w-full grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3\">\n        {cards.map((card, i) => (\n          <motion.div\n            key={card.id}\n            initial={reduced ? false : { opacity: 0, scale: 0.9 }}\n            animate={{ opacity: 1, scale: 1 }}\n            transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 300, damping: 28, delay: i * 0.04 }}\n            onClick={() => open(card.id)}\n            className=\"group relative aspect-[3/2] w-full cursor-pointer overflow-hidden rounded-[28px] shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]\"\n          >\n            <ProjectCard card={card} variant=\"overlay\" emphasis=\"sm\" />\n          </motion.div>\n        ))}\n      </div>\n\n      {modal}\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/card-grid.tsx"
+    },
+    {
+      "path": "components/ui/project-card-utils.ts",
+      "content": "import { useState, useMemo, useCallback, createElement, type ReactNode } from \"react\";\nimport { AnimatePresence } from \"motion/react\";\nimport { GalleryModal, type MediaItemType } from \"@/components/ui/interactive-bento-gallery\";\n\nexport interface CardData {\n  id: string;\n  title: string;\n  description: string;\n  icon?: ReactNode;\n  color?: string;\n  image?: string;\n  video?: string;\n  span?: string;\n}\n\n/** Map project cards to the bento/gallery media-item shape. */\nexport function cardsToMediaItems(cards: CardData[]): MediaItemType[] {\n  return cards.map((c, i) => ({\n    id: i + 1,\n    type: \"image\",\n    title: c.title,\n    desc: c.description,\n    url: c.image || c.video || \"\",\n    span: c.span || \"md:col-span-1 md:row-span-2\",\n    poster: c.image,\n  }));\n}\n\n/**\n * Shared \"click a card → open the details modal (+ floating dock)\" wiring used\n * by every layout. Returns an `open(id)` handler and the `modal` element.\n */\nexport function useProjectDetails(cards: CardData[]) {\n  const [selectedItem, setSelectedItem] = useState<MediaItemType | null>(null);\n  const mediaItems = useMemo(() => cardsToMediaItems(cards), [cards]);\n\n  const open = useCallback(\n    (id: string) => {\n      const idx = cards.findIndex((c) => c.id === id);\n      if (idx >= 0) setSelectedItem(mediaItems[idx]);\n    },\n    [cards, mediaItems]\n  );\n\n  const modal = createElement(\n    AnimatePresence,\n    null,\n    selectedItem &&\n      createElement(GalleryModal, {\n        key: \"project-details\",\n        selectedItem,\n        isOpen: true,\n        onClose: () => setSelectedItem(null),\n        setSelectedItem,\n        mediaItems,\n      })\n  );\n\n  return { open, modal };\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/project-card-utils.ts"
     }
   ]
 }

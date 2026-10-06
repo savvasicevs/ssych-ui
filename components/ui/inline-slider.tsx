@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils"
    inside the track, the thumb that parts over text). Kept every prop, the ten ticks, the
    step grid, the drag and settle, the range and the keys.
    Changed: colours are foreground tokens, the sketch was white on dark only; the track is
-   fully round and 28px, the fill is the control material at 8% ink; `max` and `label`
+   fully round and 28px, the fill is the control material (10% ink since 2026-10-02); `max` and `label`
    have defaults; the slider keeps its own value when no handler is given, so it moves
    with no props; a range with no `readout` prints "low to high"; the thumb is 2px wide.
    Fixed 2026-10-01 (ported from the GPU pods copy): while a filter is at rest (not
@@ -29,17 +29,35 @@ import { cn } from "@/lib/utils"
    left edge to its thumb. This is the
    default here (`fillAtRest`). The track is measured in layout pixels, so a preview
    drawn inside a scaled stage no longer packs the thumbs against the left edge, and the
-   text sits 18px in so a thumb resting at either end clears it.
+   text sits in far enough that a thumb resting at either end clears it (14px, see below).
+   2026-10-02: the handle now always sits inside the fill (his call: the handles looked
+   too wide and sat outside the filled part, a low value left the handle on the bare left
+   edge). Spec 14.5: the handle is a 2px by 10px bar (10, not 14: his call, the rounded
+   ends left a taller stem reading as outside the fill) 6px in from the fill's right edge, and
+   for a range each handle is 6px inside its end of the filled run, so even at the minimum
+   there is a 14px fill (6 + 2 + 6) around the handle. The track rests at 6% ink and the
+   fill at 10%, the name reads at 60% and the value at 90%. The words sit 14px in, where
+   the smallest fill ends. New `stops`: values marked as 2px dots on the track with their
+   labels under it (10px, 45%, the chosen one 90%), pressing a label goes there; they take
+   the place of the ten ticks. Leverage Ticket uses it.
    Formulas:
    · value = min + (x − start) ÷ (end − start) × (max − min), rounded to the step
-   · the ticks split the travel into nine equal parts; none is drawn under a word */
+   · handle x runs from 6 to width − 8; fill right = handle x + 2 + 6, a range's fill left = low handle x − 6
+   · the ticks split the travel into nine equal parts; none is drawn under a word
+   2026-10-02 audit: the name and the value inside the track are 11.5px, the control text
+   size of spec 14.4 (they were 11px). Nothing else changed; every prop and export holds. */
 
 const TICKS = 10
 const THUMB_W = 2
-const START = 10
-const END_INSET = 10
-/* 18: a thumb resting at either end (10px in, 2px wide) keeps 6px clear of the words */
-const TEXT_INSET = 18
+/** how far the handle sits inside its end of the fill (spec 14.5) */
+const INSET = 6
+/* the handle's left edge at the minimum and at the maximum: 6px in from either end */
+const START = INSET
+const END_INSET = INSET
+/** the narrowest fill: the handle and its inset on both sides, 6 + 2 + 6 */
+const MIN_FILL = INSET + THUMB_W + INSET
+/* 14: the words start where the smallest fill ends, so a handle at either end keeps 6px clear */
+const TEXT_INSET = MIN_FILL
 /** over how many pixels the thumb goes from whole to parted */
 const PART_PX = 6
 /* the house lift spring: the thumb is a physical object, so it settles */
@@ -71,6 +89,11 @@ export interface InlineSliderProps {
   /** a range at rest (not `active`, nothing held) fills the whole track behind both handles;
    *  once picked it covers just the chosen run. Single values are unaffected. On by default */
   fillAtRest?: boolean
+  /** values marked on the track as 2px dots, each with a label under it that goes there when
+   *  pressed; they replace the ten ticks */
+  stops?: number[]
+  /** a stop's label; `format` when left out */
+  formatStop?: (value: number) => ReactNode
 }
 
 const snap = (v: number, min: number, max: number, step: number) => {
@@ -84,7 +107,7 @@ function Thumb({ x, part, held, still }: { x: number; part: number; held: boolea
   return (
     <motion.span
       aria-hidden
-      className="pointer-events-none absolute left-0 top-[7px] block h-[14px]"
+      className="pointer-events-none absolute left-0 top-[9px] block h-[10px]"
       style={{ width: THUMB_W }}
       initial={false}
       animate={{ x, scaleY: held && !still ? 1.2 : 1 }}
@@ -117,6 +140,8 @@ export function InlineSlider({
   ariaLabel,
   className,
   fillAtRest = true,
+  stops,
+  formatStop,
 }: InlineSliderProps) {
   const reduced = useReducedMotion() ?? false
   const dual = !!range
@@ -170,14 +195,23 @@ export function InlineSlider({
   const hiX = drag?.end === "hi" ? drag.x : xOf(hi)
 
   /* how far a thumb sits over either word, 0 to 1 across six pixels */
-  const labelStart = TEXT_INSET
-  const labelEnd = TEXT_INSET + geo.labelW
-  const readStart = geo.width - TEXT_INSET - geo.readoutW
-  const readEnd = geo.width - TEXT_INSET
+  /* each word's zone reaches 4px past its letters, so a stem fades before it touches one
+     (2026-10-02: at 10× the leverage stem stood on the last letter of "Leverage") */
+  const CLEAR = 4
+  const labelStart = TEXT_INSET - CLEAR
+  const labelEnd = TEXT_INSET + geo.labelW + CLEAR
+  const readStart = geo.width - TEXT_INSET - geo.readoutW - CLEAR
+  const readEnd = geo.width - TEXT_INSET + CLEAR
   const overlap = (x: number, s: number, e: number) => Math.max(0, Math.min(1, (x + THUMB_W + 1 - s) / PART_PX, (e - x + 1) / PART_PX))
   const partOf = (x: number) => Math.max(overlap(x, labelStart, labelEnd), overlap(x, readStart, readEnd))
   const underText = (x: number) => (x + THUMB_W >= labelStart && x <= labelEnd) || (x + THUMB_W >= readStart && x <= readEnd)
-  const ticks = Array.from({ length: TICKS - 2 }, (_, i) => START + ((i + 1) / (TICKS - 1)) * (endX - START)).filter((x) => !underText(x))
+  /* the stops when given (the two ends need no dot), else nine equal parts; a thumb's
+     centre is its left edge + 1, so a dot sits where the handle would stand */
+  const marks = stops
+    ? stops.filter((v) => v > min && v < max).map((v) => xOf(v))
+    : Array.from({ length: TICKS - 2 }, (_, i) => START + ((i + 1) / (TICKS - 1)) * (endX - START))
+  /* a dot under a word, or within 8px of a handle, would read as a second mark: hidden */
+  const ticks = marks.filter((x) => !underText(x) && Math.abs(x - hiX) >= 8 && (!dual || Math.abs(x - loX) >= 8))
 
   const commit = (end: End, v: number) => {
     if (dual) {
@@ -271,13 +305,15 @@ export function InlineSlider({
 
   /* a range at rest fills the whole track; picked, it is the run thumb to thumb. A single
      value always fills from the left edge to its thumb, so the fill shows where it sits
-     (user call, 2026-10-01: a whole fill left the thumb reading as a text cursor) */
+     (user call, 2026-10-01: a whole fill left the thumb reading as a text cursor).
+     2026-10-02: every handle stands 6px inside its end of the fill, never past it */
   const whole = fillAtRest && dual && !active && !drag
-  const fillLeft = whole ? 0 : dual ? loX + THUMB_W / 2 : 0
-  const fillWidth = whole ? geo.width : dual ? Math.max(0, hiX - loX) : hiX + THUMB_W / 2
+  const fillLeft = whole ? 0 : dual ? Math.max(0, loX - INSET) : 0
+  const fillRight = whole ? geo.width : Math.min(geo.width, Math.max(fillLeft + MIN_FILL, hiX + THUMB_W + INSET))
+  const fillWidth = fillRight - fillLeft
   const still = reduced || keyed
 
-  return (
+  const body = (
     <div
       ref={track}
       onPointerDown={down}
@@ -286,25 +322,36 @@ export function InlineSlider({
       onPointerCancel={up}
       onLostPointerCapture={up}
       className={cn(
-        "relative h-7 w-full touch-none select-none overflow-hidden rounded-full tabular-nums transition-colors duration-150",
-        active ? "bg-foreground/[0.06]" : "bg-foreground/[0.04] hover:bg-foreground/[0.06]",
+        "relative h-7 w-full touch-none select-none overflow-hidden rounded-full bg-foreground/[0.07] tabular-nums dark:bg-foreground/[0.06]",
         drag ? "cursor-grabbing" : "cursor-grab",
-        className,
+        !stops && className,
       )}
     >
       {/* the fill spans the track and is cut to the chosen run by a clip, so it moves on the
           compositor instead of animating a width; at rest the clip opens to the whole track */}
       <motion.span
         aria-hidden
-        className={cn("absolute inset-0 block rounded-full transition-colors duration-150", active ? "bg-foreground/[0.12]" : "bg-foreground/[0.08]")}
+        className={cn("absolute inset-0 hidden rounded-full transition-colors duration-150 dark:block", active ? "bg-foreground/[0.13]" : "bg-foreground/[0.10]")}
         initial={false}
         animate={{ clipPath: `inset(0px ${Math.max(0, geo.width - fillLeft - fillWidth).toFixed(1)}px 0px ${fillLeft.toFixed(1)}px round 999px)` }}
+        transition={still || drag ? { duration: 0 } : { duration: 0.25, ease: EASE }}
+      />
+      {/* light (his call, 2026-10-02: "the inline slider is not readable on light; the part
+          between the handles could be lighter, maybe with some shadow"): the chosen run is a
+          raised WHITE segment with a hairline and a soft shadow over the grey track, like a
+          segmented control's thumb. A clip would cut a shadow off, so this one is placed and
+          sized instead; 2px in from the track's edge so the hairline shows all round */}
+      <motion.span
+        aria-hidden
+        className="absolute inset-y-[2px] block rounded-full bg-white shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_1px_3px_rgba(0,0,0,0.08)] dark:hidden"
+        initial={false}
+        animate={{ left: Math.max(2, fillLeft + (fillLeft > 0 ? 0 : 2)), width: Math.max(0, Math.min(geo.width - 2, fillLeft + fillWidth) - Math.max(2, fillLeft + (fillLeft > 0 ? 0 : 2))) }}
         transition={still || drag ? { duration: 0 } : { duration: 0.25, ease: EASE }}
       />
       <div className="pointer-events-none absolute inset-0">
         <span
           ref={labelRef}
-          className={cn("absolute top-1/2 max-w-[52%] -translate-y-1/2 truncate whitespace-nowrap text-[11px] transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/45")}
+          className={cn("absolute top-1/2 max-w-[52%] -translate-y-1/2 truncate whitespace-nowrap text-[11.5px] transition-colors duration-150", active ? "text-foreground/90" : "text-foreground/60")}
           style={{ left: TEXT_INSET }}
         >
           {label}
@@ -312,8 +359,8 @@ export function InlineSlider({
         <span
           ref={readoutRef}
           className={cn(
-            "absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap text-[11px] font-medium transition-colors duration-150",
-            active ? "text-foreground" : "text-foreground/70",
+            "absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5 whitespace-nowrap text-[11.5px] font-medium transition-colors duration-150",
+            active ? "text-foreground" : "text-foreground/90",
           )}
           style={{ right: TEXT_INSET }}
         >
@@ -340,6 +387,40 @@ export function InlineSlider({
       <Thumb x={hiX} part={partOf(hiX)} held={drag?.end === "hi"} still={still} />
       {dual ? handle("lo", loX, lo) : null}
       {handle("hi", hiX, hi)}
+    </div>
+  )
+
+  if (!stops) return body
+  /* stops: labels under the track, each under the spot its handle would stand on; the two
+     ends align to the track's edges so they never spill past it */
+  return (
+    <div className={cn("w-full", className)}>
+      {body}
+      <div className="relative mt-1 h-4">
+        {stops.map((v) => {
+          const cx = xOf(v) + THUMB_W / 2
+          const on = !dual ? v === hi : v === lo || v === hi
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => {
+                setKeyed(false)
+                if (dual) commit(Math.abs(v - lo) <= Math.abs(v - hi) ? "lo" : "hi", v)
+                else commit("hi", v)
+              }}
+              aria-label={`Set ${name} to ${format(v)}`}
+              className={cn(
+                "absolute top-0 h-4 whitespace-nowrap text-[10px] outline-none transition-colors duration-150 hover:text-foreground/90 focus-visible:text-foreground/90",
+                on ? "text-foreground/90" : "text-foreground/45",
+              )}
+              style={v <= min ? { left: 0 } : v >= max ? { right: 0 } : { left: cx, transform: "translateX(-50%)" }}
+            >
+              {formatStop ? formatStop(v) : format(v)}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

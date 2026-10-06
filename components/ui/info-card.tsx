@@ -1,12 +1,11 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { Send } from "lucide-react"
+import { PiggyBank } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-/* the ground is Dialog Stack's top card, value for value (user call, 2026-10-01): a solid
-   8% foreground over the page, no outline */
+/* the ground is the surface step (spec 14.8): a solid 7% foreground over the page, no outline */
 /** the library's one card corner, copied from src/components/library/controls.ts (CARD_RADIUS) */
 const CARD_RADIUS = "rounded-[24px]"
 
@@ -23,7 +22,15 @@ const CARD_RADIUS = "rounded-[24px]"
    bodyClass, actionClass and Reveal, class for class. The corner is controls.ts (24px);
    the text inset is React Bits' 20px.
    Decided: nothing. The shell's three cards differ only in words and icon, so this is one
-   component with those as props. */
+   component with those as props.
+   2026-10-02 audit: his note said the right padding was wrong, so the inset is now one 20px
+   value on all four sides (the corner holds only text, so no nesting sum applies) and the line
+   sets balanced so its last word never sits alone and reads as a gap at the right. The fill
+   moved to the 7% surface step, the title to 13px medium /90 and the line to 12px /60 so it
+   reads; the default width is the rail's 280px.
+   2026-10-02 round 2: the defaults are a fintech callout (idle USDC earning 4.8%, with Move to
+   yield) instead of the library's own help card. Nothing in the library shell renders this
+   component, so no rail copy depended on the old words. */
 
 export interface InfoCardProps {
   title?: string
@@ -53,18 +60,18 @@ const ACTION = "mt-3 inline-flex items-center gap-1.5 self-start text-[12px] fon
  * is pointed at.
  */
 export function InfoCard({
-  title = "Need help?",
-  line = "Ask about a component, an install or your own screen.",
-  action = "Send a message",
-  icon = <Send className="h-4 w-4" strokeWidth={1.75} />,
-  href = "/contact",
+  title = "Idle USDC earns 4.8%",
+  line = "12,400 USDC sits idle in spot. In yield it accrues daily and you can withdraw any time.",
+  action = "Move to yield",
+  icon = <PiggyBank className="h-4 w-4" strokeWidth={1.75} />,
+  href = "#yield",
   onPress,
   className,
 }: InfoCardProps) {
   return (
-    <div role="group" aria-label={title} className={cn("group/box bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background))] px-5 pb-[18px] pt-[18px]", CARD_RADIUS, className)}>
-      <div className="text-[14px] font-semibold leading-snug text-foreground">{title}</div>
-      <p className="mt-1 text-[11.5px] font-medium leading-[1.55] text-foreground/50">{line}</p>
+    <div role="group" aria-label={title} className={cn("group/box w-[280px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-5", CARD_RADIUS, className)}>
+      <div className="text-[13px] font-medium leading-snug text-foreground/90">{title}</div>
+      <p className="mt-1 text-balance text-[12px] leading-[1.55] text-foreground/60">{line}</p>
       <Reveal>
         {onPress ? (
           <button type="button" onClick={onPress} className={ACTION}>

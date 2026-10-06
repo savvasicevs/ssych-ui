@@ -1,8 +1,8 @@
 "use client"
 
-import { useId, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { useState } from "react"
 
+import { Line, PILL, PrimaryButton, RowField, Segments, TICKET_WIDTH } from "@/components/ui/swap-ticket-field"
 import { cn } from "@/lib/utils"
 
 /* Order Ticket, written new through ssych-component (2026-09-29).
@@ -32,11 +32,24 @@ import { cn } from "@/lib/utils"
    · from market   (price − market price) ÷ market price × 100, limit orders only
    · largest       buy: balance ÷ (price × (1 + fee rate)) · sell: the amount held
    · share pills   largest × share, cut down to the size step
-   · can be placed buy: total + fee ≤ balance · sell: amount ≤ the amount held */
+   · can be placed buy: total + fee ≤ balance · sell: amount ≤ the amount held
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit: cut from the ticket family's parts (swap-ticket-field.tsx). The fields
+   are the family's 48px round row field (they were 8px corners no other ticket used); Buy and
+   Sell, Limit and Market are the switch material, the side's colour a 6px dot instead of
+   coloured text; the share pills are the control material; the primary is the one 48px white
+   BUTTON_PRIMARY. The header's bid and ask are gone (the price field says the one that
+   matters), the button reads "Buy BTC" (the amount is in its field), and under the fields only
+   Free and You pay stay: the fee and the distance from the ask moved into You pay's tip.
+   Formulas are unchanged; "from market" and "fee" are now read in that tip.
+   2026-10-02 round 2: (his notes after the side by side): the dots by Buy and Sell are gone; the
+   chosen side is its pill tinted in its hue (green Buy, red Sell, 14%) with the word in that
+   hue, the other in ink, and the dot before the button's label is gone too. Switching Buy and
+   Sell shifted the ticket: the balance line ("Free 25,000.00 USD" beside the four share pills)
+   was wide enough to wrap to two lines on one side and not the other. That line is now one
+   fixed 24px row that never wraps (the balance truncates before it could), with tighter share
+   pills, so a side or type switch changes no size. The fields show focus on their own edge. */
 
-const EASE = [0.16, 1, 0.3, 1] as const
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
-const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 const SHARES = [25, 50, 75, 100]
@@ -86,51 +99,11 @@ export interface OrderTicketProps {
 const num = (n: number, dp: number) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })
 /** cut down, never up: an order must not round past what the balance allows */
 const cut = (n: number, dp: number) => Math.floor(n * 10 ** dp + 1e-9) / 10 ** dp
-/** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
-const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
-
-function Field({
-  label,
-  unit,
-  value,
-  onChange,
-  places,
-}: {
-  label: string
-  unit: string
-  value: string
-  /** leave out for a field that only shows a figure */
-  onChange?: (v: string) => void
-  places: number
-}) {
-  const typed = new RegExp(`^\\d*\\.?\\d{0,${places}}$`)
-  return (
-    <label className="flex h-10 items-center gap-2 rounded-lg bg-foreground/[0.04] px-3 transition-colors duration-150 focus-within:bg-foreground/[0.07]">
-      <span className="shrink-0 text-[11px] text-foreground/45">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => {
-          if (typed.test(e.target.value)) onChange?.(e.target.value)
-        }}
-        readOnly={!onChange}
-        tabIndex={onChange ? 0 : -1}
-        placeholder="0"
-        inputMode="decimal"
-        aria-label={`${label} in ${unit}`}
-        className={cn(
-          "min-w-0 flex-1 bg-transparent text-right text-[13px] font-semibold caret-foreground outline-none placeholder:text-foreground/35",
-          onChange ? "text-foreground/90" : "text-foreground/45",
-        )}
-      />
-      <span className="w-8 shrink-0 text-[11px] text-foreground/45">{unit}</span>
-    </label>
-  )
-}
 
 /**
  * The spot ticket: buy or sell, limit or market, then price, amount and total as three
- * rows that keep each other true. The lines under them carry the fee and what changes
- * hands, and the white button says what the ticket still needs or what it will do.
+ * rows that keep each other true. The line under them carries what changes hands, and the
+ * white button says what the ticket still needs or what it will do.
  */
 export function OrderTicket({
   symbol = "BTC-USD",
@@ -150,8 +123,6 @@ export function OrderTicket({
   onSubmit,
   className,
 }: OrderTicketProps) {
-  const reduced = useReducedMotion()
-  const uid = useId().replace(/:/g, "")
   const [side, setSide] = useState<OrderSide>(defaultSide)
   const [type, setType] = useState<OrderType>(defaultType)
   const [priceStr, setPriceStr] = useState(defaultPrice)
@@ -180,7 +151,7 @@ export function OrderTicket({
         ? "Enter an amount"
         : state === "short"
           ? `Insufficient ${buy ? quote : base}`
-          : `${buy ? "Buy" : "Sell"} ${num(amount, sizeDp)} ${base}`
+          : `${buy ? "Buy" : "Sell"} ${base}`
 
   const fill = (share: number) => {
     const a = cut((largest * share) / 100, sizeDp)
@@ -188,80 +159,44 @@ export function OrderTicket({
     setAmountStr(a > 0 ? String(a) : "")
   }
 
-  const pills = <T extends string>(name: string, options: readonly T[], value: T, set: (v: T) => void, text: (v: T) => string, hue?: (v: T) => string) => (
-    <div role="radiogroup" aria-label={name} className="grid" style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
-      {options.map((o) => {
-        const on = o === value
-        return (
-          <button
-            key={o}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => set(o)}
-            className={cn(
-              "group relative h-7 rounded-full text-[11.5px] font-medium outline-none transition-colors duration-200",
-              on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-            )}
-            style={on && hue ? { color: ink(hue(o)) } : undefined}
-          >
-            {on &&
-              (reduced ? (
-                <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-              ) : (
-                <motion.span
-                  aria-hidden
-                  layoutId={`${uid}-${name}`}
-                  className="absolute inset-0 rounded-full bg-foreground/[0.08]"
-                  transition={{ duration: 0.25, ease: TAB_EASE }}
-                />
-              ))}
-            <span className="relative inline-block transition-transform duration-150 group-active:scale-[0.97] motion-reduce:transition-none motion-reduce:group-active:scale-100">{text(o)}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-
-  const line = (label: string, value: string, strong = false, hue?: string) => (
-    <div className="flex items-baseline justify-between text-[11px]">
-      <span className="text-foreground/45">{label}</span>
-      <span className={cn(strong ? "font-semibold text-foreground/90" : "text-foreground/90")} style={hue ? { color: ink(hue) } : undefined}>
-        {value}
-      </span>
-    </div>
-  )
+  /* the formula of You pay: the total, the fee and, for a limit, how far it sits from the market */
+  const payTip = [
+    `${num(amount, sizeDp)} × ${num(price, priceDp)} = ${num(total, 2)}`,
+    `${buy ? "+" : "−"} fee ${(feeRate * 100).toFixed(2)}% = ${num(fee, 2)}`,
+    type === "limit" ? `${away >= 0 ? "+" : "−"}${Math.abs(away).toFixed(2)}% from the ${buy ? "ask" : "bid"} (${num(market, priceDp)})` : `at the best ${buy ? "ask" : "bid"}`,
+  ].join("; ")
 
   return (
-    <div
-      className={cn("w-[320px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}
-      role="group"
-      aria-label={`${symbol} ${type} order, ${verdict}`}
-    >
-      <div className="mb-3 flex items-baseline justify-between px-1">
-        <span className="text-[13px] font-medium text-foreground/90">{symbol}</span>
-        <span className="text-[11px] text-foreground/45">
-          Bid {num(bid, priceDp)} · ask {num(ask, priceDp)}
-        </span>
-      </div>
+    <div className={cn(TICKET_WIDTH, "tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)} role="group" aria-label={`${symbol} ${type} order, ${verdict}`}>
+      <div className="mb-3 px-1 text-[12px] font-medium text-foreground/90">{symbol}</div>
 
-      {pills(
-        "Side",
-        ["buy", "sell"] as const,
-        side,
-        setSide,
-        (s) => (s === "buy" ? "Buy" : "Sell"),
-        (s) => (s === "buy" ? GREEN : RED),
-      )}
-      <div className="mt-1">{pills("Type", ["limit", "market"] as const, type, setType, (t) => (t === "limit" ? "Limit" : "Market"))}</div>
+      <Segments
+        name="Side"
+        value={side}
+        onChange={setSide}
+        options={[
+          { value: "buy", label: "Buy", hue: GREEN },
+          { value: "sell", label: "Sell", hue: RED },
+        ]}
+      />
+      <Segments
+        className="mt-1.5"
+        name="Type"
+        value={type}
+        onChange={setType}
+        options={[
+          { value: "limit", label: "Limit" },
+          { value: "market", label: "Market" },
+        ]}
+      />
 
-      <div className="mt-3 flex flex-col gap-1">
+      <div className="mt-3 flex flex-col gap-1.5">
         {type === "limit" ? (
-          <Field label="Price" unit={quote} value={priceStr} onChange={setPriceStr} places={priceDp} />
+          <RowField label="Price" unit={quote} value={priceStr} onChange={setPriceStr} places={priceDp} />
         ) : (
-          <Field label={buy ? "Best ask" : "Best bid"} unit={quote} value={num(market, priceDp)} places={priceDp} />
+          <RowField label={buy ? "Best ask" : "Best bid"} unit={quote} value={num(market, priceDp)} />
         )}
-        <Field
+        <RowField
           label="Amount"
           unit={base}
           value={lead === "amount" ? amountStr : amount > 0 ? String(amount) : ""}
@@ -271,7 +206,7 @@ export function OrderTicket({
           }}
           places={sizeDp}
         />
-        <Field
+        <RowField
           label="Total"
           unit={quote}
           value={lead === "total" ? totalStr : total > 0 ? total.toFixed(2) : ""}
@@ -283,25 +218,19 @@ export function OrderTicket({
         />
       </div>
 
-      <div className="mt-2 flex items-center justify-between px-1">
-        {/* a side switch swaps the balance in place: 4px, 2px blur, 150ms */}
-        <motion.span
-          key={side}
-          className="text-[10.5px] text-foreground/45"
-          initial={reduced || side === defaultSide ? false : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-        >
+      {/* one fixed row that never wraps, so a side switch cannot change the ticket's height */}
+      <div className="mt-2 flex h-6 items-center justify-between gap-2 px-1">
+        <span className="min-w-0 truncate whitespace-nowrap text-[12px] text-foreground/60">
           Free {buy ? `${num(quoteBalance, 2)} ${quote}` : `${num(baseBalance, sizeDp)} ${base}`}
-        </motion.span>
-        <span className="flex items-center">
+        </span>
+        <span className="flex shrink-0 items-center gap-0.5">
           {SHARES.map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => fill(s)}
               aria-label={s === 100 ? "Use the largest amount the balance allows" : `Use ${s}% of the balance`}
-              className="h-6 rounded-full px-2 text-[10.5px] text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.08] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] focus-visible:text-foreground/90 active:scale-[0.97] motion-reduce:active:scale-100"
+              className={cn(PILL, "px-2")}
             >
               {s === 100 ? "Max" : `${s}%`}
             </button>
@@ -309,41 +238,18 @@ export function OrderTicket({
         </span>
       </div>
 
-      <div role="status" className="mt-3 flex flex-col gap-1.5 px-1">
-        {type === "limit" &&
-          line(
-            buy ? "From the ask" : "From the bid",
-            `${away >= 0 ? "+" : "−"}${Math.abs(away).toFixed(2)}%`,
-            false,
-            price > 0 ? (away >= 0 ? GREEN : RED) : undefined,
-          )}
-        {line(`Fee · ${(feeRate * 100).toFixed(2)}%`, `${num(fee, 2)} ${quote}`)}
-        {line(buy ? "You pay" : "You receive", `${num(Math.max(0, settle), 2)} ${quote}`, true, state === "short" ? RED : undefined)}
+      <div role="status" className="mt-3 whitespace-nowrap px-1">
+        <Line label={buy ? "You pay" : "You receive"} value={`${num(Math.max(0, settle), 2)} ${quote}`} strong tip={payTip} hue={state === "short" ? RED : undefined} />
       </div>
 
-      {/* the one solid control; its label is the state of the ticket */}
-      <motion.button
-        type="button"
+      {/* the one loud control; its label is the state of the ticket */}
+      <PrimaryButton
+        className="mt-4"
+        state={`${state}-${side}`}
         disabled={!enabled}
         onClick={() => onSubmit?.({ side, type, price, amount, total, fee })}
-        whileTap={enabled && !reduced ? { scale: 0.98 } : undefined}
-        transition={reduced ? { duration: 0 } : LIFT_SPRING}
-        className="mt-4 h-11 w-full rounded-full bg-foreground/[0.92] text-[13px] font-semibold text-background outline-none transition-[background-color,opacity] duration-200 enabled:cursor-pointer enabled:hover:bg-foreground enabled:focus-visible:bg-foreground disabled:cursor-not-allowed disabled:opacity-35"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          {/* keyed by the state and the side, so typing changes the figure without replaying the swap */}
-          <motion.span
-            key={`${state}-${side}`}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(2px)" }}
-            transition={{ duration: reduced ? 0.1 : 0.15, ease: EASE }}
-            className="block"
-          >
-            {verdict}
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
+        label={verdict}
+      />
     </div>
   )
 }

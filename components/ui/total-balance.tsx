@@ -4,6 +4,8 @@ import { useId, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
+import { SegmentedControl } from "@/components/ui/segmented-control"
 
 /* Total Balance, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: the whole account as one line over a chosen window, with the three
@@ -22,18 +24,26 @@ import { cn } from "@/lib/utils"
    each figure to this comment, and it is 480 wide where the sketch was 820.
    Sample data fixed: the sketch read every window with a 24-hour clock, so a point a week
    back showed a time of day; each window now reads in its own unit.
+   2026-10-02 audit: too many numbers (his call). The row of three figures under the plot is
+   gone, and with it the total return printed twice and "Steadiness", an index of our own
+   making. What is left is one header in three tiers (spec 14.1): the title at /45 with the
+   window switch on the right (the shared SegmentedControl, moved up from under the plot),
+   the balance at 26px with its cents at /35, then the change and the return once, in their
+   hue, with the window at /45. The pointed point reads in the shared ChartCard (time,
+   balance, change from the window's open, drawdown there) with the balance tagged on the
+   axis by AxisTag, and the line past the pointer dims to 0.45; the header no longer swaps.
+   The max drawdown moved to the aria-label. 460 wide, the Balance family's width.
    Formulas:
-   · change         last − first of the window
+   · change         last (or the pointed value) − first of the window
    · total return   (last − first) ÷ first × 100
-   · max drawdown   the lowest of (value − highest value so far) ÷ highest value so far × 100
-   · steadiness     50 + mean step ÷ deviation of the steps × 40, held between 0 and 100
+   · drawdown       (value − highest value so far) ÷ highest value so far × 100
+   · max drawdown   the lowest drawdown in the window (read in the aria-label)
    Motion (2026-10-01): the line and its area sweep in from the left once the chart is a third
    in view (one clip, 900ms); a new window tweens the line and the area to the new walk
    (400ms) where they drew again, and the price ticks fade to their new figures; reduced
    motion shows each state at once. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 /** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
@@ -82,7 +92,7 @@ const DEFAULT_WINDOWS: BalanceWindow[] = [
   { key: "all", label: "All", series: walk(113, 0.00042), length: 52, unit: "w" },
 ]
 
-const W = 480
+const W = 460
 const H = 150
 /** r is the gutter the price ticks live in; l keeps the first round cap inside the box */
 const PAD = { t: 10, b: 10, l: 4, r: 52 }
@@ -103,6 +113,12 @@ function linePath(vals: number[], m: number, px: (i: number) => number, py: (v: 
   return d
 }
 
+/** what the window spans, in words */
+function span(w: BalanceWindow) {
+  const unit = w.unit === "clock" ? "hour" : w.unit === "d" ? "day" : "week"
+  return `past ${w.length} ${unit}${w.length === 1 ? "" : "s"}`
+}
+
 /** where a point sits in time, in the window's own unit */
 function when(w: BalanceWindow, i: number) {
   const t = w.series.length > 1 ? i / (w.series.length - 1) : 1
@@ -115,8 +131,8 @@ function when(w: BalanceWindow, i: number) {
 }
 
 /**
- * The account as one scrubbable line: balance, change and return on top, the window
- * pills under the plot, and drawdown, steadiness and return worked from the same series.
+ * The account as one scrubbable line: the balance, its change and return over the chosen
+ * window on top, the window switch in the label row, and the pointed point read in a card.
  */
 export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOWS, defaultRange = "24h", className }: TotalBalanceProps) {
   const reduced = useReducedMotion()
@@ -153,15 +169,11 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
       if (v > peak) peak = v
       drawdown = Math.min(drawdown, peak ? ((v - peak) / peak) * 100 : 0)
     }
-    const steps = data.slice(1).map((v, i) => v - data[i])
-    const mean = steps.length ? steps.reduce((a, b) => a + b, 0) / steps.length : 0
-    const sd = Math.sqrt(steps.length ? steps.reduce((a, b) => a + (b - mean) ** 2, 0) / steps.length : 0) || 1e-9
     return {
       last,
       change: last - first,
       totalReturn: first ? ((last - first) / first) * 100 : 0,
       drawdown,
-      steadiness: Math.max(0, Math.min(100, 50 + (mean / sd) * 40)),
     }
   }, [data, n])
 
@@ -175,39 +187,54 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
 
   const at = hi ?? n - 1
   const hueOf = (v: number) => ink(v >= 0 ? GREEN : RED)
-  const figures: { label: string; value: string; hue?: string }[] = [
-    { label: "Max drawdown", value: `${stats.drawdown < 0 ? "−" : ""}${Math.abs(stats.drawdown).toFixed(2)}%`, hue: stats.drawdown < 0 ? ink(RED) : undefined },
-    { label: "Steadiness", value: stats.steadiness.toFixed(1) },
-    { label: "Total return", value: signedPct(stats.totalReturn), hue: hueOf(stats.totalReturn) },
-  ]
+  const [whole, cents] = usd(stats.last).split(".")
+  /* the pointed point: its change from the window's open, and its drawdown from the peak before it */
+  const pointed = useMemo(() => {
+    if (hi === null) return null
+    let peak = data[0]
+    for (let i = 0; i <= hi; i++) peak = Math.max(peak, data[i])
+    const change = data[hi] - data[0]
+    return { change, pct: data[0] ? (change / data[0]) * 100 : 0, drawdown: peak ? ((data[hi] - peak) / peak) * 100 : 0 }
+  }, [hi, data])
+  const tagY = hi === null ? 0 : Math.max(8, Math.min(H - 8, geo.y(data[at])))
+  const crossX = geo.x(at)
 
   return (
-    <div className={cn("w-[480px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
-      <div className="text-[11.5px] font-medium text-foreground/45">{title}</div>
+    <div className={cn("w-[460px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
+      {/* the header, three tiers (spec 14.1): the title with the window switch, the balance, then its move once */}
+      <div className="mb-3 flex items-center justify-between gap-3 text-[12px]">
+        <span className="truncate text-foreground/45">{title}</span>
+        <SegmentedControl
+          options={windows.map((w) => w.label)}
+          value={win.label}
+          onChange={(label) => {
+            const next = windows.find((w) => w.label === label)
+            if (next) setRange(next.key)
+            setHi(null)
+          }}
+          label="Window"
+          className="shrink-0"
+        />
+      </div>
+      {/* a new window swaps the figures in place (4px, 2px blur, 150ms); the pointer never does */}
       <motion.div
         role="status"
-        /* a new window, or starting and ending a scrub, swaps the headline in place (4px, 2px
-           blur, 150ms); the scrub itself moves the figure at once */
-        key={`${range}-${hi === null ? "rest" : "scrub"}`}
+        key={range}
         initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ duration: 0.15, ease: EASE }}
-        className="mt-1.5 flex items-baseline gap-2.5"
       >
-        <span className="text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">{usd(data[at])}</span>
-        {hi === null ? (
-          <>
-            <span className="text-[11.5px] font-medium" style={{ color: hueOf(stats.change) }}>
-              {stats.change < 0 ? "−" : "+"}
-              {usd(Math.abs(stats.change))}
-            </span>
-            <span className="text-[11.5px] font-medium" style={{ color: hueOf(stats.totalReturn) }}>
-              {signedPct(stats.totalReturn)}
-            </span>
-          </>
-        ) : (
-          <span className="text-[11px] text-foreground/45">{when(win, at)}</span>
-        )}
+        <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+          {whole}
+          <span className="text-foreground/35">.{cents}</span>
+        </p>
+        <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: hueOf(stats.change) }}>
+          <span>
+            {stats.change < 0 ? "−" : "+"}
+            {usd(Math.abs(stats.change))} · {signedPct(stats.totalReturn)}
+          </span>
+          <span className="font-normal text-foreground/45">{span(win)}</span>
+        </p>
       </motion.div>
 
       <div ref={boxRef} className="relative mt-4 cursor-crosshair touch-none" onPointerMove={onMove} onPointerLeave={() => setHi(null)}>
@@ -216,13 +243,17 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
           className="block w-full overflow-visible"
           fill="none"
           role="img"
-          aria-label={`${title} over ${win.label}, now ${usd(stats.last)}, ${signedPct(stats.totalReturn)}, between ${usd(geo.lo)} and ${usd(geo.top)}`}
+          aria-label={`${title} over the ${span(win)}, now ${usd(stats.last)}, ${signedPct(stats.totalReturn)}, between ${usd(geo.lo)} and ${usd(geo.top)}, max drawdown ${stats.drawdown < 0 ? "−" : ""}${Math.abs(stats.drawdown).toFixed(2)}%`}
         >
           <defs>
             <linearGradient id={`tb-${uid}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--foreground)" stopOpacity="0.1" />
               <stop offset="100%" stopColor="var(--foreground)" stopOpacity="0" />
             </linearGradient>
+            {/* the line left of the pointer stays full; the rest dims to 0.45 */}
+            <clipPath id={`tbl-${uid}`}>
+              <rect x={-4} y={-4} width={Math.max(0, crossX + 4)} height={H + 8} />
+            </clipPath>
             {/* the entrance: one clip that opens from the left edge, once */}
             <clipPath id={`tbc-${uid}`}>
               <motion.rect
@@ -237,8 +268,10 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
           </defs>
           {[0, 0.5, 1].map((f) => {
             const gy = PAD.t + f * (H - PAD.t - PAD.b)
+            /* a tick steps aside while the pointed tag sits on it */
+            const under = hi !== null && Math.abs(gy - tagY) < 12
             return (
-              <g key={f}>
+              <g key={f} style={{ opacity: under ? 0 : 1, transition: reduced ? "none" : "opacity 150ms" }}>
                 <line x1={PAD.l} x2={PAD.l + PLOT} y1={gy} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
                 {/* the ticks hold their places; a new figure fades in over the old one */}
                 <AnimatePresence initial={false}>
@@ -249,7 +282,7 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
                     fontSize={9}
                     fill="var(--foreground)"
                     initial={{ fillOpacity: 0 }}
-                    animate={{ fillOpacity: 0.35 }}
+                    animate={{ fillOpacity: 0.45 }}
                     exit={{ fillOpacity: 0 }}
                     transition={tween}
                   >
@@ -259,7 +292,7 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
               </g>
             )
           })}
-          <g clipPath={`url(#tbc-${uid})`}>
+          <g clipPath={`url(#tbc-${uid})`} style={{ opacity: hi === null ? 1 : 0.45, transition: reduced ? "none" : "opacity 160ms" }}>
             <motion.path initial={false} animate={{ d: geo.area }} transition={tween} fill={`url(#tb-${uid})`} />
             <motion.path
               initial={false}
@@ -274,61 +307,38 @@ export function TotalBalance({ title = "Total balance", windows = DEFAULT_WINDOW
           </g>
           {hi !== null && (
             <g pointerEvents="none">
-              <line x1={geo.x(at)} x2={geo.x(at)} y1={0} y2={H} stroke="var(--foreground)" strokeOpacity={0.28} strokeWidth={1} />
-              <circle cx={geo.x(at)} cy={geo.y(data[at])} r={2.5} fill="var(--foreground)" />
+              <g clipPath={`url(#tbl-${uid})`}>
+                <path d={geo.area} fill={`url(#tb-${uid})`} />
+                <path d={geo.d} stroke="var(--foreground)" strokeOpacity={0.9} strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />
+              </g>
+              <line x1={crossX} x2={crossX} y1={0} y2={H} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} />
+              <circle cx={crossX} cy={geo.y(data[at])} r={3} fill="var(--foreground)" stroke="var(--background)" strokeWidth={1.5} />
+              <AxisTag x={PAD.l + PLOT + 2} y={tagY} width={PAD.r - 2}>
+                ${Math.round(data[at]).toLocaleString("en-US")}
+              </AxisTag>
             </g>
           )}
         </svg>
+
+        {/* the pointed point, read beside the cursor (chart-overlay.tsx); it flips left past 60% */}
+        <ChartCard
+          open={pointed !== null}
+          x={`${(crossX / W) * 100}%`}
+          flip={crossX > PAD.l + PLOT * 0.6}
+          heading={when(win, at)}
+          rows={
+            pointed
+              ? [
+                  { label: "Balance", value: usd(data[at]) },
+                  { label: "Change", value: `${pointed.change < 0 ? "−" : "+"}${usd(Math.abs(pointed.change))} · ${signedPct(pointed.pct)}`, color: hueOf(pointed.change) },
+                  { label: "Drawdown", value: `${pointed.drawdown < 0 ? "−" : ""}${Math.abs(pointed.drawdown).toFixed(2)}%` },
+                ]
+              : []
+          }
+          width={184}
+        />
       </div>
 
-      <div role="radiogroup" aria-label="Window" className="-ml-2.5 mt-3 flex">
-        {windows.map((w) => {
-          const on = w.key === win.key
-          return (
-            <button
-              key={w.key}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => {
-                setRange(w.key)
-                setHi(null)
-              }}
-              className={cn(
-                "relative h-7 rounded-full px-3 text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] motion-reduce:active:scale-100",
-                on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-              )}
-            >
-              {on &&
-                (reduced ? (
-                  <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-                ) : (
-                  <motion.span aria-hidden layoutId={`${uid}-range`} className="absolute inset-0 rounded-full bg-foreground/[0.08]" transition={{ duration: 0.25, ease: TAB_EASE }} />
-                ))}
-              <span className="relative">{w.label}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 border-t border-foreground/[0.05] pt-3">
-        {figures.map((f, i) => (
-          <div key={f.label} className="flex flex-col gap-1">
-            <span className="text-[10.5px] text-foreground/45">{f.label}</span>
-            {/* a new window pops each figure in, 35ms apart */}
-            <motion.span
-              key={range}
-              className="text-[13px] font-semibold text-foreground/90"
-              style={f.hue ? { color: f.hue } : undefined}
-              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              transition={{ duration: 0.15, ease: EASE, delay: reduced ? 0 : i * 0.035 }}
-            >
-              {f.value}
-            </motion.span>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

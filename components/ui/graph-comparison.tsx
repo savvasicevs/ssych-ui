@@ -1,10 +1,16 @@
 "use client"
 
 import { useId, useRef, useState } from "react"
-import type { KeyboardEvent, PointerEvent } from "react"
+import type { KeyboardEvent, PointerEvent, ReactNode } from "react"
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react"
+import { Plus } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useWidth } from "@/components/ui/use-width"
+import { BUTTON, ICON_BUTTON } from "@/components/ui/control-classes"
+import { ChartCard } from "@/components/ui/chart-overlay"
+import { SegmentedControl } from "@/components/ui/segmented-control"
+import { ChartMenu } from "@/components/ui/performance-chart-menu"
 
 /* Graph Comparison, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: building a comparison. Up to four series are on the plot; the rest wait
@@ -32,6 +38,17 @@ import { cn } from "@/lib/utils"
    so 1M was not the tail of 1Y. There is one series of 52 weekly closes for each symbol
    and a window is a cut of it. "TYT" is not a listing; it is MSFT here.
    Against fresh/CompareLines: that compares a fixed set; here the set is the point.
+   2026-10-02 audit: one row at the top. The series on the plot are h-7 chips at 11.5px in the
+   control material with the 6px series dot (it turns into a cross under the pointer, since
+   a press takes the series off) and an optional company mark through a new `renderIcon`
+   slot; the second row of waiting series became one "Add" button at the row's end that
+   opens a menu of them (the dashboards' dropdown look, performance-chart-menu.tsx), and the
+   window switch is the shared SegmentedControl on the row's right, not a hand made one
+   centred under the plot. The chips no longer carry figures: scrubbing reads every series'
+   move in the shared ChartCard beside the cursor, highest first, and the lines past the
+   pointer dim to 0.45. Gridlines are solid at 5% with the 0% line the stronger one, axis
+   figures at /45. 500 wide, the Comparison family's width; three series open on the plot
+   so the row has room for a fourth.
    Formulas:
    · index at close i = close at i ÷ close at the window's first close × 100
    · move = index − 100, in percent
@@ -46,8 +63,6 @@ import { cn } from "@/lib/utils"
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const CSS_EASE = "cubic-bezier(0.16, 1, 0.3, 1)"
-const GREEN = "var(--chart-up)"
-const RED = "var(--chart-down)"
 /** one colour per series, in the house order; teal (--chart-2) is left out because green
  *  already means up on this surface. Past the palette a series is the one "Other" ink. */
 const PALETTE = ["var(--chart-1)", "var(--chart-5)", "var(--chart-3)", "var(--chart-amber)", "var(--chart-4)"]
@@ -79,6 +94,12 @@ export interface GraphComparisonProps {
   /** how many series the plot holds */
   max?: number
   title?: string
+  /** draws a series' mark (a company or token logo) in its chip and in the add menu */
+  renderIcon?: (symbol: string, size: number) => ReactNode
+  /** the plot's height in px (2026-10-06); 180 left out */
+  height?: number
+  /** the windows and their close counts; weekly left out, daily is 31 / 92 / 183 / 365 */
+  periods?: readonly ComparisonPeriod[]
   className?: string
 }
 
@@ -121,9 +142,9 @@ const DEFAULT_SERIES: ComparisonSeries[] = [
   { symbol: "AAPL", label: "Share price", closes: walk(83, 243.4, 0.002, 0.055) },
 ]
 
-const DEFAULT_SELECTED = ["NVDA", "AMZN", "SPY", "MSFT"]
+const DEFAULT_SELECTED = ["NVDA", "AMZN", "SPY"]
 
-/** how many weekly closes each window holds */
+/** how many weekly closes each window holds (the default; pass `periods` for daily data) */
 const PERIODS = [
   { key: "1M", closes: 5 },
   { key: "3M", closes: 14 },
@@ -131,12 +152,10 @@ const PERIODS = [
   { key: "1Y", closes: 52 },
 ] as const
 type PeriodKey = (typeof PERIODS)[number]["key"]
+/** a window and how many closes it holds; daily data is 31 / 92 / 183 / 365 (2026-10-06) */
+export type ComparisonPeriod = { key: PeriodKey; closes: number }
 
-const W = 480
-const H = 180
 const PAD = { r: 40, t: 10, b: 20 }
-const PLOT = W - PAD.r
-const PLOT_H = H - PAD.t - PAD.b
 
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`
 
@@ -154,7 +173,7 @@ function linePath(vals: number[], m: number, px: (j: number) => number, py: (v: 
 
 /**
  * A comparison that is put together by hand: series on the plot can be taken off, waiting
- * ones added, four at most. Lines are indexed to the start of the window.
+ * ones added from a menu, four at most. Lines are indexed to the start of the window.
  */
 export function GraphComparison({
   series = DEFAULT_SERIES,
@@ -162,8 +181,16 @@ export function GraphComparison({
   selected = DEFAULT_SELECTED,
   max = 4,
   title = "Graph comparison",
+  renderIcon,
+  height = 180,
+  periods = PERIODS,
   className,
 }: GraphComparisonProps) {
+  // laid out at the width it is given (2026-10-06), so the text keeps its size when stretched
+  const [boxRef, W] = useWidth<HTMLDivElement>(500)
+  const H = height
+  const PLOT = W - PAD.r
+  const PLOT_H = H - PAD.t - PAD.b
   const reduced = useReducedMotion()
   const uid = useId().replace(/:/g, "")
   const svgRef = useRef<SVGSVGElement>(null)
@@ -184,7 +211,7 @@ export function GraphComparison({
   const full = on.length >= room
 
   const len = usable.length ? Math.min(...usable.map((s) => s.closes.length)) : 2
-  const n = Math.max(2, Math.min(len, PERIODS.find((p) => p.key === period)?.closes ?? len))
+  const n = Math.max(2, Math.min(len, periods.find((p) => p.key === period)?.closes ?? len))
   const start = len - n
   const cut = on.map((s) => {
     const base = s.closes[start] || 1
@@ -232,205 +259,209 @@ export function GraphComparison({
       setAt((c) => Math.max(0, Math.min(n - 1, (c ?? n - 1) + d)))
     } else if (e.key === "Escape") setAt(null)
   }
-  const active = PERIODS.findIndex((p) => p.key === period)
   const dateTicks = [...new Set([0, Math.round((n - 1) / 2), n - 1])]
+  /* the lines left of the pointer stay full, the rest dims to 0.45 */
+  const split = at === null ? W + 8 : x(i)
+  const lineGroup = (key: string) => (
+    <AnimatePresence initial={false}>
+      {cut.map((s, k) => {
+        const lit = hot === s.symbol
+        return (
+          /* the group owns the dim and the fade of a series coming or going; the line
+             inside tweens its path */
+          <motion.g
+            key={`${key}-${s.symbol}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: hot !== null && !lit ? 0.35 : 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduced ? { duration: 0 } : { duration: 0.16, ease: EASE }}
+          >
+            <motion.path
+              initial={false}
+              animate={{ d: linePath(s.idx, len, x, y) }}
+              transition={tween}
+              fill="none"
+              stroke={inkOf(k)}
+              strokeWidth={lit ? 2.1 : 1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </motion.g>
+        )
+      })}
+    </AnimatePresence>
+  )
 
   return (
-    <div role="group" aria-label={title} className={cn("w-[480px] max-w-full tabular-nums", className)}>
+    <div ref={boxRef} role="group" aria-label={title} className={cn("w-[500px] max-w-full tabular-nums", className)}>
       {/* the title is the group's label only: the series row says what is compared.
           the close being read stays for screen readers only (2026-10-01): the axis shows the dates */}
       <span role="status" className="sr-only">
         {label(i)}, indexed to {label(0)}
       </span>
 
-      {/* one row, no wrap: tighter chips fit four at 480; past that the row scrolls sideways */}
-      <div
-        className="-mx-2 flex flex-nowrap gap-1 overflow-x-auto px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        role="group"
-        aria-label="On the plot"
-        onPointerLeave={() => setHot(null)}
-      >
-        {order.map((k) => {
-          const s = cut[k]
-          const lit = hot === s.symbol
-          const move = s.idx[i] - 100
-          const last = on.length <= 1
-          return (
-            <motion.button
-              key={s.symbol}
-              type="button"
-              disabled={last}
-              initial={reduced ? false : { opacity: 0, scale: 0.97 }}
-              animate={{ opacity: hot !== null && !lit ? 0.4 : 1, scale: 1 }}
-              whileTap={reduced ? undefined : { scale: 0.97 }}
-              transition={{ duration: 0.2, ease: EASE, scale: reduced ? { duration: 0 } : PRESS }}
-              aria-label={`${s.symbol}, ${s.label.toLowerCase()}, ${signed(move)} at ${label(i)}${last ? "" : ". Press to take it off the plot"}`}
-              onPointerEnter={() => setHot(s.symbol)}
-              onFocus={() => setHot(s.symbol)}
-              onBlur={() => setHot(null)}
-              onClick={() => remove(s.symbol)}
-              className="flex h-6 shrink-0 items-center gap-1 rounded-full bg-foreground/[0.05] pl-2 pr-1.5 text-[10.5px] outline-none transition-colors duration-200 hover:bg-foreground/[0.08] focus-visible:bg-foreground/[0.1] disabled:pointer-events-none"
-            >
-              <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ background: inkOf(k) }} />
-              <span className="font-semibold text-foreground/90">{s.symbol}</span>
-              <span className="font-medium" style={{ color: move >= 0 ? GREEN : RED }}>
-                {signed(move)}
-              </span>
-              {!last && (
-                <svg aria-hidden width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-foreground/35">
-                  <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                </svg>
-              )}
-            </motion.button>
-          )
-        })}
+      {/* one row at the top: the series on the plot and the add menu */}
+      <div className="flex items-center gap-1.5">
+        <div
+          className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="On the plot"
+          onPointerLeave={() => setHot(null)}
+        >
+          {order.map((k) => {
+            const s = cut[k]
+            const last = on.length <= 1
+            return (
+              <motion.button
+                key={s.symbol}
+                type="button"
+                disabled={last}
+                initial={reduced ? false : { opacity: 0, scale: 0.97 }}
+                animate={{ opacity: hot !== null && hot !== s.symbol ? 0.4 : 1, scale: 1 }}
+                whileTap={reduced ? undefined : { scale: 0.97 }}
+                transition={{ duration: 0.2, ease: EASE, scale: reduced ? { duration: 0 } : PRESS }}
+                aria-label={`${s.symbol}, ${s.label.toLowerCase()}${last ? "" : ". Press to take it off the plot"}`}
+                onPointerEnter={() => setHot(s.symbol)}
+                onFocus={() => setHot(s.symbol)}
+                onBlur={() => setHot(null)}
+                onClick={() => remove(s.symbol)}
+                className={cn(BUTTON, "group h-7 shrink-0 gap-1 pl-2.5 pr-2.5 text-[11.5px] font-medium disabled:pointer-events-none disabled:opacity-100")}
+              >
+                {/* the series dot; under the pointer it turns into a cross, since a press takes it off */}
+                <span aria-hidden className="relative grid size-2 shrink-0 place-items-center">
+                  <span className={cn("size-1.5 rounded-full transition-opacity duration-150", !last && "group-hover:opacity-0 group-focus-visible:opacity-0")} style={{ background: inkOf(k) }} />
+                  {!last && (
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="absolute inset-0 text-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+                      <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                  )}
+                </span>
+                {renderIcon?.(s.symbol, 14)}
+                <span>{s.symbol}</span>
+              </motion.button>
+            )
+          })}
+        </div>
+        {waiting.length > 0 && (
+          <ChartMenu
+            label={full ? `Add a series, take one off first (${room} at most)` : "Add a series"}
+            options={waiting.map((s) => ({ value: s.symbol, label: s.symbol, hint: s.label, icon: renderIcon?.(s.symbol, 16) }))}
+            onPick={add}
+            disabled={full}
+            className="shrink-0"
+            triggerClassName={cn(ICON_BUTTON, "size-7 disabled:pointer-events-none disabled:opacity-40")}
+            chevron={false}
+          >
+            <Plus aria-hidden className="size-3.5" strokeWidth={2} />
+          </ChartMenu>
+        )}
       </div>
 
-      {waiting.length > 0 && (
-        <div className="-mx-2 mt-1 flex flex-nowrap items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label={full ? "Add to the plot, take one off first" : "Add to the plot"}>
-          {waiting.map((s) => (
-            <button
-              key={s.symbol}
-              type="button"
-              disabled={full}
-              aria-label={`Add ${s.symbol}, ${s.label.toLowerCase()}`}
-              onClick={() => add(s.symbol)}
-              className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10.5px] text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-200 hover:bg-foreground/[0.05] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35 motion-reduce:active:scale-100"
-            >
-              <svg aria-hidden width="8" height="8" viewBox="0 0 8 8" fill="none">
-                <path d="M4 1v6M1 4h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-              <span className="font-semibold">{s.symbol}</span>
-              <span className="text-[10px]">{s.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        className="mt-2 block w-full cursor-crosshair touch-none overflow-visible outline-none"
-        role="img"
-        tabIndex={0}
-        aria-label={`${title} over ${period}, indexed to 100 on ${label(0)}. ${order.map((k) => `${cut[k].symbol} ${signed(cut[k].idx[n - 1] - 100)}`).join(", ")}`}
-        onPointerMove={onMove}
-        onPointerLeave={() => setAt(null)}
-        onBlur={() => setAt(null)}
-        onKeyDown={onKey}
-      >
-        <defs>
-          {/* the entrance: one clip that opens from the left edge, once */}
-          <clipPath id={`${uid}-draw`}>
-            <motion.rect
-              x={-4}
-              y={-4}
-              height={H + 8}
-              initial={reduced ? false : { width: 0 }}
-              animate={{ width: play ? W + 8 : 0 }}
-              transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
-            />
-          </clipPath>
-        </defs>
-
-        {/* an axis line rides to its new height when the scale changes (a CSS transform, so it
-            is placed before any script runs); a new step fades in and an old one out */}
-        <AnimatePresence initial={false}>
-          {grid.map((v) => (
-            <motion.g key={v} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tween}>
-              <g style={{ transform: `translateY(${y(v).toFixed(1)}px)`, transition: reduced ? "none" : `transform 400ms ${CSS_EASE}` }}>
-                <line x1={0} y1={0} x2={PLOT} y2={0} stroke="var(--foreground)" strokeOpacity={v === 100 ? 0.12 : 0.05} strokeWidth={1} strokeDasharray={v === 100 ? undefined : "2 5"} />
-                <text x={PLOT + 6} y={3} fontSize={9} fill="var(--foreground)" fillOpacity={0.35}>
-                  {v === 100 ? "0%" : `${v > 100 ? "+" : "−"}${Math.abs(v - 100)}%`}
-                </text>
-              </g>
-            </motion.g>
-          ))}
-        </AnimatePresence>
-
-        {dateTicks.map((k) => (
-          <text key={k} x={x(k)} y={H - 5} fontSize={9} fill="var(--foreground)" fillOpacity={0.35} textAnchor={k === 0 ? "start" : k === n - 1 ? "end" : "middle"}>
-            {label(k)}
-          </text>
-        ))}
-
-        <g clipPath={`url(#${uid}-draw)`}>
-          <AnimatePresence initial={false}>
-            {cut.map((s, k) => {
-              const lit = hot === s.symbol
-              return (
-                /* the group owns the dim and the fade of a series coming or going; the line
-                   inside tweens its path */
-                <motion.g
-                  key={s.symbol}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: hot !== null && !lit ? 0.35 : 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={reduced ? { duration: 0 } : { duration: 0.16, ease: EASE }}
-                >
-                  <motion.path
-                    initial={false}
-                    animate={{ d: linePath(s.idx, len, x, y) }}
-                    transition={tween}
-                    fill="none"
-                    stroke={inkOf(k)}
-                    strokeWidth={lit ? 2.1 : 1.8}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </motion.g>
-              )
-            })}
-          </AnimatePresence>
-        </g>
-
-        {at !== null && (
-          <g pointerEvents="none">
-            <line x1={x(i)} y1={PAD.t} x2={x(i)} y2={PAD.t + PLOT_H} stroke="var(--foreground)" strokeOpacity={0.28} strokeWidth={1} />
-            {cut.map((s, k) => (
-              <circle
-                key={s.symbol}
-                cx={x(i)}
-                cy={y(s.idx[i])}
-                r={hot === s.symbol ? 3.2 : 2.6}
-                fill={inkOf(k)}
-                fillOpacity={hot !== null && hot !== s.symbol ? 0.35 : 1}
-                stroke="var(--background)"
-                strokeWidth={1.5}
+      <div className="relative mt-4">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className="block w-full cursor-crosshair touch-none overflow-visible outline-none"
+          role="img"
+          tabIndex={0}
+          aria-label={`${title} over ${period}, indexed to 100 on ${label(0)}. ${order.map((k) => `${cut[k].symbol} ${signed(cut[k].idx[n - 1] - 100)}`).join(", ")}`}
+          onPointerMove={onMove}
+          onPointerLeave={() => setAt(null)}
+          onBlur={() => setAt(null)}
+          onKeyDown={onKey}
+        >
+          <defs>
+            {/* the entrance: one clip that opens from the left edge, once */}
+            <clipPath id={`${uid}-draw`}>
+              <motion.rect
+                x={-4}
+                y={-4}
+                height={H + 8}
+                initial={reduced ? false : { width: 0 }}
+                animate={{ width: play ? W + 8 : 0 }}
+                transition={reduced ? { duration: 0 } : { duration: 0.9, ease: EASE }}
               />
-            ))}
-          </g>
-        )}
-      </svg>
+            </clipPath>
+            <clipPath id={`${uid}-past`}>
+              <rect x={-4} y={-4} width={split + 4} height={H + 8} />
+            </clipPath>
+            <clipPath id={`${uid}-ahead`}>
+              <rect x={split} y={-4} width={Math.max(0, W + 8 - split)} height={H + 8} />
+            </clipPath>
+          </defs>
 
-      {/* one fill slides between the windows */}
-      <div className="relative mx-auto mt-3 flex w-[208px] gap-1" role="group" aria-label="Window">
-        <span
-          aria-hidden
-          className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.08]"
-          style={{
-            width: `calc((100% - ${(PERIODS.length - 1) * 4}px) / ${PERIODS.length})`,
-            transform: `translateX(calc(${active} * (100% + 4px)))`,
-            transition: reduced ? "none" : "transform 250ms cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
+          {/* an axis line rides to its new height when the scale changes (a CSS transform, so it
+              is placed before any script runs); a new step fades in and an old one out */}
+          <AnimatePresence initial={false}>
+            {grid.map((v) => (
+              <motion.g key={v} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tween}>
+                <g style={{ transform: `translateY(${y(v).toFixed(1)}px)`, transition: reduced ? "none" : `transform 400ms ${CSS_EASE}` }}>
+                  <line x1={0} y1={0} x2={PLOT} y2={0} stroke="var(--foreground)" strokeOpacity={v === 100 ? 0.12 : 0.05} strokeWidth={1} />
+                  <text x={PLOT + 6} y={3} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
+                    {v === 100 ? "0%" : `${v > 100 ? "+" : "−"}${Math.abs(v - 100)}%`}
+                  </text>
+                </g>
+              </motion.g>
+            ))}
+          </AnimatePresence>
+
+          {dateTicks.map((k) => (
+            <text key={k} x={x(k)} y={H - 5} fontSize={9} fill="var(--foreground)" fillOpacity={0.45} textAnchor={k === 0 ? "start" : k === n - 1 ? "end" : "middle"}>
+              {label(k)}
+            </text>
+          ))}
+
+          <g clipPath={`url(#${uid}-draw)`}>
+            <g clipPath={`url(#${uid}-past)`}>{lineGroup("past")}</g>
+            <g clipPath={`url(#${uid}-ahead)`} opacity={0.45}>
+              {lineGroup("ahead")}
+            </g>
+          </g>
+
+          {at !== null && (
+            <g pointerEvents="none">
+              <line x1={x(i)} y1={PAD.t} x2={x(i)} y2={PAD.t + PLOT_H} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} />
+              {cut.map((s, k) => (
+                <circle
+                  key={s.symbol}
+                  cx={x(i)}
+                  cy={y(s.idx[i])}
+                  r={hot === s.symbol ? 3.2 : 2.6}
+                  fill={inkOf(k)}
+                  fillOpacity={hot !== null && hot !== s.symbol ? 0.35 : 1}
+                  stroke="var(--background)"
+                  strokeWidth={1.5}
+                />
+              ))}
+            </g>
+          )}
+        </svg>
+
+        {/* the pointed close, every series' move from the window's start, highest first */}
+        <ChartCard
+          open={at !== null}
+          x={`${(x(i) / W) * 100}%`}
+          flip={x(i) > PLOT * 0.6}
+          heading={label(i)}
+          rows={[...cut.keys()]
+            .sort((a, b) => cut[b].idx[i] - cut[a].idx[i])
+            .map((k) => ({ label: cut[k].symbol, value: signed(cut[k].idx[i] - 100) }))}
+          width={140}
         />
-        {PERIODS.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            aria-pressed={period === p.key}
-            onClick={() => {
-              setPeriod(p.key)
-              setAt(null)
-            }}
-            className={cn(
-              "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium outline-none transition-[color,transform,translate,scale,rotate] duration-200 active:scale-[0.97] motion-reduce:active:scale-100",
-              period === p.key ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90",
-            )}
-          >
-            {p.key}
-          </button>
-        ))}
+      </div>
+
+      {/* the window switch under the plot (2026-10-02): on the top row it took the room a fourth
+          series needs, so the series row overflowed and scrolled when one was added */}
+      <div className="mt-3 flex justify-center">
+        <SegmentedControl
+          options={periods.map((p) => p.key)}
+          value={period}
+          onChange={(k) => {
+            setPeriod(k as PeriodKey)
+            setAt(null)
+          }}
+          label="Window"
+        />
       </div>
     </div>
   )

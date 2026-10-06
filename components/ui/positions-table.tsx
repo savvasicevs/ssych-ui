@@ -1,19 +1,20 @@
 "use client"
 
-import { useState, type KeyboardEvent } from "react"
+import { useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON } from "@/components/ui/control-classes"
+import { RowAction, rowExit, rowWash, useRowExit } from "@/components/ui/row-action"
 
 /* Positions Table, written new through ssych-component (2026-09-29).
    What it is for: every open position in one read: what it is, how big, where it was
    opened, where it is marked, where it would be liquidated and what it has made or lost.
-   Read first: the unrealised P&L, signed and coloured, at the right of each row and
-   summed above the table.
-   The pointer: point at a row, or tab to it, and the others dim while the line under the
-   table reads that position's margin and its distance to liquidation. Press the row to
-   hold it; the line then offers to close the position. The column heads sort both ways.
+   Read first: the unrealised P&L, signed and coloured, at the right of each row.
+   The pointer: point at a row, or tab to its Close, and the others dim while a Close
+   button comes up at the row's end (always shown where there is no hover). The column
+   heads sort both ways. No totals above or below the rows (user call, 2026-10-02).
    Sketch used: src/components/lab/PositionsBlotterPro.tsx. Kept: the position shape
    (symbol, side, size, entry, mark, leverage), P&L worked from size and the two prices,
    liquidation worked from leverage, sorting on any measure, closing from the row.
@@ -29,13 +30,19 @@ import { cn } from "@/lib/utils"
    · liquidation   entry × (1 − 1 ÷ leverage + maintenance) for a long,
                    entry × (1 + 1 ÷ leverage − maintenance) for a short
    · away          |mark − liquidation| ÷ mark × 100
-   · totals        Σ P&L, Σ margin, and Σ P&L ÷ Σ margin × 100
-   Motion (2026-09-30): a re-sort glides the rows to their new places by a layout transform
-   (250ms), a closed row fades out while the rest close up, the readout swaps in place and
-   the close button settles in from 0.97. */
+   · the label     Σ P&L of the open rows, read out in the table's name
+   Motion (2026-09-30, the close 2026-10-02): a re-sort glides the rows to their new places
+   by a layout transform (250ms). Close comes up from 4px over 150ms. Pressing it holds the
+   row for 420ms: a wash in the colour of its P&L, the button turned to a tick and
+   "Closed"; then the row slides 16px right as it fades and folds its height away (300ms)
+   while the rows under it close up. Reduced motion keeps the wash and drops the travel.
+   2026-10-02 audit: each market carries its token's mark through a renderIcon slot (the
+   preview draws the real marks, as Holdings Table does with company marks); the entry
+   price is /60 since a trader reads it, value and distance read 10.5px /60, hairlines are
+   4%, and an optional Reset (the `resettable` prop, on in the preview) brings the closed
+   rows back from the empty state so the close can be replayed. The row Close stays. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const SMOOTH = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
@@ -56,8 +63,12 @@ export interface PositionsTableProps {
   title?: string
   /** maintenance margin rate, as a fraction of the entry price */
   maintenance?: number
-  /** fired when a held position is closed; the row leaves the table */
+  /** fired when a position's Close is pressed; the row leaves the table */
   onClose?: (position: Position) => void
+  /** draws the token's real mark at `size` px; the symbol stands alone without it */
+  renderIcon?: (symbol: string, size: number) => ReactNode
+  /** show a Reset in the empty state that brings the closed rows back (demos) */
+  resettable?: boolean
   className?: string
 }
 
@@ -70,7 +81,8 @@ const DEFAULT_POSITIONS: Position[] = [
 ]
 
 type SortKey = "symbol" | "value" | "away" | "pnl"
-const COLS = "grid-cols-[1fr_1fr_1fr_1fr_1.15fr]"
+/* the last column is the Close button's (row-action.tsx), so it never sits over a figure */
+const COLS = "grid-cols-[1fr_1fr_1fr_1fr_1.15fr_56px]"
 
 const num = (n: number, dp: number) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })
 /** prices keep the places their size needs: four under a dollar, two above */
@@ -85,20 +97,22 @@ const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
 /**
  * The open book as rows on the page: market and side, size, entry over mark, the
  * liquidation price with its distance, and the unrealised P&L. Pointing at a row dims the
- * rest and reads its margin under the table; pressing holds it and offers the close.
+ * rest and brings up its Close.
  */
 export function PositionsTable({
   positions = DEFAULT_POSITIONS,
   title = "Positions",
   maintenance = 0.005,
   onClose,
+  renderIcon,
+  resettable = false,
   className,
 }: PositionsTableProps) {
   const reduced = useReducedMotion()
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "pnl", dir: -1 })
   const [hover, setHover] = useState<string | null>(null)
-  const [held, setHeld] = useState<string | null>(null)
   const [closed, setClosed] = useState<string[]>([])
+  const { leaving: closing, start } = useRowExit()
 
   const idOf = (p: Position) => `${p.symbol}-${p.side}`
   const valueOf = (p: Position) => p.size * p.mark
@@ -115,19 +129,16 @@ export function PositionsTable({
   )
 
   const totalPnl = open.reduce((s, p) => s + pnlOf(p), 0)
-  const totalMargin = open.reduce((s, p) => s + marginOf(p), 0)
-  const totalValue = open.reduce((s, p) => s + valueOf(p), 0)
-  const totalPct = totalMargin > 0 ? (totalPnl / totalMargin) * 100 : 0
-
-  const hot = held ?? hover
-  const shown = open.find((p) => idOf(p) === hot)
-  const holding = shown !== undefined && held === idOf(shown)
+  const hot = closing ?? hover
 
   const close = (p: Position) => {
+    if (closing) return
+    const id = idOf(p)
     onClose?.(p)
-    setClosed((c) => [...c, idOf(p)])
-    setHeld(null)
-    setHover(null)
+    start(id, () => {
+      setClosed((c) => [...c, id])
+      setHover(null)
+    })
   }
 
   const head = (key: SortKey | null, label: string, first = false) => {
@@ -160,25 +171,21 @@ export function PositionsTable({
 
   return (
     <div
-      className={cn("w-full max-w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}
+      className={cn("w-full max-w-[560px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}
       role="table"
       aria-label={`${title}, ${open.length} open, unrealised ${signedUsd(totalPnl)}`}
     >
-      {/* no visible title (2026-10-01): the column heads say what this is and the name lives in
-          the table's aria-label; the total sits over the P&L column it sums */}
-      <div className="mb-3 flex items-baseline justify-end px-3">
-        <span className="text-[13px] font-semibold" style={{ color: ink(totalPnl >= 0 ? GREEN : RED) }}>
-          {signedUsd(totalPnl)}
-          <span className="ml-1.5 text-[10.5px] font-medium">{signedPct(totalPct)}</span>
-        </span>
-      </div>
-
+      {/* no visible title (2026-10-01) and no totals (2026-10-02): the column heads say what
+          this is, and the name and the summed P&L live in the table's aria-label */}
       <div role="row" className={cn("grid gap-2 px-3 pb-2", COLS)}>
         {head("symbol", "Market", true)}
         {head("value", "Size")}
         {head(null, "Entry / mark")}
         {head("away", "Liquidation")}
         {head("pnl", "Unrealised P&L")}
+        <span role="columnheader" className="sr-only">
+          Close
+        </span>
       </div>
 
       <div role="rowgroup" onPointerLeave={() => setHover(null)}>
@@ -194,28 +201,21 @@ export function PositionsTable({
             <motion.div
               key={id}
               layout={reduced ? false : "position"}
-              exit={{ opacity: 0, transition: { duration: 0.15, ease: SMOOTH } }}
+              className="overflow-hidden"
+              exit={rowExit(reduced)}
               transition={{ layout: { duration: 0.25, ease: SMOOTH } }}
             >
             <div
               role="row"
-              tabIndex={0}
-              aria-selected={held === id}
               onPointerEnter={() => setHover(id)}
               onFocus={() => setHover(id)}
               onBlur={() => setHover(null)}
-              onClick={() => setHeld((h) => (h === id ? null : id))}
-              onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  setHeld((h) => (h === id ? null : id))
-                } else if (e.key === "Escape") setHeld(null)
+              className="group border-t border-foreground/[0.04] transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-within:bg-foreground/[0.03]"
+              style={{
+                opacity: dim ? 0.45 : 1,
+                /* the closed row washes in the colour of what it made or lost */
+                background: closing === id ? rowWash(pnl >= 0 ? GREEN : RED) : undefined,
               }}
-              className={cn(
-                "cursor-pointer border-t border-foreground/[0.05] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06]",
-                held === id && "bg-foreground/[0.04]",
-              )}
-              style={{ opacity: dim ? 0.45 : 1 }}
             >
               <motion.div
                 className={cn("grid items-center gap-2 px-3 py-2", COLS)}
@@ -223,27 +223,43 @@ export function PositionsTable({
                 animate={{ opacity: 1, y: 0 }}
                 transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
               >
-                <span role="cell" className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-[12px] font-semibold text-foreground/90">{p.symbol}</span>
-                  <span className="text-[10px] font-medium" style={{ color: ink(hue) }}>
-                    {p.side === "long" ? "Long" : "Short"} {p.leverage}×
+                <span role="cell" className="flex min-w-0 items-center gap-2">
+                  {renderIcon && (
+                    <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center">
+                      {renderIcon(p.symbol, 24)}
+                    </span>
+                  )}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate text-[12px] font-semibold text-foreground/90">{p.symbol}</span>
+                    <span className="text-[10px] font-medium" style={{ color: ink(hue) }}>
+                      {p.side === "long" ? "Long" : "Short"} {p.leverage}×
+                    </span>
                   </span>
                 </span>
                 <span role="cell" className="flex flex-col items-end gap-0.5">
                   <span className="text-[11px] text-foreground/90">{size(p.size)}</span>
-                  <span className="text-[10px] text-foreground/45">{usd(valueOf(p))}</span>
+                  <span className="text-[10.5px] text-foreground/60">{usd(valueOf(p))}</span>
                 </span>
                 <span role="cell" className="flex flex-col items-end gap-0.5">
-                  <span className="text-[11px] text-foreground/45">{price(p.entry)}</span>
+                  <span className="text-[11px] text-foreground/60">{price(p.entry)}</span>
                   <span className="text-[11px] text-foreground/90">{price(p.mark)}</span>
                 </span>
                 <span role="cell" className="flex flex-col items-end gap-0.5">
                   <span className="text-[11px] text-foreground/90">{price(liqOf(p))}</span>
-                  <span className="text-[10px] text-foreground/45">{awayOf(p).toFixed(1)}% away</span>
+                  <span className="text-[10.5px] text-foreground/60">{awayOf(p).toFixed(1)}% away</span>
                 </span>
                 <span role="cell" className="flex flex-col items-end gap-0.5" style={{ color: ink(pnl >= 0 ? GREEN : RED) }}>
                   <span className="text-[11.5px] font-semibold">{signedUsd(pnl)}</span>
                   <span className="text-[10px]">{signedPct(marginOf(p) > 0 ? (pnl / marginOf(p)) * 100 : 0)}</span>
+                </span>
+                <span role="cell" className="flex justify-end">
+                  <RowAction
+                    done={closing === id}
+                    disabled={closing !== null}
+                    onClick={() => close(p)}
+                    tone={ink(pnl >= 0 ? GREEN : RED)}
+                    aria-label={closing === id ? `${p.symbol} ${p.side} closed` : `Close ${p.symbol} ${p.side}, ${signedUsd(pnl)}`}
+                  />
                 </span>
               </motion.div>
             </div>
@@ -253,42 +269,24 @@ export function PositionsTable({
         </AnimatePresence>
       </div>
 
-      <div className="flex min-h-[38px] items-center justify-between gap-3 border-t border-foreground/[0.05] px-3 pt-2 text-[10.5px] text-foreground/45">
-        <span role="status" className="min-w-0">
-          {/* the line swaps in place: 4px and a 2px blur, 150ms */}
-          <motion.span
-            key={shown ? idOf(shown) : `rest-${open.length}`}
-            className="inline-block"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
+      <AnimatePresence>
+        {open.length === 0 && (
+          <motion.div
+            role="status"
+            className="flex flex-col items-center gap-3 border-t border-foreground/[0.04] px-3 pt-4 text-center text-[11px] text-foreground/60"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: EASE, delay: reduced ? 0 : 0.3 }}
           >
-          {shown ? (
-            <>
-              <span className="font-medium text-foreground/90">{shown.name}</span> · margin {usd(marginOf(shown))} · mark is{" "}
-              {awayOf(shown).toFixed(1)}% {shown.side === "long" ? "above" : "below"} {price(liqOf(shown))}
-            </>
-          ) : open.length ? (
-            `${open.length} open · margin ${usd(totalMargin)} · value ${usd(totalValue)}`
-          ) : (
-            "No open positions"
-          )}
-          </motion.span>
-        </span>
-        {holding && shown && (
-          <motion.button
-            type="button"
-            onClick={() => close(shown)}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.2, ease: EASE }}
-            whileTap={reduced ? undefined : { scale: 0.97, transition: LIFT_SPRING }}
-            className="h-7 shrink-0 rounded-full bg-foreground/[0.08] px-3 text-[11px] font-medium text-foreground/90 outline-none transition-colors duration-150 hover:bg-foreground/[0.14] focus-visible:bg-foreground/[0.14]"
-          >
-            Close {shown.symbol}
-          </motion.button>
+            No open positions
+            {resettable && (
+              <button type="button" onClick={() => setClosed([])} className={cn(BUTTON, "h-7 px-3 text-[11.5px]")}>
+                Reset
+              </button>
+            )}
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
     </div>
   )
 }

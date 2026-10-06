@@ -1,18 +1,35 @@
 "use client"
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
+import { ChartCard } from "@/components/ui/chart-overlay"
+import { parkBeside, squarify } from "@/components/ui/market-heatmap-squarify"
 import { cn } from "@/lib/utils"
 
+/* Market Heatmap: the market as one block of ground, tiles sized by market cap and tinted
+   on a diverging scale by the day's move, so scale and direction read at once.
+   Formulas, all from `data`:
+   · tile area   = cap / sum of caps × 460 × 280 (squarified, largest first)
+   · tile fill   = the up or down hue at min(|chg| / 3, 1) × 48 + 9 percent, over nothing
+   · card Price  = price, 2dp · Change = chg, 2dp, signed · Cap = cap in trillions, 2dp
+   2026-10-02 audit: his call was more roundness and colours that fit the rest, so tiles are
+   fills only with a 6px corner and a 2px gap (no outline, no rounded frame round the map),
+   up is var(--chart-up) instead of the teal, text sits on the foreground ladder and tickers
+   are weight 500. The title and its explainer line are gone from view (the title prop now
+   names the map in the aria-label only, with the sizing note). The pointed tile reads in the
+   shared ChartCard, parked clear of the tile as before. Each tile is a real button, so focus
+   reads like hover and a press pins the card; Escape lets it go. The entrance stagger runs on
+   the entrance only; the hover dim answers in 150ms with no delay. The squarifier is the one
+   the Treemap family shares (market-heatmap-squarify). */
+
 const EASE = [0.16, 1, 0.3, 1] as const
-const GREEN = "var(--chart-2)"
-const RED = "var(--chart-down)"
-const SANS = "inherit"
-const SURFACE = "var(--card)"
-const HAIRLINE = "var(--border)"
-const TEXT = "var(--foreground)"
-const TEXT_MUTED = "var(--muted-foreground)"
+const UP = "var(--chart-up)"
+const DOWN = "var(--chart-down)"
+
+/** A hue as text: in the light theme its lightness is capped so small figures reach AA
+ *  while the chroma stays; in dark it is native (`--ink-l` flips per theme on the root). */
+const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
 
 export interface HeatmapCo {
   sym: string
@@ -27,8 +44,14 @@ export interface HeatmapCo {
 export interface MarketHeatmapProps {
   /** one tile per company, any length; areas rescale to fill the box */
   data?: HeatmapCo[]
-  /** heading above the map */
+  /** the map's name; since 2026-10-02 read to assistive tech only (no visible title) */
   title?: string
+  /** the map's height in px (2026-10-06); left out it follows the width, 280 at the default 460 */
+  height?: number
+  /** what the tile size measures, read in the card ("Cap" left out) */
+  sizeLabel?: string
+  /** how that size is written in the card (trillions of dollars left out) */
+  formatSize?: (v: number) => string
   className?: string
 }
 
@@ -53,235 +76,152 @@ const DEFAULT_DATA: HeatmapCo[] = [
 
 const W = 460
 const H = 280
+/** half the 2px gap: every tile gives up 1px on each side */
+const INSET = 1
+const RADIUS = 6
 
 type Tile = { x: number; y: number; w: number; h: number; co: HeatmapCo }
 
-function worst(row: number[], side: number, area: number) {
-  const max = Math.max(...row)
-  const min = Math.min(...row)
-  const s2 = area * area
-  const l2 = side * side
-  return Math.max((l2 * max) / s2, s2 / (l2 * min))
-}
-
-/** squarified treemap — areas already scaled to fill w*h */
-function squarify(cos: HeatmapCo[]): Tile[] {
-  const total = cos.reduce((s, c) => s + c.cap, 0)
-  const scale = (W * H) / total
-  const items = cos.map((c) => ({ area: c.cap * scale, co: c }))
-  const out: Tile[] = []
-  let rx = 0
-  let ry = 0
-  let rw = W
-  let rh = H
-  let idx = 0
-  while (idx < items.length) {
-    const side = Math.min(rw, rh)
-    const row = [items[idx].area]
-    const rowCos = [items[idx].co]
-    let rowArea = items[idx].area
-    let k = idx + 1
-    while (k < items.length) {
-      const nxt = rowArea + items[k].area
-      if (worst([...row, items[k].area], side, nxt) > worst(row, side, rowArea)) break
-      row.push(items[k].area)
-      rowCos.push(items[k].co)
-      rowArea = nxt
-      k++
-    }
-    if (rw >= rh) {
-      const colW = rowArea / rh
-      let cy = ry
-      row.forEach((a, j) => {
-        const th = a / colW
-        out.push({ x: rx, y: cy, w: colW, h: th, co: rowCos[j] })
-        cy += th
-      })
-      rx += colW
-      rw -= colW
-    } else {
-      const rowH = rowArea / rw
-      let cxx = rx
-      row.forEach((a, j) => {
-        const tw = a / rowH
-        out.push({ x: cxx, y: ry, w: tw, h: rowH, co: rowCos[j] })
-        cxx += tw
-      })
-      ry += rowH
-      rh -= rowH
-    }
-    idx = k
-  }
-  return out
-}
-
 /** diverging: one hue per direction, magnitude as the mix percentage */
 const tileFill = (chg: number) =>
-  `color-mix(in srgb, ${chg >= 0 ? GREEN : RED} ${Math.round(Math.min(Math.abs(chg) / 3, 1) * 48 + 9)}%, var(--card))`
+  `color-mix(in srgb, ${chg >= 0 ? UP : DOWN} ${Math.round(Math.min(Math.abs(chg) / 3, 1) * 48 + 9)}%, transparent)`
 
-const TIP_W = 140
-const TIP_GAP = 8
+const signedPct = (v: number, dp: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(dp)}%`
 
-/* Park the readout clear of the tile it describes — the small tiles were being
-   covered by their own tooltip. Try above, then below, then either side, and
-   clamp to the box so nothing overflows. */
-function place(t: Tile, h: number) {
-  const cx = Math.max(0, Math.min(W - TIP_W, t.x + t.w / 2 - TIP_W / 2))
-  const cy = Math.max(0, Math.min(H - h, t.y + t.h / 2 - h / 2))
-  const above = t.y - TIP_GAP - h
-  if (above >= 0) return { left: cx, top: above }
-  const below = t.y + t.h + TIP_GAP
-  if (below + h <= H) return { left: cx, top: below }
-  const right = t.x + t.w + TIP_GAP
-  if (right + TIP_W <= W) return { left: right, top: cy }
-  const left = t.x - TIP_GAP - TIP_W
-  if (left >= 0) return { left, top: cy }
-  return { left: t.x < W / 2 ? W - TIP_W : 0, top: t.y < H / 2 ? H - h : 0 }
-}
+/** the ChartCard's size: 148 wide (its default), and its height from its fixed type
+ *  (10px heading, three 11px rows, 10px padding top and bottom) */
+const TIP_W = 148
+const TIP_H = 102
 
 /**
  * The market as one block of ground: tiles sized by market cap and tinted on a
  * diverging scale by the day's move, so scale and direction read at once.
- * Hovering a tile lifts it out of the field and parks a read-out beside it with
- * price, change and cap; clicking pins that read-out in place.
+ * Pointing at a tile (or tabbing to it) dims the rest and parks a card beside it
+ * with price, change and cap; pressing pins that card in place.
  */
-export function MarketHeatmap({ data = DEFAULT_DATA, title = "Market map · today", className }: MarketHeatmapProps) {
+export function MarketHeatmap({
+  data = DEFAULT_DATA,
+  title = "Market map, today",
+  height,
+  sizeLabel = "Cap",
+  formatSize = (v: number) => `$${v.toFixed(2)}T`,
+  className,
+}: MarketHeatmapProps) {
   const reduced = useReducedMotion()
   const [hover, setHover] = useState<string | null>(null)
   const [pin, setPin] = useState<string | null>(null)
   const hot = pin ?? hover
-  const tiles = useMemo(() => squarify([...data].sort((a, b) => b.cap - a.cap)), [data])
+  /* laid out at the width it is given (2026-10-06): the tiles fill the box and the text keeps
+     its size. At the default class that is 460 × 280, as before */
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: W, h: height ?? H })
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => {
+      const w = Math.round(e.contentRect.width) || W
+      setBox({ w, h: height ?? Math.round(Math.min(440, Math.max(H, w * 0.5))) })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [height])
+  const tiles = useMemo<Tile[]>(
+    () => squarify(data, (c) => c.cap, box.w, box.h).map((t) => ({ x: t.x, y: t.y, w: t.w, h: t.h, co: t.item })),
+    [data, box.w, box.h],
+  )
   const hotTile = tiles.find((t) => t.co.sym === hot)
-
-  /* the readout is a fixed block, but measure it so the above/below flip is
-     decided on its real height at any type scale */
-  const tipRef = useRef<HTMLDivElement>(null)
-  const [tipH, setTipH] = useState(62)
-  useLayoutEffect(() => {
-    const el = tipRef.current
-    if (el) setTipH(el.offsetHeight)
-  }, [hot])
-  const tip = hotTile ? place(hotTile, tipH) : null
+  /* parked clear of the tile it reads: above, below, right, left, then the far corner */
+  const tip = hotTile ? parkBeside(hotTile, TIP_W, TIP_H, box.w, box.h) : null
 
   return (
-    <div className={cn("w-[460px] max-w-full", className)} style={{ fontFamily: SANS }}>
-      <div className="mb-2 flex items-baseline justify-between px-0.5">
-        <span className="text-[13px] font-medium" style={{ color: TEXT }}>
-          {title}
-        </span>
-        <span className="text-[10px]" style={{ color: TEXT_MUTED }}>
-          sized by market cap
-        </span>
-      </div>
-
-      <div className="relative">
-        <svg
-          width={W}
-          height={H}
-          viewBox={`0 0 ${W} ${H}`}
-          className="block overflow-visible rounded-lg"
-          onMouseLeave={() => setHover(null)}
-          role="img"
-          aria-label={`${title}, ${tiles.length} companies sized by market cap`}
-        >
+    <div ref={boxRef} className={cn("w-[460px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
+      <div className="relative" style={{ width: box.w, height: box.h }} onPointerLeave={() => setHover(null)}>
+        <svg width={box.w} height={box.h} viewBox={`0 0 ${box.w} ${box.h}`} className="block" role="img" aria-label={`${title}: ${tiles.length} companies sized by market cap, tinted by the day's move`}>
           {tiles.map((t, i) => {
             const on = hot === t.co.sym
-            const pinned = pin === t.co.sym
             const dim = hot !== null && !on
             const big = t.w > 52 && t.h > 30
+            const w = Math.max(0, t.w - INSET * 2)
+            const h = Math.max(0, t.h - INSET * 2)
+            const hue = t.co.chg >= 0 ? UP : DOWN
             return (
+              /* the outer group runs the entrance once; the inner one owns the dim, so a hover never waits on a stagger */
               <motion.g
                 key={t.co.sym}
-                onMouseEnter={() => {
-                  if (!pin) setHover(t.co.sym)
-                }}
-                onClick={() => setPin((p) => (p === t.co.sym ? null : t.co.sym))}
-                style={{ cursor: "pointer" }}
-                initial={{ opacity: reduced ? 1 : 0 }}
-                animate={{ opacity: dim ? 0.5 : 1 }}
+                initial={reduced ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
                 transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: i * 0.02 }}
               >
-                <rect
-                  x={t.x + 0.5}
-                  y={t.y + 0.5}
-                  width={Math.max(0, t.w - 1)}
-                  height={Math.max(0, t.h - 1)}
-                  rx={2}
-                  fill={tileFill(t.co.chg)}
-                  stroke={on ? (t.co.chg >= 0 ? GREEN : RED) : "color-mix(in srgb, var(--foreground) 6%, transparent)"}
-                  strokeWidth={pinned ? 2 : on ? 1.5 : 1}
-                  strokeDasharray={pinned ? "3 2" : undefined}
-                />
-                {big && (
-                  <>
-                    <text x={t.x + 6} y={t.y + 16} fontSize={11} fontWeight={700} fill={TEXT}>
+                <g style={{ opacity: dim ? 0.35 : 1, transition: reduced ? "none" : "opacity 150ms" }}>
+                  <rect x={t.x + INSET} y={t.y + INSET} width={w} height={h} rx={Math.min(RADIUS, w / 2, h / 2)} fill={tileFill(t.co.chg)} />
+                  {big && (
+                    <>
+                      <text x={t.x + 8} y={t.y + 18} fontSize={11} fontWeight={500} fill="var(--foreground)" fillOpacity={0.9}>
+                        {t.co.sym}
+                      </text>
+                      <text x={t.x + 8} y={t.y + 30} fontSize={9.5} fontWeight={500} fill={ink(hue)}>
+                        {signedPct(t.co.chg, 1)}
+                      </text>
+                    </>
+                  )}
+                  {!big && t.w > 26 && (
+                    <text x={t.x + t.w / 2} y={t.y + t.h / 2 + 3} textAnchor="middle" fontSize={8.5} fontWeight={500} fill="var(--foreground)" fillOpacity={0.7}>
                       {t.co.sym}
                     </text>
-                    <text
-                      x={t.x + 6}
-                      y={t.y + 28}
-                      fontSize={9}
-                      fontWeight={600}
-                      fill={t.co.chg >= 0 ? GREEN : RED}
-                      className="tabular-nums"
-                    >
-                      {t.co.chg >= 0 ? "+" : "−"}
-                      {Math.abs(t.co.chg).toFixed(1)}%
-                    </text>
-                  </>
-                )}
-                {!big && t.w > 26 && (
-                  <text
-                    x={t.x + t.w / 2}
-                    y={t.y + t.h / 2 + 3}
-                    textAnchor="middle"
-                    fontSize={8.5}
-                    fontWeight={600}
-                    fill="var(--color-foreground)" fillOpacity={0.7}
-                  >
-                    {t.co.sym}
-                  </text>
-                )}
+                  )}
+                </g>
               </motion.g>
             )
           })}
         </svg>
 
-        {/* never over the tile it describes, never outside the box */}
-        {hotTile && tip && (
-          <div
-            ref={tipRef}
-            className="pointer-events-none absolute z-10 rounded-lg border px-2.5 py-1.5"
-            role="status"
-            style={{
-              background: SURFACE,
-              borderColor: HAIRLINE,
-              width: `${TIP_W}px`,
-              left: `${tip.left}px`,
-              top: `${tip.top}px`,
+        {/* one real button per tile over the drawing: the pointer, focus and touch all read the
+            same tile, a press pins its card and Escape lets it go */}
+        {tiles.map((t) => (
+          <button
+            key={t.co.sym}
+            type="button"
+            aria-label={`${t.co.sym} ${t.co.name}, $${t.co.price.toFixed(2)}, ${signedPct(t.co.chg, 2)}, cap $${t.co.cap.toFixed(2)}T`}
+            aria-pressed={pin === t.co.sym}
+            onPointerEnter={() => {
+              if (!pin) setHover(t.co.sym)
             }}
-          >
-            <div className="flex items-baseline justify-between">
-              <span className="text-[11px] font-semibold" style={{ color: TEXT }}>
-                {hotTile.co.sym}
-              </span>
-              <span
-                className="text-[11px] font-semibold tabular-nums"
-                style={{ color: hotTile.co.chg >= 0 ? GREEN : RED }}
-              >
-                {hotTile.co.chg >= 0 ? "+" : "−"}
-                {Math.abs(hotTile.co.chg).toFixed(2)}%
-              </span>
-            </div>
-            <div className="mt-0.5 text-[9.5px]" style={{ color: TEXT_MUTED }}>
-              {hotTile.co.name}
-            </div>
-            <div className="mt-1 flex justify-between text-[9.5px] tabular-nums" style={{ color: TEXT_MUTED }}>
-              <span>${hotTile.co.price.toFixed(2)}</span>
-              <span>${hotTile.co.cap.toFixed(2)}T</span>
-            </div>
-          </div>
-        )}
+            onFocus={() => {
+              if (!pin) setHover(t.co.sym)
+            }}
+            onBlur={() => setHover(null)}
+            onClick={() => setPin((p) => (p === t.co.sym ? null : t.co.sym))}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setPin(null)
+            }}
+            className="absolute cursor-pointer outline-none"
+            style={{ left: t.x + INSET, top: t.y + INSET, width: Math.max(0, t.w - INSET * 2), height: Math.max(0, t.h - INSET * 2), borderRadius: RADIUS }}
+          />
+        ))}
+
+        {/* never over the tile it describes, never outside the box; ChartCard sits 12px right of x */}
+        <ChartCard
+          open={!!hotTile && !!tip}
+          x={(tip?.left ?? 0) - 12}
+          y={tip?.top ?? 0}
+          width={TIP_W}
+          heading={
+            hotTile ? (
+              <>
+                <span className="font-medium text-foreground/90">{hotTile.co.sym}</span> {hotTile.co.name}
+              </>
+            ) : null
+          }
+          rows={
+            hotTile
+              ? [
+                  { label: "Price", value: `$${hotTile.co.price.toFixed(2)}` },
+                  { label: "Change", value: signedPct(hotTile.co.chg, 2), color: ink(hotTile.co.chg >= 0 ? UP : DOWN) },
+                  { label: sizeLabel, value: formatSize(hotTile.co.cap) },
+                ]
+              : []
+          }
+        />
       </div>
     </div>
   )

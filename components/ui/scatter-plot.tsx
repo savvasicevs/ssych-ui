@@ -4,15 +4,17 @@ import { useMemo, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ChartCard } from "@/components/ui/chart-overlay"
 
 /* Scatter Plot, written new through ssych-component (2026-09-29).
    What it is for: many things on two measures at once, to see which sit apart (risk
    against return, cost against quality, latency against load).
    Read first: the solid zero line. Above it gained, below it lost; how far right is how
    rough the ride was.
-   The pointer: pointing at a point, or tabbing to it, keeps it at full strength with its
-   name beside it, drops hairlines to both axes, dims the rest and reads the name and both
-   values in the line at the top. A press holds the point until it is pressed again.
+   The pointer: anywhere on the plot the nearest point is taken, so the reading never
+   blinks out between points; it keeps full strength, drops hairlines to both axes, dims
+   the rest and is read in a card beside it. Tabbing to a point does the same. A press
+   holds the point until it is pressed again.
    Reference: none usable, written from nothing.
    Formulas:
    · position     = the two values as given, on linear axes
@@ -20,10 +22,19 @@ import { cn } from "@/lib/utils"
    · gridline step = the smallest of 1, 2, 2.5, 5, 10 × a power of ten that covers the
                      range in five steps or fewer
    · colour       = the sign of the vertical value: green at zero or above, red below
-   · up and down  = count of points with a vertical value at or above zero, and below
    Motion (2026-10-01): once the plot is a third in view the points fade in and settle 4px,
    left to right by their horizontal value, 30ms apart over 450ms (under 900ms in all; CSS
-   transitions, no script per frame); reduced motion shows them placed. No data changes here. */
+   transitions, no script per frame); reduced motion shows them placed. No data changes here.
+   2026-10-02 audit: the reading of a point was a 10.5px /45 sentence in the corner with dots
+   between its parts, and the pointer fell into the gaps between the 20px buttons. Now a card
+   beside the point (chart-overlay.tsx) reads it: the symbol at /90 and the name after it,
+   then the two measures, the vertical one in its hue; and the whole plot snaps to the nearest
+   point (the buttons stay for the keyboard and the press). The grid is horizontal only and
+   solid at 5% with the zero line the strong one, the x ticks are text alone, every tick
+   carries its unit (new `xUnit` and `yUnit` props, "%" by default), the lone "1 year"
+   caption folded into the axis name ("Return, 1y"), axis text is at /45, and the width is
+   460 like the other non price charts.
+   · nearest point = the smallest straight distance from the pointer, in drawn pixels */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const CSS_EASE = "cubic-bezier(0.16, 1, 0.3, 1)"
@@ -43,7 +54,12 @@ export interface ScatterPlotProps {
   points?: ScatterPoint[]
   /** the plot's screen-reader name; the axes name the two measures on screen */
   title?: string
+  /** the period, written into the vertical axis's name ("Return, 1y") */
   caption?: string
+  /** unit after each horizontal tick */
+  xUnit?: string
+  /** unit after each vertical tick */
+  yUnit?: string
   /** what the rows are, plural */
   noun?: string
   xLabel?: string
@@ -73,7 +89,7 @@ const DEFAULT_POINTS: ScatterPoint[] = [
   { name: "INTC", detail: "Intel", x: 44.9, y: -31.6 },
 ]
 
-const W = 480
+const W = 460
 const H = 290
 const PAD = { l: 6, r: 40, t: 16, b: 22 }
 
@@ -104,7 +120,9 @@ function axis(vals: number[], want = 5) {
 export function ScatterPlot({
   points = DEFAULT_POINTS,
   title = "Risk and return",
-  caption = "1 year",
+  caption = "1y",
+  xUnit = "%",
+  yUnit = "%",
   noun = "stocks",
   xLabel = "Volatility",
   yLabel = "Return",
@@ -133,45 +151,38 @@ export function ScatterPlot({
     return out
   }, [points])
 
-  const up = points.filter((p) => p.y >= 0).length
   const shown = hot !== null ? points[hot] : null
-  const rest = direction ? `${points.length} ${noun} · ${up} up · ${points.length - up} down` : `${points.length} ${noun}`
+  /* the card beside the pointed point, on its left past 60% of the plot, kept inside it */
+  const flip = shown !== null && x(shown.x) / W > 0.6
+  const cardY = shown ? Math.max(0, Math.min(H - 92, y(shown.y) - 24)) : 0
+
+  /* anywhere on the plot the nearest point owns the pointer, so the reading never blinks out */
+  const onMove = (e: React.PointerEvent) => {
+    const el = boxRef.current
+    if (!el || !points.length) return
+    const r = el.getBoundingClientRect()
+    const px = ((e.clientX - r.left) / r.width) * W
+    const py = ((e.clientY - r.top) / r.height) * H
+    let best = 0
+    let dist = Number.POSITIVE_INFINITY
+    points.forEach((p, i) => {
+      const d = Math.hypot(x(p.x) - px, y(p.y) - py)
+      if (d < dist) {
+        dist = d
+        best = i
+      }
+    })
+    setHover(best)
+  }
 
   return (
     <div className={cn("w-[480px] max-w-full tabular-nums", className)}>
-      <div className="flex items-baseline justify-between gap-4 pb-2">
-        <span className="shrink-0 text-[11px] text-foreground/45">{caption}</span>
-        <span role="status" className="truncate text-[10.5px] text-foreground/45">
-          {/* the line swaps in place as the pointer moves (text swap: 4px, 2px blur, 150ms) from a
-              dimmed copy, so it never blinks out; reduced motion keeps the fade */}
-          <motion.span
-            key={hot ?? "rest"}
-            className="block truncate"
-            initial={reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-          {shown ? (
-            <>
-              <span className="font-medium text-foreground/90">{shown.name}</span>
-              {shown.detail ? ` ${shown.detail}` : ""} · {xLabel.toLowerCase()} <span className="text-foreground/90">{formatX(shown.x)}</span> · {yLabel.toLowerCase()}{" "}
-              <span className="font-medium" style={{ color: direction ? hueOf(shown) : undefined }}>
-                {formatY(shown.y)}
-              </span>
-            </>
-          ) : (
-            rest
-          )}
-          </motion.span>
-        </span>
-      </div>
-
-      <div ref={boxRef} className="relative" onPointerLeave={() => setHover(null)}>
+      <div ref={boxRef} className="relative cursor-crosshair" onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block w-full overflow-visible"
           role="img"
-          aria-label={`${title}, ${caption}: ${yLabel.toLowerCase()} against ${xLabel.toLowerCase()}. ${rest.replace(/ · /g, ", ")}`}
+          aria-label={`${title}, ${caption}: ${yLabel.toLowerCase()} against ${xLabel.toLowerCase()}, ${points.length} ${noun}, ${points.filter((p) => p.y >= 0).length} at zero or above`}
         >
           {ay.ticks.map((v) => (
             <g key={`y${v}`}>
@@ -183,24 +194,23 @@ export function ScatterPlot({
                 stroke="var(--foreground)"
                 strokeOpacity={v === 0 ? 0.14 : 0.05}
                 strokeWidth={1}
-                strokeDasharray={v === 0 ? undefined : "2 5"}
               />
-              <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={9} fill="var(--foreground)" fillOpacity={0.35}>
+              <text x={W - PAD.r + 8} y={y(v) + 3} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
                 {tick(v)}
+                {yUnit}
               </text>
             </g>
           ))}
+          {/* the horizontal measure: its ticks as text only, no vertical rules */}
           {ax.ticks.map((v) => (
-            <g key={`x${v}`}>
-              <line x1={x(v)} y1={PAD.t} x2={x(v)} y2={H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} strokeDasharray="2 5" />
-              <text x={x(v)} y={H - 6} fontSize={9} textAnchor="middle" fill="var(--foreground)" fillOpacity={0.35}>
-                {tick(v)}
-              </text>
-            </g>
+            <text key={`x${v}`} x={x(v)} y={H - 6} fontSize={9} textAnchor="middle" fill="var(--foreground)" fillOpacity={0.45}>
+              {tick(v)}
+              {xUnit}
+            </text>
           ))}
           {/* the axes name themselves at their far ends, inside the plot */}
           <text x={PAD.l + 4} y={PAD.t - 6} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
-            {yLabel}
+            {caption ? `${yLabel}, ${caption}` : yLabel}
           </text>
           <text x={W - PAD.r - 4} y={H - PAD.b - 6} fontSize={9} textAnchor="end" fill="var(--foreground)" fillOpacity={0.45}>
             {xLabel}
@@ -215,7 +225,6 @@ export function ScatterPlot({
 
           {points.map((p, i) => {
             const on = hot === i
-            const left = x(p.x) > W - PAD.r - 60
             return (
               /* the group owns the dim so it never fights the entrance inside */
               <g key={p.name} style={{ opacity: hot !== null && !on ? 0.35 : 1, transition: reduced ? "none" : "opacity 160ms" }}>
@@ -252,22 +261,37 @@ export function ScatterPlot({
                     transition={{ duration: 0.15, ease: EASE }}
                   />
                 )}
-                {on && (
-                  <text
-                    x={x(p.x) + (left ? -9 : 9)}
-                    y={y(p.y) - 7}
-                    fontSize={9}
-                    fontWeight={600}
-                    textAnchor={left ? "end" : "start"}
-                    fill="var(--foreground)"
-                  >
-                    {p.name}
-                  </text>
-                )}
               </g>
             )
           })}
         </svg>
+
+        {/* the pointed point, read in a card beside it (chart-overlay.tsx) */}
+        <ChartCard
+          open={shown !== null}
+          x={shown ? `${((x(shown.x) + (flip ? -4 : 4)) / W) * 100}%` : 0}
+          y={cardY}
+          flip={flip}
+          width={168}
+          heading={
+            shown ? (
+              <span className="flex min-w-0 gap-1.5">
+                <span className="shrink-0 font-medium text-foreground/90">{shown.name}</span>
+                {shown.detail && <span className="truncate">{shown.detail}</span>}
+              </span>
+            ) : (
+              ""
+            )
+          }
+          rows={
+            shown
+              ? [
+                  { label: xLabel, value: formatX(shown.x) },
+                  { label: yLabel, value: formatY(shown.y), color: direction ? hueOf(shown) : undefined },
+                ]
+              : []
+          }
+        />
 
         {/* one real button over each point: the target is larger than the mark */}
         {points.map((p, i) => (

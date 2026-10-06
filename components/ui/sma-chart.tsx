@@ -4,6 +4,8 @@ import { useId, useMemo, useRef, useState } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag } from "@/components/ui/chart-overlay"
+import { LiveFigure } from "@/components/ui/live-figure"
 
 /* SMA Chart, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -19,17 +21,45 @@ import { cn } from "@/lib/utils"
    Props are unchanged.
    Motion (2026-10-01): once the chart is in view the price and both averages sweep in left
    to right through one clip (0.9s; they drew on mount, off screen too); a new series morphs
-   all three lines and glides the gridlines with their ticks */
+   all three lines and glides the gridlines with their ticks
+   2026-10-02: it had too many headers and numbers, some printed twice (the symbol and name
+   with the legend on top, then the price, a bar count, the change and a second bar count
+   under the plot). Now it has the library's one header in three tiers like Market Snapshot
+   (spec 14.1): the company name at /45 with the symbol on the right, the price as the
+   headline with its cents at /35, then the change over the last 30 days in its hue and that
+   window at /45. Scrubbing reads the pointed day into the same header, its change counted
+   30 days back from it. The legend sits under the header (spec 14.3): a 10 by 2 line in each
+   average's hue, its name at /60 and its value at /90. Under the plot only one line is left,
+   blank at rest, that says how long ago the pointed day was (spec 13.1).
+   2026-10-02 audit: the averages were mislabelled (a "60 SMA" computed over 14 bars and a
+   "200 SMA" over 45), so they are now the 20 and 50 day averages, computed and labelled so.
+   Scrubbing changes the headline and the legend values in place; the headline swaps only
+   when a scrub starts or ends (it blurred in again on every step). The plot spans the
+   root at 440 (it stopped 20px short of the header), the axis prints three round dollar
+   ticks at 9px /45, dates run along the foot, and the pointed price is the shared AxisTag.
+   The line under the plot is gone: while scrubbing, the window slot reads "30 days to" the
+   pointed date. A new `end` prop dates the last close.
+   Formulas:
+   · an n day SMA at a day = the mean of that day's close and the n − 1 closes before it
+     (fewer near the start of the series)
+   · change = the shown close − the close 30 days before it; percent = change ÷ that close × 100
+   · a bar's date = end − (the bars after it) days */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
 
-const W = 400
-const H = 190
-const PAD = { r: 48 }
-/** bars the change in the summary looks back over */
+const W = 440
+const H = 200
+const PAD = { r: 48, b: 20 }
+/** how many dates along the foot */
+const FOOT = 4
+const DAY = 86_400_000
+const axisUsd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`
+const usd = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const day = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+/** days (bars) the change in the header looks back over */
 const LOOKBACK = 30
 
 /** deterministic default series, a drifting daily close */
@@ -54,26 +84,28 @@ const smaOf = (data: number[], win: number) => data.map((_, i) => {
 type Key = "fast" | "slow"
 /** the two overlays: label, trailing window in bars, its own hue (categorical order) */
 const AVERAGES: { key: Key; label: string; win: number; hue: string }[] = [
-  { key: "fast", label: "60 SMA", win: 14, hue: "var(--chart-1)" },
-  { key: "slow", label: "200 SMA", win: 45, hue: "var(--chart-5)" },
+  { key: "fast", label: "20 SMA", win: 20, hue: "var(--chart-1)" },
+  { key: "slow", label: "50 SMA", win: 50, hue: "var(--chart-5)" },
 ]
 
 export interface SmaChartProps {
-  /** ticker shown top-left */
+  /** ticker, on the right of the header's label row */
   symbol?: string
-  /** company name beside the ticker */
+  /** company name, on the left of the header's label row */
   name?: string
-  /** price series, oldest → latest (the two SMAs derive from it) */
+  /** daily closes, oldest → latest (the two SMAs derive from it) */
   prices?: number[]
+  /** the last close's date, ms since epoch (UTC); one bar is one day */
+  end?: number
   className?: string
 }
 
 /**
  * Moving-average chart: one price line with its fast and slow averages as two quieter
  * inks and price ticks on the right edge. Scrubbing reads the bar under the pointer into
- * the summary and the legend; pointing at an average in the legend picks it out.
+ * the header and the legend; pointing at an average in the legend picks it out.
  */
-export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = DEFAULT_PRICES, className }: SmaChartProps) {
+export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = DEFAULT_PRICES, end = Date.UTC(2026, 8, 30), className }: SmaChartProps) {
   const reduced = useReducedMotion()
   const svgRef = useRef<SVGSVGElement>(null)
   const [hover, setHover] = useState<number | null>(null)
@@ -94,19 +126,26 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
     const min = Math.min(...all)
     const max = Math.max(...all)
     const x = (i: number) => (i / Math.max(1, n - 1)) * (W - PAD.r)
-    const y = (v: number) => 8 + (1 - (v - min) / (max - min || 1)) * (H - 16)
+    const y = (v: number) => 8 + (1 - (v - min) / (max - min || 1)) * (H - PAD.b - 16)
     const path = (d: number[]) => d.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")
     return { n, price, avg, min, max, x, y, path }
   }, [prices])
 
   const last = price[n - 1]
-  const base = price[Math.max(0, n - LOOKBACK)]
-  const change = last - base
+  const shown = hover ?? n - 1
+  /* the change in the header: the shown day against LOOKBACK days before it (fewer near the start) */
+  const from = Math.max(0, shown - LOOKBACK)
+  const back = shown - from
+  const base = price[from]
+  const change = price[shown] - base
   const pct = (change / (base || 1)) * 100
   const up = change >= 0
   const hue = up ? GREEN : RED
   const sign = up ? "+" : "−"
-  const shown = hover ?? n - 1
+  /* the aria-label keeps the rest reading: the last close against LOOKBACK days back */
+  const restBase = price[Math.max(0, n - 1 - LOOKBACK)]
+  const restPct = ((last - restBase) / (restBase || 1)) * 100
+  const [priceWhole, priceCents] = price[shown].toFixed(2).split(".")
 
   const onMove = (e: React.PointerEvent) => {
     const r = svgRef.current?.getBoundingClientRect()
@@ -116,43 +155,58 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
   }
 
   const fade = reduced ? "none" : "opacity 160ms, stroke 160ms"
-  /* scrubbed figures swap in place (text swap: 4px, 2px blur, 150ms) from a dimmed copy so
-     they never blink out mid-scrub; reduced motion keeps only the fade */
-  const swap = {
-    initial: reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" },
-    animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-    transition: { duration: 0.15, ease: EASE },
-  }
+  const date = (i: number) => end - (n - 1 - i) * DAY
+  const foot = Array.from({ length: FOOT }, (_, k) => Math.round((k / (FOOT - 1)) * (n - 1)))
+  const ticks = [0.15, 0.5, 0.85].map((f) => max - f * (max - min))
+  const tagY = hover == null ? 0 : Math.max(16, Math.min(H - PAD.b - 8, y(price[hover])))
 
   return (
-    <div ref={rootRef} className={cn("w-[420px] tabular-nums", className)}>
-      <div className="flex items-center justify-between">
-        <span>
-          <span className="text-[12.5px] font-semibold text-foreground/90">{symbol}</span>
-          <span className="ml-2 text-[11px] text-foreground/45">{name}</span>
-        </span>
-        <span className="-mr-1.5 flex items-center gap-1" onPointerLeave={() => setHot(null)}>
-          {AVERAGES.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              aria-label={`${a.label} ${avg[a.key][shown].toFixed(2)}`}
-              onPointerEnter={() => setHot(a.key)}
-              onFocus={() => setHot(a.key)}
-              onBlur={() => setHot(null)}
-              className={cn(
-                "flex cursor-default items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[10px] text-foreground/45 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]",
-                hot !== null && hot !== a.key && "opacity-35",
-              )}
-            >
-              <span aria-hidden className="h-[2px] w-2 rounded-full" style={{ background: a.hue }} />
-              {a.label}
-              <motion.span key={shown} {...swap} className="inline-block text-foreground/90">
-                {avg[a.key][shown].toFixed(2)}
-              </motion.span>
-            </button>
-          ))}
-        </span>
+    <div ref={rootRef} className={cn("w-[440px] max-w-full tabular-nums", className)}>
+      {/* the header, three tiers (spec 14.1): name and symbol, the price, then its change and window */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{name}</span>
+        <span className="shrink-0 pl-3 font-medium text-foreground/90">{symbol}</span>
+      </div>
+      {/* the readout swaps only when a scrub starts or ends; while scrubbing it follows the pointer in place */}
+      <div role="status">
+        <LiveFigure intent={hover == null ? null : "scrub"}>
+          <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+            ${Number(priceWhole).toLocaleString("en-US")}
+            <span className="text-foreground/35">.{priceCents}</span>
+          </p>
+          <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: hue }}>
+            <span>
+              {sign}${Math.abs(change).toFixed(2)} · {sign}
+              {Math.abs(pct).toFixed(1)}%
+            </span>
+            <span className="font-normal text-foreground/45">
+              {back === 1 ? "1 day" : `${back} days`}
+              {hover != null && ` to ${day(date(hover))}`}
+            </span>
+          </p>
+        </LiveFigure>
+      </div>
+
+      {/* the legend (spec 14.3): a line in each average's hue, its name and its value at the shown day */}
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1" onPointerLeave={() => setHot(null)}>
+        {AVERAGES.map((a) => (
+          <button
+            key={a.key}
+            type="button"
+            aria-label={`${a.label} ${avg[a.key][shown].toFixed(2)}`}
+            onPointerEnter={() => setHot(a.key)}
+            onFocus={() => setHot(a.key)}
+            onBlur={() => setHot(null)}
+            className={cn(
+              "-mx-1 flex cursor-default items-center gap-1.5 rounded-full px-1 text-[11px] text-foreground/60 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
+              hot !== null && hot !== a.key && "opacity-35",
+            )}
+          >
+            <span aria-hidden className="h-[2px] w-2.5 shrink-0 rounded-full" style={{ background: a.hue }} />
+            {a.label}
+            <span className="inline-block font-medium text-foreground/90">{avg[a.key][shown].toFixed(2)}</span>
+          </button>
+        ))}
       </div>
 
       <svg
@@ -160,9 +214,9 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
         width={W}
         height={H}
         viewBox={`0 0 ${W} ${H}`}
-        className="mt-2 block cursor-crosshair touch-none"
+        className="mt-3 block h-auto w-full cursor-crosshair touch-none"
         role="img"
-        aria-label={`${symbol} price with two moving averages, last $${last.toFixed(2)}, ${sign}${Math.abs(pct).toFixed(2)}% over ${LOOKBACK} bars`}
+        aria-label={`${name} (${symbol}) price with two moving averages, last $${last.toFixed(2)}, ${restPct >= 0 ? "+" : "−"}${Math.abs(restPct).toFixed(2)}% over ${LOOKBACK} days`}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
       >
@@ -180,9 +234,9 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
           </clipPath>
         </defs>
 
-        {/* right-edge price ticks; new data glides each line and its figure */}
-        {[max, max - (max - min) * 0.25, max - (max - min) * 0.5, max - (max - min) * 0.75, min].map((v, i) => (
-          <g key={i}>
+        {/* right-edge price ticks; new data glides each line and its figure, which steps aside under the pointed tag */}
+        {ticks.map((v, i) => (
+          <g key={i} style={{ opacity: hover != null && Math.abs(y(v) - tagY) < 12 ? 0 : 1, transition: fade }}>
             <motion.line
               x1={0}
               x2={W - PAD.r}
@@ -195,15 +249,15 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
             />
             <motion.text
               x={W - PAD.r + 8}
-              fontSize={8.5}
+              fontSize={9}
               fill="var(--foreground)"
-              fillOpacity={0.35}
+              fillOpacity={0.45}
               className="tabular-nums"
               initial={false}
               animate={{ attrY: y(v) + 3 }}
               transition={morph}
             >
-              {v.toFixed(2)}
+              {axisUsd(v)}
             </motion.text>
           </g>
         ))}
@@ -236,36 +290,35 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
           />
         </g>
 
-        {/* guide and one dot per line */}
+        {/* dates along the foot */}
+        {foot.map((i, k) => (
+          <text
+            key={`${i}-${k}`}
+            x={k === 0 ? 0 : k === FOOT - 1 ? W - PAD.r : x(i)}
+            y={H - 5}
+            textAnchor={k === 0 ? "start" : k === FOOT - 1 ? "end" : "middle"}
+            fontSize={9}
+            fill="var(--foreground)"
+            fillOpacity={0.45}
+          >
+            {day(date(i))}
+          </text>
+        ))}
+
+        {/* guide, one dot per line and the pointed close tagged on the axis (chart-overlay.tsx) */}
         {hover != null && (
           <g pointerEvents="none">
-            <line x1={x(hover)} y1={8} x2={x(hover)} y2={H - 8} stroke="var(--foreground)" strokeOpacity={0.16} strokeWidth={1} />
+            <line x1={x(hover)} y1={8} x2={x(hover)} y2={H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.16} strokeWidth={1} />
             {AVERAGES.map((a) => (
               <circle key={a.key} cx={x(hover)} cy={y(avg[a.key][hover])} r={2.2} fill={a.hue} />
             ))}
             <circle cx={x(hover)} cy={y(price[hover])} r={2.6} fill="var(--foreground)" />
+            <AxisTag x={W - PAD.r + 2} y={tagY} width={PAD.r - 4}>
+              {usd(price[hover])}
+            </AxisTag>
           </g>
         )}
       </svg>
-
-      {/* summary: the price under the pointer, or the last one; the change is always last against 30 bars back */}
-      <div className="mt-2.5 flex items-baseline justify-between">
-        <span role="status" className="flex items-baseline gap-2">
-          <motion.span key={`p${shown}`} {...swap} className="inline-block text-[13px] font-semibold text-foreground/90">
-            ${price[shown].toFixed(2)}
-          </motion.span>
-          <motion.span key={hover == null ? "all" : `b${hover}`} {...swap} className="inline-block text-[10px] text-foreground/35">
-            {hover == null ? `${n} bars` : `bar ${hover + 1} of ${n}`}
-          </motion.span>
-        </span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-[11px] font-medium" style={{ color: hue }}>
-            {sign}${Math.abs(change).toFixed(2)} · {sign}
-            {Math.abs(pct).toFixed(2)}%
-          </span>
-          <span className="text-[10px] text-foreground/35">{LOOKBACK} bars</span>
-        </span>
-      </div>
     </div>
   )
 }

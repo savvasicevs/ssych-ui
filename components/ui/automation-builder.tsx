@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion, Reorder, useDragControls, useReducedMotion } from "motion/react"
-import { GripVertical } from "lucide-react"
+import { GripVertical, Redo2, Undo2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON, BUTTON_PRIMARY, ICON_BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
 
 /* Automation Builder, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: a trading rule written as sentences. Muted words join filled values;
@@ -29,7 +30,17 @@ import { cn } from "@/lib/utils"
    Formulas:
    · steps executed = count of rows
    · orders placed  = 1 when there is an order row and every condition row holds, else 0
-   · a condition holds when ("is" chosen) equals ("Good" chosen) */
+   · a condition holds when ("is" chosen) equals ("Good" chosen)
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit: Clear is gone (he found the foot too complicated, and Undo covers it),
+   so the foot holds Add action, Undo, Redo and Run. Undo and Redo are 28px icon buttons
+   with a tip, Add action is the library's 28px secondary button, Run is the library primary
+   at 28px with a fixed width so Run simulation, Running and Run again swap in place without
+   resizing it. Values and their choices are 24px pills (they were 20 and 18, under the 24px
+   touch target). The rule now sits in one surface card (24px corners, 12px inset); the open
+   choices and a dragged row sit on the raised step, with corners nested to their contents
+   (choices 14 = 12 + 2, the drag ground 12 = 24 − 12). The status line's hairline is the 4%
+   one. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /** how long the sweep rests on a row, in ms */
@@ -204,10 +215,25 @@ function useDismiss(ref: React.RefObject<HTMLElement | null>, active: boolean, o
   }, [ref, active, onClose])
 }
 
-const PILL = "h-5 rounded-full px-2 text-[11px] font-medium whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 motion-reduce:transition-none"
-const OPTION = "h-[18px] rounded-full px-2 text-[10.5px] whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] motion-reduce:transition-none"
-const QUIET =
-  "h-6 rounded-full bg-foreground/[0.06] px-2.5 text-[10.5px] font-medium text-foreground/70 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.1] hover:text-foreground/90 focus-visible:bg-foreground/[0.1] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35 motion-reduce:transition-none"
+const PILL = "h-6 rounded-full px-2.5 text-[11px] font-medium whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 motion-reduce:transition-none"
+const OPTION = "h-6 rounded-full px-2.5 text-[11px] whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] motion-reduce:transition-none"
+/** a tip over an icon button: up on hover or keyboard focus, after a short wait */
+function Tip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="group/tip relative inline-flex">
+      {children}
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 group-hover/tip:delay-300",
+          RAISED,
+        )}
+      >
+        {label}
+      </span>
+    </span>
+  )
+}
 /** the buy side of an order reads green, and a placed order says so in green */
 const GREEN = "var(--chart-up)"
 /** choices open in place from the value they replace: 0.97 and opacity, from its left edge */
@@ -225,8 +251,8 @@ function Chip({ chip, open, locked, onToggle, onClose, onSelect }: { chip: ChipT
         <motion.span
           role="radiogroup"
           aria-label={`Choices for ${chip.value}`}
-          /* 9 (the 18px option pill) + 2 padding = 11 */
-          className="inline-flex flex-wrap items-center gap-0.5 rounded-[11px] bg-foreground/[0.05] p-0.5"
+          /* raised on the card: 12 (the 24px option pill) + 2 padding = 14 */
+          className={cn("inline-flex flex-wrap items-center gap-0.5 rounded-[14px] p-0.5", RAISED)}
           style={{ transformOrigin: "left center" }}
           initial={reduced ? { opacity: 0 } : OPEN_FROM}
           animate={OPEN_TO}
@@ -333,28 +359,28 @@ function ProgramRow({
         onDrop()
       }}
       onPointerEnter={() => onHot(row.id)}
-      /* the drag ground: 8 (the 16px number disc) + 2 inset above it = 10 */
-      className={cn("group relative flex items-start gap-2 rounded-[10px]", dragging && "z-10 bg-foreground/[0.04]")}
+      /* the drag ground, raised on the card: 24 (the card) − 12 (its inset) = 12 */
+      className={cn("group relative flex items-start gap-2 rounded-[12px]", dragging && cn("z-10", RAISED))}
     >
       {/* the thread: one hairline from number to number; a row set inside a condition hangs off it */}
       {count > 1 && (
         <span
           aria-hidden
           className="absolute left-[7.5px] w-px bg-foreground/[0.08] transition-opacity duration-150 motion-reduce:transition-none"
-          style={{ top: first ? 10 : 0, bottom: last ? undefined : -GAP, height: last ? 10 : undefined, opacity: hideThread ? 0 : 1 }}
+          style={{ top: first ? 12 : 0, bottom: last ? undefined : -GAP, height: last ? 12 : undefined, opacity: hideThread ? 0 : 1 }}
         />
       )}
       {inset > 0 && (
         <span
           aria-hidden
-          className="absolute left-[7.5px] top-[9.5px] h-px bg-foreground/[0.08] transition-opacity duration-150 motion-reduce:transition-none"
+          className="absolute left-[7.5px] top-[11.5px] h-px bg-foreground/[0.08] transition-opacity duration-150 motion-reduce:transition-none"
           style={{ width: inset, opacity: hideThread ? 0 : 1 }}
         />
       )}
 
       <span
         aria-hidden
-        className="relative mt-[2px] grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-medium text-foreground/70"
+        className="relative mt-1 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-medium text-foreground/70"
         style={{ marginLeft: inset, background: "color-mix(in srgb, var(--foreground) 10%, var(--background))" }}
       >
         {index + 1}
@@ -362,7 +388,7 @@ function ProgramRow({
 
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         {lines.map((line, li) => (
-          <span key={li} className="flex min-h-5 flex-wrap items-center gap-x-1 gap-y-1">
+          <span key={li} className="flex min-h-6 flex-wrap items-center gap-x-1 gap-y-1">
             {line.map((t, ti) => {
               if (t.kind === "word")
                 return (
@@ -404,7 +430,7 @@ function ProgramRow({
           onMove(row.id, e.key === "ArrowUp" ? -1 : 1)
         }}
         className={cn(
-          "mt-0.5 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[4px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
+          "mt-1 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[4px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
           dragging ? "cursor-grabbing opacity-100" : "cursor-grab opacity-0 group-hover:opacity-100",
         )}
       >
@@ -419,13 +445,13 @@ function AddAction({ open, locked, onToggle, onClose, onPick }: { open: boolean;
   const reduced = useReducedMotion()
   useDismiss(wrap, open, onClose)
   return (
-    <div ref={wrap} className="mt-2 flex min-h-6 items-center">
+    <div ref={wrap} className="mt-2 flex min-h-7 items-center">
       {open ? (
         <motion.div
           role="group"
           aria-label="Kinds of step"
-          /* 10 (the 20px option pill) + 2 padding = 12 */
-          className="flex flex-wrap items-center gap-0.5 rounded-[12px] bg-foreground/[0.05] p-0.5"
+          /* raised on the card: 12 (the 24px option pill) + 2 padding = 14 */
+          className={cn("flex flex-wrap items-center gap-0.5 rounded-[14px] p-0.5", RAISED)}
           style={{ transformOrigin: "left center" }}
           initial={reduced ? { opacity: 0 } : OPEN_FROM}
           animate={OPEN_TO}
@@ -437,14 +463,14 @@ function AddAction({ open, locked, onToggle, onClose, onPick }: { open: boolean;
               type="button"
               autoFocus={i === 0}
               onClick={() => onPick(t.label)}
-              className={cn(OPTION, "h-5 text-foreground/70 hover:bg-foreground/[0.1] hover:text-foreground/90 focus-visible:bg-foreground/[0.1]")}
+              className={cn(OPTION, "text-foreground/70 hover:bg-foreground/[0.1] hover:text-foreground/90 focus-visible:bg-foreground/[0.1]")}
             >
               {t.label}
             </button>
           ))}
         </motion.div>
       ) : (
-        <button type="button" aria-haspopup="true" aria-expanded={false} disabled={locked} onClick={onToggle} className={QUIET}>
+        <button type="button" aria-haspopup="true" aria-expanded={false} disabled={locked} onClick={onToggle} className={cn(BUTTON, "h-7 px-3 text-[11.5px]")}>
           Add action
         </button>
       )}
@@ -521,12 +547,6 @@ export function AutomationBuilder({
     reset()
   }
 
-  const clear = () => {
-    if (running || !live.current.length) return
-    setOpenKey(null)
-    commit([])
-  }
-
   const select = (rowId: string, chipId: string, value: string) => {
     setOpenKey(null)
     const row = live.current.find((r) => r.id === rowId)
@@ -592,10 +612,10 @@ export function AutomationBuilder({
     return () => clearTimeout(t)
   }, [status, sweep])
 
-  const values = rows.reduce((n, r) => n + chipsOf(r).length, 0)
 
   return (
-    <div className={cn("w-full max-w-[400px] tabular-nums", className)} role="group" aria-label={`${title}, ${rows.length} steps`}>
+    /* the rule sits in one surface card: 24 = 12 (the rows' grounds) + 12 (the p-3 inset) */
+    <div className={cn("w-[400px] max-w-full rounded-[24px] p-3 tabular-nums", SURFACE, className)} role="group" aria-label={`${title}, ${rows.length} steps`}>
       {/* no visible title or description (2026-10-01): the rows read as the rule; the name is in the aria-label */}
       <Reorder.Group
         as="div"
@@ -634,7 +654,7 @@ export function AutomationBuilder({
 
       <AddAction open={openKey === "add"} locked={running} onToggle={() => setOpenKey("add")} onClose={() => setOpenKey(null)} onPick={add} />
 
-      <div role="status" className="mt-3 border-t border-foreground/[0.05] pt-2.5 text-[10.5px] text-foreground/45">
+      <div role="status" className="mt-3 border-t border-foreground/[0.04] pt-2.5 text-[10.5px] text-foreground/45">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={result ?? status}
@@ -645,28 +665,33 @@ export function AutomationBuilder({
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
             transition={{ duration: 0.15, ease: EASE }}
           >
-            {result ?? (running ? `Running step ${Math.min(sweep + 1, rows.length)} of ${rows.length}` : `${rows.length} steps · ${values} values`)}
+            {result ?? (running ? `Running step ${Math.min(sweep + 1, rows.length)} of ${rows.length}` : "\u00a0" /* no summary at rest (user call, 2026-10-02) */)}
           </motion.span>
         </AnimatePresence>
       </div>
 
-      <div className="mt-2.5 flex items-center gap-1.5">
-        <button type="button" disabled={running || rows.length === 0} onClick={clear} className={QUIET}>
-          Clear
-        </button>
-        <button type="button" disabled={!past.length || running} onClick={undo} className={QUIET}>
-          Undo
-        </button>
-        <button type="button" disabled={!future.length || running} onClick={redo} className={QUIET}>
-          Redo
-        </button>
-        <button
-          type="button"
-          disabled={running || rows.length === 0}
-          onClick={run}
-          className="ml-auto h-6 rounded-full bg-foreground px-3 text-[10.5px] font-medium text-background outline-none transition-[opacity,transform,translate,scale,rotate] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35 motion-reduce:transition-none"
-        >
-          {running ? "Running" : status === "done" ? "Run again" : "Run simulation"}
+      <div className="mt-2.5 flex items-center gap-1">
+        <Tip label="Undo">
+          <button type="button" aria-label="Undo" disabled={!past.length || running} onClick={undo} className={cn(ICON_BUTTON, "h-7 w-7 disabled:pointer-events-none disabled:opacity-35")}>
+            <Undo2 size={14} strokeWidth={1.75} aria-hidden />
+          </button>
+        </Tip>
+        <Tip label="Redo">
+          <button type="button" aria-label="Redo" disabled={!future.length || running} onClick={redo} className={cn(ICON_BUTTON, "h-7 w-7 disabled:pointer-events-none disabled:opacity-35")}>
+            <Redo2 size={14} strokeWidth={1.75} aria-hidden />
+          </button>
+        </Tip>
+        {/* a fixed width: the label swaps in place and the button never resizes */}
+        <button type="button" disabled={running || rows.length === 0} onClick={run} className={cn(BUTTON_PRIMARY, "ml-auto h-7 w-[116px] px-3 text-[11.5px]")}>
+          <motion.span
+            key={running ? "running" : status === "done" ? "again" : "run"}
+            className="inline-block"
+            initial={still ? false : { opacity: 0, y: 4, filter: "blur(2px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.15, ease: EASE }}
+          >
+            {running ? "Running" : status === "done" ? "Run again" : "Run simulation"}
+          </motion.span>
         </button>
       </div>
     </div>

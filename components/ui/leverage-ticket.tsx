@@ -1,8 +1,11 @@
 "use client"
 
-import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { useState } from "react"
 
+import { Tip } from "@/components/ui/amount-tip"
+import { InlineSlider } from "@/components/ui/inline-slider"
+import { AmountBox, Line, PILL, PILL_32, PrimaryButton, Segments, TICKET_WIDTH, amountText, ink } from "@/components/ui/swap-ticket-field"
+import { ModalLine, TicketModal, modalPrimary } from "@/components/ui/swap-ticket-modal"
 import { cn } from "@/lib/utils"
 
 /* Leverage Ticket, written new through ssych-component (2026-09-29).
@@ -10,15 +13,15 @@ import { cn } from "@/lib/utils"
    in view before anything is confirmed.
    Read first: the margin you type, the one large figure; then the liquidation price
    under the slider.
-   The pointer: drag the leverage slider, press a mark under it, or use the arrow keys;
+   The pointer: drag the leverage slider or use the arrow keys;
    the position size, the contracts, the fee and the liquidation price follow at once, and
    the strip shows the room between entry and liquidation closing as leverage climbs. The
    white button's label is the validation state.
    Sketch used: src/components/lab/LeverageTicketPro.tsx. Kept: side, collateral and
    leverage as the three inputs, the same liquidation formula with its maintenance rate,
    the live position value, size, fee and distance, and the bar that shrinks as leverage
-   climbs. Changed: no card or outlined field; the slider is drawn here, in ink, where the
-   sketch used the browser's own in blue and amber; the button is white and says why it
+   climbs. Changed: no card or outlined field; the slider is the library's own, in ink,
+   where the sketch used the browser's own in blue and amber; the button is white and says why it
    cannot be pressed, where the sketch's was tinted and always live.
    No reference was named for this one.
    Formulas:
@@ -34,15 +37,37 @@ import { cn } from "@/lib/utils"
    wears it on the button, green for a long and red for a short, the ink on it from
    --on-accent / --on-danger; until then the button is the quiet white control.
    2026-10-01: the caption under the strip ("Liquidation" and "Entry" at its two ends) is
-   gone; the entry is in the top row and the liquidation price sits over the strip. */
+   gone; the entry is in the top row and the liquidation price sits over the strip.
+   2026-10-02: the leverage slider is the library's Inline Slider (his call: it should look
+   like the sliders made for the library). A fully round 28px track filled to the value,
+   "Leverage" inside on the left, the multiple inside on the right, the handle inside the
+   fill, and the marks 1×, 10×, 25× and 50× as stops under it that still set the value
+   when pressed. The thin line, the round white thumb and the label row above it are gone.
+   Drag, the arrow keys, Home and End work as before, and every figure is computed the same.
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit: cut from the ticket family's parts (swap-ticket-field.tsx) so the three
+   tickets and the three swaps share one field, one switch and one 48px white primary
+   (BUTTON_PRIMARY); the green and red button fill is gone and the side shows as a 6px dot in
+   the switch and on the button. Long and Short are the switch material with the side's colour
+   as a dot, not as coloured text. Under the slider only the position size and the
+   liquidation price stay; contracts, fee, entry and maintenance moved into a Details popup,
+   the free margin into the Max button's tip. The button reads "Long at 10×", since the
+   contracts are in Details and no figure is printed twice. The margin field is the family's
+   amount field (28 = the 32px Max pill's 16 + 12). Formulas are unchanged.
+   Formulas, where each is shown:
+   · position size   margin × leverage (line; its tip shows the product)
+   · liquidation     as above (line with its distance; the tip shows the product)
+   · contracts, fee  in Details
+   · free margin     the Max tip; Max fills balance ÷ (1 + leverage × fee rate)
+   2026-10-02 round 2: (his notes after the side by side): the dots by Long and Short are gone;
+   the chosen side is its own pill tinted in its hue (green for Long, red for Short, 14%) with
+   the word in that hue, the other in ink. The dot before the button's label is gone too. The
+   1×, 10×, 25× and 50× labels under the slider are removed; drag, the arrow keys, Home and End
+   still set the leverage. The margin field shows focus on its own edge. Switching the side
+   changes no size: every line keeps its height. Formulas are unchanged. */
 
-const EASE = [0.16, 1, 0.3, 1] as const
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
-const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
-/** the thumb's width, so the track can keep it inside its ends */
-const THUMB = 14
 
 export type LeverageSide = "long" | "short"
 
@@ -84,103 +109,6 @@ export interface LeverageTicketProps {
 
 const num = (n: number, dp: number) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-/** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
-const ink = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
-
-function Slider({
-  value,
-  max,
-  marks,
-  onChange,
-}: {
-  value: number
-  max: number
-  marks: number[]
-  onChange: (v: number) => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const share = (v: number) => (max > 1 ? (v - 1) / (max - 1) : 0)
-  const from = (clientX: number) => {
-    const r = ref.current?.getBoundingClientRect()
-    if (!r) return
-    const p = clamp((clientX - r.left - THUMB / 2) / Math.max(1, r.width - THUMB), 0, 1)
-    onChange(Math.round(1 + p * (max - 1)))
-  }
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const to =
-      e.key === "ArrowRight" || e.key === "ArrowUp"
-        ? value + 1
-        : e.key === "ArrowLeft" || e.key === "ArrowDown"
-          ? value - 1
-          : e.key === "Home"
-            ? 1
-            : e.key === "End"
-              ? max
-              : null
-    if (to === null) return
-    e.preventDefault()
-    onChange(clamp(to, 1, max))
-  }
-  return (
-    <div>
-      {/* pointer capture, so a drag that leaves the track still moves the thumb */}
-      <div
-        ref={ref}
-        role="slider"
-        tabIndex={0}
-        aria-label="Leverage"
-        aria-valuemin={1}
-        aria-valuemax={max}
-        aria-valuenow={value}
-        aria-valuetext={`${value} times`}
-        onPointerDown={(e: PointerEvent<HTMLDivElement>) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          from(e.clientX)
-        }}
-        onPointerMove={(e: PointerEvent<HTMLDivElement>) => {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) from(e.clientX)
-        }}
-        onKeyDown={onKey}
-        className="group relative h-6 cursor-pointer touch-none outline-none"
-      >
-        <span aria-hidden className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-foreground/[0.1]" />
-        <span
-          aria-hidden
-          className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-foreground/[0.55]"
-          style={{ width: `calc(${THUMB / 2}px + ${share(value)} * (100% - ${THUMB}px))` }}
-        />
-        <span
-          aria-hidden
-          className="absolute top-1/2 -mt-[7px] h-[14px] w-[14px] rounded-full bg-foreground transition-transform duration-150 group-hover:scale-110 group-focus-visible:scale-125 motion-reduce:transition-none"
-          style={{ left: `calc(${share(value)} * (100% - ${THUMB}px))` }}
-        />
-      </div>
-      <div className="relative h-5">
-        {marks.map((m, i) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => onChange(m)}
-            aria-label={`Set leverage to ${m} times`}
-            className={cn(
-              "absolute top-0 h-5 text-[10px] outline-none transition-colors duration-150 hover:text-foreground/90 focus-visible:text-foreground/90",
-              m === value ? "text-foreground/90" : "text-foreground/45",
-            )}
-            style={
-              i === 0
-                ? { left: 0 }
-                : i === marks.length - 1
-                  ? { right: 0 }
-                  : { left: `calc(${THUMB / 2}px + ${share(m)} * (100% - ${THUMB}px))`, transform: "translateX(-50%)" }
-            }
-          >
-            {m}×
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 /**
  * A leveraged order on the page: side, margin, a leverage slider, and under it the
@@ -203,11 +131,10 @@ export function LeverageTicket({
   onSubmit,
   className,
 }: LeverageTicketProps) {
-  const reduced = useReducedMotion()
-  const uid = useId().replace(/:/g, "")
   const [side, setSide] = useState<LeverageSide>(defaultSide)
   const [typed, setTyped] = useState(defaultMargin)
   const [lev, setLev] = useState(clamp(Math.round(defaultLeverage), 1, maxLeverage))
+  const [details, setDetails] = useState(false)
 
   const long = side === "long"
   const margin = parseFloat(typed) || 0
@@ -217,6 +144,7 @@ export function LeverageTicket({
   const distance = entry > 0 ? ((liquidation - entry) / entry) * 100 : 0
   const fee = notional * feeRate
   const room = clamp(Math.abs(distance) / 50, 0, 1) * 100
+  const maxMargin = Math.floor((balance / (1 + lev * feeRate)) * 100) / 100
 
   const state = margin <= 0 ? "empty" : margin < minMargin ? "small" : margin + fee > balance ? "short" : "ready"
   const enabled = state === "ready"
@@ -227,120 +155,89 @@ export function LeverageTicket({
         ? `Margin under ${num(minMargin, 0)} ${quote}`
         : state === "short"
           ? `Insufficient ${quote}`
-          : `${long ? "Long" : "Short"} ${num(contracts, 4)} ${base} at ${lev}×`
-
-  const marks = [1, 10, 25, 50].filter((m) => m <= maxLeverage)
-  if (marks[marks.length - 1] !== maxLeverage) marks.push(maxLeverage)
-
-  const row = (label: string, value: string) => (
-    <div className="flex items-baseline justify-between text-[11px]">
-      <span className="text-foreground/45">{label}</span>
-      <span className="text-foreground/90">{value}</span>
-    </div>
-  )
+          : `${long ? "Long" : "Short"} at ${lev}×`
 
   return (
     <div
-      className={cn("w-[320px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}
+      className={cn(TICKET_WIDTH, "tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}
       role="group"
       aria-label={`${symbol} ${side} at ${lev} times, liquidation ${num(liquidation, 2)}`}
     >
-      <div className="mb-3 flex items-baseline justify-between px-1">
-        <span className="text-[13px] font-medium text-foreground/90">{symbol}</span>
-        <span className="text-[11px] text-foreground/45">Entry {num(entry, 2)}</span>
+      <div className="mb-3 flex items-center justify-between gap-2 px-1 text-[12px]">
+        <span className="flex items-baseline gap-2">
+          <span className="font-medium text-foreground/90">{symbol}</span>
+          <span className="text-foreground/60">Entry {num(entry, 2)}</span>
+        </span>
+        <button type="button" onClick={() => setDetails(true)} aria-haspopup="dialog" className={PILL}>
+          Details
+        </button>
       </div>
 
-      <div role="radiogroup" aria-label="Side" className="grid grid-cols-2">
-        {(["long", "short"] as const).map((s) => {
-          const on = side === s
-          return (
-            <button
-              key={s}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => setSide(s)}
-              className={cn(
-                "relative h-7 rounded-full text-[11.5px] font-medium outline-none transition-colors duration-200",
-                !on && "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-              )}
-              style={on ? { color: ink(s === "long" ? GREEN : RED) } : undefined}
-            >
-              {on &&
-                (reduced ? (
-                  <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-                ) : (
-                  <motion.span
-                    aria-hidden
-                    layoutId={`${uid}-side`}
-                    className="absolute inset-0 rounded-full bg-foreground/[0.08]"
-                    transition={{ duration: 0.25, ease: TAB_EASE }}
-                  />
-                ))}
-              <span className="relative">{s === "long" ? "Long" : "Short"}</span>
-            </button>
-          )
-        })}
-      </div>
+      <Segments
+        name="Side"
+        value={side}
+        onChange={setSide}
+        options={[
+          { value: "long", label: "Long", hue: GREEN },
+          { value: "short", label: "Short", hue: RED },
+        ]}
+      />
 
-      {/* 9.5 (the 19px Max pill) + 14 padding = 23.5, so 24 */}
-      <div className="mt-2 flex flex-col gap-2 rounded-[24px] bg-foreground/[0.04] p-3.5 transition-colors duration-150 focus-within:bg-foreground/[0.06]">
-        <div className="flex items-center justify-between text-[11px] text-foreground/45">
-          <span>Margin</span>
-          <span className="flex items-center gap-1.5">
-            Free {num(balance, 2)} {quote}
-            <button
-              type="button"
-              onClick={() => setTyped(String(Math.floor((balance / (1 + lev * feeRate)) * 100) / 100))}
-              aria-label="Use all the free margin, fee included"
-              className="rounded-full bg-foreground/[0.08] px-1.5 py-0.5 text-[10px] font-semibold text-foreground/70 outline-none transition-[color,background-color,scale] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-foreground/[0.14] hover:text-foreground/90 focus-visible:bg-foreground/[0.14]"
-            >
+      <AmountBox
+        className="mt-2"
+        label="Margin"
+        aside={
+          <Tip tip={`Free ${num(balance, 2)} ${quote}; Max keeps the fee: ${num(balance, 2)} ÷ (1 + ${lev} × ${(feeRate * 100).toFixed(2)}%) = ${num(maxMargin, 2)}`}>
+            <button type="button" onClick={() => setTyped(String(maxMargin))} aria-label={`Use all the free margin, ${num(balance, 2)} ${quote}, fee included`} className={PILL_32}>
               Max
             </button>
-          </span>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <input
-            value={typed}
-            onChange={(e) => {
-              const v = e.target.value
-              if (/^\d*\.?\d{0,2}$/.test(v)) setTyped(v)
-            }}
-            placeholder="0"
-            inputMode="decimal"
-            aria-label={`Margin in ${quote}`}
-            className={cn(
-              "w-full min-w-0 bg-transparent text-[22px] font-semibold leading-none tracking-[-0.02em] caret-foreground outline-none placeholder:text-foreground/35",
-              typed ? "text-foreground/90" : "text-foreground/35",
-            )}
-          />
-          <span className="text-[13px] font-semibold text-foreground/90">{quote}</span>
-        </div>
-      </div>
+          </Tip>
+        }
+      >
+        <input
+          value={typed}
+          onChange={(e) => {
+            const v = e.target.value
+            if (/^\d*\.?\d{0,2}$/.test(v)) setTyped(v)
+          }}
+          placeholder="0"
+          inputMode="decimal"
+          aria-label={`Margin in ${quote}`}
+          className={amountText("lead", !typed)}
+        />
+        <span className="shrink-0 text-[13px] font-semibold text-foreground/90">{quote}</span>
+      </AmountBox>
 
-      <div className="mt-4 px-1">
-        <div className="mb-1 flex items-baseline justify-between">
-          <span className="text-[11px] text-foreground/45">Leverage</span>
-          <span className="text-[13px] font-semibold text-foreground/90">{lev}×</span>
-        </div>
-        <Slider value={lev} max={maxLeverage} marks={marks} onChange={setLev} />
+      {/* the library's slider material (spec 14.5): name and value inside the track, the
+          handle inside the fill; no stop labels under it (round 2) */}
+      <div className="mt-4">
+        <InlineSlider
+          label="Leverage"
+          ariaLabel="Leverage"
+          min={1}
+          max={maxLeverage}
+          step={1}
+          value={lev}
+          onChange={(v) => setLev(clamp(Math.round(v), 1, maxLeverage))}
+          format={(v) => `${v}×`}
+        />
       </div>
 
       <div role="status" className="mt-3 flex flex-col gap-1.5 px-1">
-        {row("Position size", `${num(notional, 2)} ${quote}`)}
-        {row("Contracts", `${num(contracts, 4)} ${base}`)}
-        {row(`Fee · ${(feeRate * 100).toFixed(2)}%`, `${num(fee, 2)} ${quote}`)}
-
-        <div className="mt-2 flex items-baseline justify-between">
-          <span className="text-[11px] text-foreground/45">Liquidation price</span>
-          <span className="flex items-baseline gap-1.5">
-            <span className="text-[10.5px] font-medium" style={{ color: ink(distance >= 0 ? GREEN : RED) }}>
-              {distance >= 0 ? "+" : "−"}
-              {Math.abs(distance).toFixed(2)}%
+        <Line label="Position size" value={`${num(notional, 2)} ${quote}`} tip={`margin × leverage = ${num(margin, 2)} × ${lev}`} />
+        <Line
+          label="Liquidation price"
+          tip={`entry × (1 ${long ? "−" : "+"} 1 ÷ ${lev} ${long ? "+" : "−"} ${(maintenance * 100).toFixed(1)}% maintenance) = ${num(entry, 2)} × ${(liquidation / entry).toFixed(4)}`}
+          value={
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[11px] font-medium" style={{ color: ink(distance >= 0 ? GREEN : RED) }}>
+                {distance >= 0 ? "+" : "−"}
+                {Math.abs(distance).toFixed(2)}%
+              </span>
+              <span className="text-[13px] font-semibold">{num(liquidation, 2)}</span>
             </span>
-            <span className="text-[13px] font-semibold text-foreground/90">{num(liquidation, 2)}</span>
-          </span>
-        </div>
+          }
+        />
         {/* entry sits at one end; the fill is the room left before liquidation. It follows
             the slider at once (keys and drags repeat), on transform only */}
         <div aria-hidden className="flex h-[3px] rounded-full bg-foreground/[0.1]">
@@ -355,37 +252,28 @@ export function LeverageTicket({
         </div>
       </div>
 
-      {/* the one solid control; its label is the state of the ticket */}
-      <motion.button
-        type="button"
+      {/* the one loud control; its label is the state of the ticket */}
+      <PrimaryButton
+        className="mt-4"
+        state={`${state}-${side}`}
         disabled={!enabled}
         onClick={() => onSubmit?.({ side, margin, leverage: lev, notional, contracts, liquidation })}
-        whileTap={enabled && !reduced ? { scale: 0.97 } : undefined}
-        transition={reduced ? { duration: 0 } : LIFT_SPRING}
-        className="mt-4 h-11 w-full rounded-full bg-foreground/[0.92] text-[13px] font-semibold text-background outline-none transition-[background-color,color,opacity,filter] duration-200 enabled:cursor-pointer enabled:hover:brightness-[1.06] enabled:focus-visible:brightness-[1.06] disabled:cursor-not-allowed disabled:opacity-35"
-        /* a ticket that can be placed wears its direction: green long, red short */
-        style={
-          enabled
-            ? long
-              ? { background: GREEN, color: "var(--on-accent, var(--background))" }
-              : { background: RED, color: "var(--on-danger, var(--background))" }
-            : undefined
-        }
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          {/* keyed by the state and the side, so dragging the slider changes the figures without replaying the swap */}
-          <motion.span
-            key={`${state}-${side}`}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(2px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-            className="block"
-          >
-            {verdict}
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
+        label={verdict}
+      />
+
+      <TicketModal open={details} title={`${symbol}, ${long ? "long" : "short"} at ${lev}×`} onClose={() => setDetails(false)}>
+        <div className="flex flex-col pb-1">
+          <ModalLine label="Entry" value={`${num(entry, 2)} ${quote}`} />
+          <ModalLine label="Position size" value={`${num(notional, 2)} ${quote}`} />
+          <ModalLine label="Contracts" value={`${num(contracts, 4)} ${base}`} />
+          <ModalLine label={`Fee ${(feeRate * 100).toFixed(2)}%`} value={`${num(fee, 2)} ${quote}`} />
+          <ModalLine label="Maintenance rate" value={`${(maintenance * 100).toFixed(1)}%`} />
+          <ModalLine label="Liquidation" value={`${num(liquidation, 2)} ${quote}`} />
+        </div>
+        <button type="button" className={cn("mt-2", modalPrimary)} onClick={() => setDetails(false)}>
+          Done
+        </button>
+      </TicketModal>
     </div>
   )
 }

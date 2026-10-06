@@ -2,20 +2,41 @@
 
 import type React from "react"
 import { useEffect, useRef, useState } from "react"
-import {
-  BookOpen,
-  ChevronLeft,
-  ChevronRight,
-  Lock,
-  RotateCw,
-  Share,
-  Square,
-  Star,
-  Plus,
-  EllipsisVertical,
-} from "lucide-react"
+import { motion, useReducedMotion } from "motion/react"
+import { Check, ChevronLeft, ChevronRight, Link2, Lock, RotateCw, Star } from "lucide-react"
 
 import { cn } from "../../lib/utils"
+import { ICON_BUTTON, SURFACE, THUMB } from "@/components/ui/control-classes"
+import { Tip } from "@/components/ui/browser-window-tip"
+
+/* Browser Window: a desktop browser frame to set a page in, which turns into a phone browser
+   when its own width drops under `mobileBreakpoint`.
+
+   2026-10-02 audit (redesign): it was a 516 line generic frame with raw Tailwind reds,
+   yellows and greens, an outline under a heavy shadow, a theme prop whose three branches were
+   the same string, dead buttons and a Windows variant no prop could reach. Now:
+   · one desktop frame and the phone fallback. The window is a 24px corner with no outline and
+     one soft shadow; the 40px chrome bar is the 7% surface step and the page body is the
+     background, so the two read as two steps in both themes.
+   · the window dots are three 8px dots in ink /20, decoration with no pointer cursor.
+   · the address is the field material (h-7, 12px /60, the lock /45), centred.
+   · every control does something: Reload replays the page's entrance, Bookmark toggles a
+     filled star, Copy link copies the url and shows a tick. Back and Forward stay as real
+     buttons but disabled, as in a fresh window with no history. New tab, More options and the
+     phone's Tabs could do nothing honest here, so they are gone. Each icon control is the
+     round icon button with a tip.
+   · `theme` is real now: "dark" and "light" scope that theme's tokens to the window (the
+     `dark` / `light` class, so the window can stay dark on a light page), "auto" follows the
+     page. In an app whose tokens have no `.light` class, "light" follows the page too.
+   · the sidebar list's active item is the thumb fill with no outline, items fully round.
+   Old props kept so nothing that installed it breaks: `variant` (chrome, safari, generic)
+   now draws the one frame for all three; the Windows controls are gone. `size` still sets
+   the sidebar width preset. The frame fills its parent (h-full w-full) because the portfolio
+   sizes it by its box in three places; the library preview sets the Device frame family's
+   one width, 640 at 16:10, the same as MacBook Frame.
+   2026-10-02 round 2: the shipped defaults read as a trading app: the address is
+   app.tradeboard.io (the house brand on the library dashboards) instead of example.com, and
+   the sidebar list is Markets, Portfolio, Orders with 3 open, and API keys. */
 
 interface SidebarItem {
   icon?: React.ReactNode
@@ -24,15 +45,8 @@ interface SidebarItem {
   badge?: string | number
 }
 
-interface WindowControlsProps {
-  variant?: "macos" | "windows" | "chrome" | "safari"
-  headerStyle?: "minimal" | "full"
-}
-
 interface AddressBarProps {
   url?: string
-  secure?: boolean
-  variant?: "chrome" | "safari"
   className?: string
   /** "right" biases the bar toward the content area on mobile (centered again from sm+). */
   align?: "center" | "right"
@@ -40,23 +54,28 @@ interface AddressBarProps {
 
 interface SidebarContentProps {
   items?: SidebarItem[]
-  variant?: "navigation" | "bookmarks" | "history" | "extensions"
+  /** "row" lays the items side by side for a top or bottom bar */
+  direction?: "column" | "row"
   className?: string
 }
 
 interface BrowserWindowProps {
   children?: React.ReactNode
   className?: string
+  /** the sidebar's width preset (sm 128, md 192, lg 224, xl 256) */
   size?: "sm" | "md" | "lg" | "xl"
   showSidebar?: boolean
   sidebarPosition?: "left" | "right" | "top" | "bottom"
+  /** "minimal" keeps the window dots alone in the bar; "full" adds the address and the controls */
   headerStyle?: "minimal" | "full"
+  /** kept for old installs: all three draw the same frame since 2026-10-02 */
   variant?: "chrome" | "safari" | "generic"
+  /** "dark" or "light" scopes that theme's tokens to the window; "auto" follows the page */
   theme?: "light" | "dark" | "auto"
   url?: string
   /** Back / forward / reload buttons after the window controls (full header). */
   showNavButtons?: boolean
-  /** Right-side toolbar: bookmark, new tab, more-options menu (full header). */
+  /** Right-side toolbar: bookmark and copy link (full header). */
   showActions?: boolean
   /** Custom sidebar node — overrides the default passive SidebarContent when provided (e.g. an interactive sidebar). */
   sidebar?: React.ReactNode
@@ -78,154 +97,31 @@ interface BrowserWindowProps {
   }>
 }
 
-function WindowControls({
-  variant = "macos",
-  headerStyle = "full",
-}: WindowControlsProps) {
-  const sizeClasses = "size-2"
+const HAIRLINE = "border-foreground/[0.05]"
 
-  if (variant === "macos" || variant === "safari") {
-    const dotColors =
-      headerStyle === "minimal"
-        ? {
-            red: "bg-foreground/10 border  border-foreground/20",
-            yellow: "bg-foreground/10 border border-foreground/20",
-            green: "bg-foreground/10 border border-foreground/20",
-          }
-        : {
-            red: "bg-red-500 hover:bg-red-600 border border-foreground/20",
-            yellow:
-              "bg-yellow-500 hover:bg-yellow-600 border border-foreground/20",
-            green:
-              "bg-green-500 hover:bg-green-600 border border-foreground/20 ",
-          }
-
-    return (
-      <div className="flex gap-2">
-        <div
-          className={cn(
-            sizeClasses,
-            "rounded-full",
-            dotColors.red,
-            "transition-colors cursor-pointer flex items-center justify-center group"
-          )}
-        >
-          {headerStyle !== "minimal" && (
-            <div className="w-1.5 h-0.5 bg-red-900/60 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          )}
-        </div>
-        <div
-          className={cn(
-            sizeClasses,
-            "rounded-full",
-            dotColors.yellow,
-            "transition-colors cursor-pointer flex items-center justify-center group"
-          )}
-        >
-          {headerStyle !== "minimal" && (
-            <div className="w-1.5 h-0.5 bg-yellow-900/60 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          )}
-        </div>
-        <div
-          className={cn(
-            sizeClasses,
-            "rounded-full",
-            dotColors.green,
-            "transition-colors cursor-pointer flex items-center justify-center group"
-          )}
-        >
-          {headerStyle !== "minimal" && (
-            <div className="w-1 h-1 border border-green-900/60 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (variant === "windows") {
-    return (
-      <div className="flex gap-1">
-        <div className="w-6 h-4 bg-foreground/[0.06] hover:bg-foreground/10 transition-colors cursor-pointer flex items-center justify-center">
-          <div className="w-2 h-0.5 bg-foreground/60"></div>
-        </div>
-        <div className="w-6 h-4 bg-foreground/[0.06] hover:bg-foreground/10 transition-colors cursor-pointer flex items-center justify-center">
-          <div className="w-2 h-2 border border-foreground/60"></div>
-        </div>
-        <div className="w-6 h-4 bg-red-500/80 hover:bg-red-500 transition-colors cursor-pointer flex items-center justify-center">
-          <div className="w-2 h-0.5 bg-foreground rotate-45"></div>
-          <div className="w-2 h-0.5 bg-foreground -rotate-45 absolute"></div>
-        </div>
-      </div>
-    )
-  }
-
-  if (variant === "chrome") {
-    return (
-      <div className="flex gap-1.5">
-        <div
-          className={cn(
-            sizeClasses,
-            "rounded-full bg-red-500 hover:bg-red-600 transition-colors cursor-pointer"
-          )}
-        ></div>
-        <div
-          className={cn(
-            sizeClasses,
-            "rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors cursor-pointer"
-          )}
-        ></div>
-        <div
-          className={cn(
-            sizeClasses,
-            "rounded-full bg-green-500 hover:bg-green-600 transition-colors cursor-pointer"
-          )}
-        ></div>
-      </div>
-    )
-  }
-
+/** three 8px dots in ink /20: decoration, so no pointer cursor and no hover */
+function WindowControls() {
   return (
-    <div className="flex gap-1.5">
-      <div
-        className={`${sizeClasses} rounded-full border border-foreground/20 bg-foreground/10`}
-      ></div>
-      <div
-        className={`${sizeClasses} rounded-full border border-foreground/20 bg-foreground/10`}
-      ></div>
-      <div
-        className={`${sizeClasses} rounded-full border border-foreground/20 bg-foreground/10`}
-      ></div>
+    <div className="flex gap-2" aria-hidden>
+      <span className="size-2 rounded-full bg-foreground/20" />
+      <span className="size-2 rounded-full bg-foreground/20" />
+      <span className="size-2 rounded-full bg-foreground/20" />
     </div>
   )
 }
 
-function AddressBar({
-  url = "https://example.com",
-  variant = "chrome",
-  align = "center",
-}: AddressBarProps) {
-  // No glass on these pills on purpose: they sit on the chrome header, which is a flat
-  // 3–4% fill over an opaque window. Nothing moves behind them, so the effect cost a
-  // compositor layer and bought nothing visible — §5 says glass has to be earned.
-  const variantStyles = {
-    chrome:
-      "bg-foreground/[0.04] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,calc(0.03*var(--shadow-k,1)))_inset]",
-    safari:
-      "bg-foreground/[0.03] rounded-full border border-foreground/[0.06] shadow-[0px_1px_2px_0px_rgba(0,0,0,calc(0.03*var(--shadow-k,1)))_inset]",
-  }
+const hostOf = (url: string) => url.replace(/^https?:\/\//, "").replace(/\/$/, "")
+
+function AddressBar({ url = "https://app.tradeboard.io", align = "center" }: AddressBarProps) {
   // mobile: anchor to the right edge so the bar can't clip off-screen (sidebar sits on the
   // left, so this also sits it over the content area); desktop (sm+): centered.
-  const posClass =
-    align === "right"
-      ? "right-3 sm:right-auto sm:left-1/2 sm:-translate-x-1/2"
-      : "left-1/2 -translate-x-1/2"
-
+  const posClass = align === "right" ? "right-3 sm:right-auto sm:left-1/2 sm:-translate-x-1/2" : "left-1/2 -translate-x-1/2"
   return (
     <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 justify-center ${posClass}`}>
-      <div
-        className={`${variantStyles[variant]} px-4 py-1.5 text-[12px] text-foreground/50 min-w-[140px] sm:min-w-[220px] max-w-[78vw] sm:max-w-md flex items-center justify-center text-center transition-colors`}
-      >
-        <span className="truncate">{url}</span>
+      {/* the field material (control-classes FIELD), drawn as a div: it shows the address, nothing is typed */}
+      <div className="flex h-7 min-w-[140px] max-w-[78vw] items-center justify-center gap-1.5 rounded-full border border-foreground/[0.04] bg-[var(--field-fill,color-mix(in_oklab,var(--foreground)_5%,transparent))] px-3.5 text-[12px] text-foreground/60 sm:min-w-[240px] sm:max-w-md">
+        <Lock className="h-3 w-3 shrink-0 text-foreground/45" aria-hidden />
+        <span className="truncate">{hostOf(url)}</span>
       </div>
     </div>
   )
@@ -244,16 +140,122 @@ function useContainerWidth(ref: React.RefObject<HTMLDivElement | null>) {
   return width
 }
 
-const phoneBtn = "flex h-8 w-8 items-center justify-center rounded-md text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/85"
+/** the window's working state: reload replays the page, the star toggles, copy link copies */
+function useBrowserState(url: string) {
+  const [load, setLoad] = useState(0)
+  const [starred, setStarred] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const copy = () => {
+    const done = () => {
+      setCopied(true)
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setCopied(false), 1400)
+    }
+    navigator.clipboard?.writeText(url).then(done, done) ?? done()
+  }
+  return { load, reload: () => setLoad((n) => n + 1), starred, toggleStar: () => setStarred((s) => !s), copied, copy }
+}
+type BrowserState = ReturnType<typeof useBrowserState>
+
+function IconControl({
+  label,
+  onClick,
+  disabled,
+  pressed,
+  className,
+  side = "bottom",
+  children,
+}: {
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+  pressed?: boolean
+  className?: string
+  side?: "top" | "bottom"
+  children: React.ReactNode
+}) {
+  const button = (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={pressed}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(ICON_BUTTON, "h-7 w-7 disabled:pointer-events-none disabled:text-foreground/20", className)}
+    >
+      {children}
+    </button>
+  )
+  return disabled ? button : <Tip tip={label} side={side}>{button}</Tip>
+}
+
+function NavButtons({ state, side }: { state: BrowserState; side?: "top" | "bottom" }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      <IconControl label="Back" disabled side={side}>
+        <ChevronLeft className="h-4 w-4" strokeWidth={2.2} />
+      </IconControl>
+      <IconControl label="Forward" disabled side={side}>
+        <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
+      </IconControl>
+      <IconControl label="Reload" onClick={state.reload} side={side}>
+        <RotateCw className="h-3.5 w-3.5" />
+      </IconControl>
+    </div>
+  )
+}
+
+function ActionButtons({ state, side }: { state: BrowserState; side?: "top" | "bottom" }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      <IconControl label={state.starred ? "Bookmarked" : "Bookmark"} pressed={state.starred} onClick={state.toggleStar} side={side}>
+        <Star className={cn("h-3.5 w-3.5", state.starred && "fill-current text-foreground/90")} />
+      </IconControl>
+      <IconControl label={state.copied ? "Copied" : "Copy link"} onClick={state.copy} side={side}>
+        {state.copied ? <Check className="h-3.5 w-3.5 text-foreground/90" strokeWidth={2.2} /> : <Link2 className="h-3.5 w-3.5" />}
+      </IconControl>
+    </div>
+  )
+}
+
+/** the page: Reload re-keys it so its entrance plays again (a fade, 4px rise; a fade alone under reduced motion) */
+function Page({ load, children }: { load: number; children?: React.ReactNode }) {
+  const reduced = useReducedMotion()
+  return (
+    <motion.div
+      key={load}
+      className="absolute inset-0"
+      initial={load === 0 ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 /** The phone chrome: a status row, one full-width address pill with the lock, and a bottom toolbar. */
-function PhoneChrome({ url = "https://example.com", children, dividers = true, showAddressBar = true }: { url?: string; children?: React.ReactNode; dividers?: boolean; showAddressBar?: boolean }) {
+function PhoneChrome({
+  url = "https://app.tradeboard.io",
+  children,
+  dividers = true,
+  showAddressBar = true,
+  state,
+}: {
+  url?: string
+  children?: React.ReactNode
+  dividers?: boolean
+  showAddressBar?: boolean
+  state: BrowserState
+}) {
   const host = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "")
   return (
     <>
-      <div className="flex h-7 items-center justify-between px-5 text-[11px] font-medium tabular-nums text-foreground/70">
+      <div className={cn("flex h-7 items-center justify-between px-5 text-[11px] font-medium tabular-nums text-foreground/70", SURFACE)}>
         <span>9:41</span>
-        {/* signal, wifi and battery as plain bars so no glyph font is needed */}
+        {/* signal and battery as plain bars so no glyph font is needed */}
         <span className="flex items-center gap-1.5" aria-hidden>
           <span className="flex items-end gap-[2px]">
             <span className="h-1.5 w-[3px] rounded-[1px] bg-foreground/70" />
@@ -261,37 +263,28 @@ function PhoneChrome({ url = "https://example.com", children, dividers = true, s
             <span className="h-2.5 w-[3px] rounded-[1px] bg-foreground/70" />
             <span className="h-3 w-[3px] rounded-[1px] bg-foreground/25" />
           </span>
-          <span className="ml-1 flex h-[11px] w-[22px] items-center rounded-[3px] border border-foreground/40 p-[2px]">
+          <span className="ml-1 flex h-[11px] w-[22px] items-center rounded-[3px] bg-foreground/[0.12] p-[2px]">
             <span className="h-full w-[70%] rounded-[1px] bg-foreground/70" />
           </span>
         </span>
       </div>
-      {showAddressBar && <div className="flex items-center gap-2 px-3 pb-2">
-        <div className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-foreground/[0.06] bg-foreground/[0.04] px-3 text-[12px] text-foreground/60">
-          <Lock className="h-3 w-3 text-foreground/40" />
-          <span className="truncate">{host}</span>
+      {showAddressBar && (
+        <div className={cn("flex items-center gap-2 px-3 pb-2", SURFACE)}>
+          <div className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-foreground/[0.04] bg-[var(--field-fill,color-mix(in_oklab,var(--foreground)_5%,transparent))] px-3 text-[12px] text-foreground/60">
+            <Lock className="h-3 w-3 text-foreground/45" aria-hidden />
+            <span className="truncate">{host}</span>
+          </div>
+          <IconControl label="Reload" onClick={state.reload} className="h-9 w-9">
+            <RotateCw className="h-4 w-4" />
+          </IconControl>
         </div>
-        <button type="button" aria-label="Reload" className={phoneBtn}>
-          <RotateCw className="h-4 w-4" />
-        </button>
-      </div>}
-      <div className={`relative min-h-0 flex-1 ${dividers ? "border-t border-foreground/[0.06]" : ""}`}>{children}</div>
-      <div className={`flex h-12 items-center justify-around ${dividers ? "border-t border-foreground/[0.06] " : ""}bg-foreground/[0.03] px-2`}>
-        <button type="button" aria-label="Back" className={phoneBtn}>
-          <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
-        </button>
-        <button type="button" aria-label="Forward" className={cn(phoneBtn, "text-foreground/25")}>
-          <ChevronRight className="h-5 w-5" strokeWidth={2.2} />
-        </button>
-        <button type="button" aria-label="Share" className={phoneBtn}>
-          <Share className="h-4 w-4" />
-        </button>
-        <button type="button" aria-label="Bookmarks" className={phoneBtn}>
-          <BookOpen className="h-4 w-4" />
-        </button>
-        <button type="button" aria-label="Tabs" className={phoneBtn}>
-          <Square className="h-4 w-4" />
-        </button>
+      )}
+      <div className={cn("relative min-h-0 flex-1 bg-background", dividers && `border-t ${HAIRLINE}`)}>
+        <Page load={state.load}>{children}</Page>
+      </div>
+      <div className={cn("flex h-12 items-center justify-around px-2", SURFACE, dividers && `border-t ${HAIRLINE}`)}>
+        <NavButtons state={state} side="top" />
+        <ActionButtons state={state} side="top" />
       </div>
     </>
   )
@@ -299,76 +292,35 @@ function PhoneChrome({ url = "https://example.com", children, dividers = true, s
 
 function SidebarContent({
   items = [
-    { label: "Dashboard", active: true },
-    { label: "Analytics", badge: "3" },
-    { label: "Settings" },
-    { label: "Profile" },
+    { label: "Markets", active: true },
+    { label: "Portfolio" },
+    { label: "Orders", badge: "3" },
+    { label: "API keys" },
   ],
+  direction = "column",
   className = "",
 }: SidebarContentProps) {
   return (
-    <div className={`p-3 space-y-1 ${className}`}>
+    <div className={cn("flex gap-1 p-2.5", direction === "row" ? "flex-row items-center" : "flex-col", className)}>
       {items.map((item, index) => (
         <div
           key={`${item.label}-${index}`}
-          className={`
-            flex items-center gap-2 px-2 py-1.5 rounded text-[14px] transition-colors cursor-pointer
-            ${
-              item.active
-                ? "bg-foreground/[0.08] text-foreground border border-foreground/10"
-                : "text-foreground/55 hover:text-foreground hover:bg-foreground/[0.03]"
-            }
-          `}
+          className={cn(
+            "flex h-8 items-center gap-2 rounded-full px-3 text-[12.5px] transition-colors duration-150",
+            item.active ? cn(THUMB, "text-foreground/90") : "text-foreground/60",
+          )}
         >
-          {item.icon && (
-            <div className="w-4 h-4 flex-shrink-0">{item.icon}</div>
-          )}
+          {item.icon && <div className="h-4 w-4 flex-shrink-0">{item.icon}</div>}
           <span className="flex-1 truncate">{item.label}</span>
-          {item.badge && (
-            <div className="bg-foreground/10 text-foreground/70 text-[12px] px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
-              {item.badge}
-            </div>
-          )}
+          {item.badge != null && <span className="text-[11px] tabular-nums text-foreground/45">{item.badge}</span>}
         </div>
       ))}
     </div>
   )
 }
 
-const toolbarBtn =
-  "flex h-6 w-6 items-center justify-center rounded-md text-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/80 cursor-pointer"
-
-function NavButtons() {
-  return (
-    <div className="flex items-center gap-0.5">
-      <button type="button" aria-label="Back" className={toolbarBtn}>
-        <ChevronLeft className="h-4 w-4" strokeWidth={2.5} />
-      </button>
-      <button type="button" aria-label="Forward" className={cn(toolbarBtn, "text-foreground/20")}>
-        <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
-      </button>
-      <button type="button" aria-label="Reload" className={toolbarBtn}>
-        <RotateCw className="h-4 w-4" />
-      </button>
-    </div>
-  )
-}
-
-function ActionButtons() {
-  return (
-    <div className="flex items-center gap-0.5">
-      <button type="button" aria-label="Bookmark" className={toolbarBtn}>
-        <Star className="h-4 w-4" />
-      </button>
-      <button type="button" aria-label="New tab" className={toolbarBtn}>
-        <Plus className="h-4 w-4" />
-      </button>
-      <button type="button" aria-label="More options" className={toolbarBtn}>
-        <EllipsisVertical className="h-4 w-4" strokeWidth={2.5} />
-      </button>
-    </div>
-  )
-}
+const SIDEBAR_SIZES = { sm: "w-32", md: "w-48", lg: "w-56", xl: "w-64" } as const
+const THEME_SCOPE = { dark: "dark", light: "light", auto: "" } as const
 
 export function BrowserWindow({
   children,
@@ -377,7 +329,7 @@ export function BrowserWindow({
   showSidebar = false,
   sidebarPosition = "left",
   headerStyle = "minimal",
-  variant = "generic",
+  // variant: kept for old installs, every value draws the one frame (see the header comment)
   theme = "auto",
   url,
   showNavButtons = false,
@@ -392,123 +344,72 @@ export function BrowserWindow({
 }: BrowserWindowProps) {
   const frameRef = useRef<HTMLDivElement>(null)
   const width = useContainerWidth(frameRef)
+  const state = useBrowserState(url ?? "https://app.tradeboard.io")
   /* the phone layout keys off the frame's own width, so a narrow column or a
      resized preview turns the desktop chrome into a mobile browser */
   const mobile = mobileBreakpoint > 0 && width !== null && width < mobileBreakpoint
+  const sidebarWidth = sidebarWidthClassName ?? SIDEBAR_SIZES[size]
+  const full = headerStyle === "full"
 
-  const sidebarSizes = {
-    sm: "w-32",
-    md: "w-48",
-    lg: "w-56",
-    xl: "w-64",
+  /* 24px corner, a hairline around the screen (his call, 2026-10-02: "browser window and screen
+     shuffle should have some outlines around those screens") and a lighter soft shadow */
+  const frameClass = cn(
+    THEME_SCOPE[theme],
+    "relative flex h-full w-full flex-col overflow-hidden rounded-[24px] bg-background text-foreground",
+    className,
+  )
+  const frameStyle = {
+    boxShadow:
+      "0 0 0 1px var(--light-outline, color-mix(in srgb, var(--foreground) 12%, transparent)), 0 18px 44px -26px rgba(0,0,0,calc(0.4 * var(--shadow-k, 1)))",
   }
-  const sidebarWidth = sidebarWidthClassName ?? sidebarSizes[size]
-
-  const themeClasses =
-    theme === "dark"
-      ? "bg-[var(--surface)] border-foreground/10"
-      : theme === "light"
-        ? "bg-[var(--surface)] border-foreground/10"
-        : "bg-[var(--surface)] border-foreground/10"
-
-  const getHeaderStyles = () => {
-    const baseStyles = `relative h-11 ${dividers ? "border-b border-foreground/10 " : ""}flex items-center px-4`
-
-    if (variant === "chrome") {
-      return `${baseStyles} bg-foreground/[0.02] overflow-hidden`
-    }
-
-    if (variant === "safari") {
-      return `${baseStyles} bg-foreground/[0.02] overflow-hidden`
-    }
-
-    return `${baseStyles} bg-foreground/[0.03]`
-  }
-
-  const frameClass = `
-        relative overflow-hidden rounded-2xl border shadow-[0_24px_70px_-24px_rgba(0,0,0,calc(0.75*var(--shadow-k,1)))] light:shadow-[0_16px_44px_-26px_rgba(15,23,42,0.25)]
-        h-full w-full ${themeClasses} ${className} flex flex-col
-      `
 
   if (mobile) {
     return (
-      <div ref={frameRef} className={frameClass}>
-        <PhoneChrome url={url} dividers={dividers} showAddressBar={showAddressBar}>{children}</PhoneChrome>
+      <div ref={frameRef} className={frameClass} style={frameStyle}>
+        <PhoneChrome url={url} dividers={dividers} showAddressBar={showAddressBar} state={state}>
+          {children}
+        </PhoneChrome>
       </div>
     )
   }
 
+  const bar = () => (
+    <div className={cn("h-12 shrink-0", SURFACE, dividers && (sidebarPosition === "top" ? `border-b ${HAIRLINE}` : `border-t ${HAIRLINE}`))}>
+      <SidebarContent items={sidebarItems} direction="row" />
+    </div>
+  )
+  const side = (edge: "left" | "right") => (
+    <div className={cn(sidebarWidth, "h-full flex-shrink-0", SURFACE, dividers && (edge === "left" ? `border-r ${HAIRLINE}` : `border-l ${HAIRLINE}`))}>
+      {sidebar ?? <SidebarContent items={sidebarItems} />}
+    </div>
+  )
+
   return (
-    <div ref={frameRef} className={frameClass}>
-      <div className={getHeaderStyles()}>
+    <div ref={frameRef} className={frameClass} style={frameStyle}>
+      <div className={cn("relative flex h-10 shrink-0 items-center px-4", SURFACE, dividers && `border-b ${HAIRLINE}`)}>
         <div className="relative z-10 flex items-center gap-3">
-          <WindowControls
-            variant={variant === "generic" ? "macos" : variant}
-            headerStyle={headerStyle}
-          />
-          {headerStyle === "full" && showNavButtons && <NavButtons />}
+          <WindowControls />
+          {full && showNavButtons && <NavButtons state={state} />}
         </div>
-
-        {headerStyle === "full" && showAddressBar && (
-          <AddressBar
-            url={url}
-            variant={variant === "generic" ? "chrome" : variant}
-            align={addressBarAlign}
-          />
-        )}
-
-        {headerStyle === "full" && showActions && (
+        {full && showAddressBar && <AddressBar url={url} align={addressBarAlign} />}
+        {full && showActions && (
           <div className="relative z-10 ml-auto">
-            <ActionButtons />
+            <ActionButtons state={state} />
           </div>
         )}
       </div>
 
-      {showSidebar && sidebarPosition === "top" && (
-        <div className={`${dividers ? "border-b border-foreground/[0.06] " : ""}bg-foreground/[0.03] h-16`}>
-          <SidebarContent
-            items={sidebarItems}
-            variant="navigation"
-            className="flex-row"
-          />
+      {showSidebar && sidebarPosition === "top" && bar()}
+
+      <div className="flex h-0 flex-1">
+        {showSidebar && sidebarPosition === "left" && side("left")}
+        <div className="relative h-full min-w-0 flex-1">
+          <Page load={state.load}>{children}</Page>
         </div>
-      )}
-
-      <div className="flex flex-1 h-0">
-        {/* Left Sidebar */}
-        {showSidebar && sidebarPosition === "left" && (
-          <div
-            className={`${dividers ? "border-r border-foreground/[0.06] " : ""}bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
-          >
-            {sidebar ?? <SidebarContent items={sidebarItems} />}
-          </div>
-        )}
-
-        {/* Main Content Area */}
-        <div className="flex-1 relative min-w-0 h-full">
-          {children || <div className="absolute inset-0">{children}</div>}
-        </div>
-
-        {/* Right Sidebar */}
-        {showSidebar && sidebarPosition === "right" && (
-          <div
-            className={`${dividers ? "border-l border-foreground/[0.06] " : ""}bg-foreground/[0.03] ${sidebarWidth} flex-shrink-0 h-full`}
-          >
-            {sidebar ?? <SidebarContent items={sidebarItems} />}
-          </div>
-        )}
+        {showSidebar && sidebarPosition === "right" && side("right")}
       </div>
 
-      {/* Bottom Sidebar */}
-      {showSidebar && sidebarPosition === "bottom" && (
-        <div className={`${dividers ? "border-t border-foreground/[0.06] " : ""}bg-foreground/[0.03] h-16`}>
-          <SidebarContent
-            items={sidebarItems}
-            variant="navigation"
-            className="flex-row"
-          />
-        </div>
-      )}
+      {showSidebar && sidebarPosition === "bottom" && bar()}
     </div>
   )
 }

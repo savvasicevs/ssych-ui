@@ -3,7 +3,7 @@
   "name": "sectors-donut",
   "type": "registry:ui",
   "title": "Sectors Donut",
-  "description": "Allocation ring with legend cross-highlight — hovering isolates one weight at a time.",
+  "description": "A sector allocation donut for ETF and fund pages that shows each sector weight and dims the rest while you hover one.",
   "categories": [
     "charts"
   ],

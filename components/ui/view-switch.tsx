@@ -4,11 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
-
-/* copied from src/components/library/controls.ts, so the file ships alone */
-const TRACK = "rounded-full border border-foreground/[0.04] p-0.5"
-const THUMB = "bg-foreground/[0.08] shadow-[inset_0_1px_0_0_color-mix(in_srgb,var(--foreground)_6%,transparent)]"
-const SEGMENT_OFF = "text-foreground/45 hover:text-foreground/75"
+import { SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
 
 /* View Switch, the library shell's part as a primitive (2026-09-30).
    What it is for: the switcher above a preview: Desktop, Mobile, Code, or the sizes of a
@@ -25,7 +21,15 @@ const SEGMENT_OFF = "text-foreground/45 hover:text-foreground/75"
    Added: arrow keys, and a default set of options so it renders with no props.
    Motion (2026-09-30): the thumb slides on transform, not `left`, 250ms both ways; a choice
    made with the arrow keys lands at once (keys repeat), only a press gets the tween.
-   No figures are derived here. */
+   No figures are derived here.
+   2026-10-02 audit: the track, thumb and off ink come from control-classes (the tokens with a
+   fallback) instead of a flat 8% copy, so the thumb turns white on a raised light surface;
+   an icon-only option names itself in the library's own hover tip (the popover material,
+   after 320ms, on hover or keyboard focus) instead of the browser's title tooltip; the
+   preview shows one switch, not the two heights stacked. */
+
+/** how long the pointer rests on an icon before its name shows */
+const TIP_DELAY = 320
 
 export interface ViewOption<T extends string> {
   id: T
@@ -125,6 +129,18 @@ export function ViewSwitch<T extends string = PreviewView>({
   const [narrow, setNarrow] = useState(false)
   /** the last choice came from the keyboard: it lands at once */
   const [byKey, setByKey] = useState(false)
+  /** the option whose name shows in the hover tip */
+  const [tipAt, setTipAt] = useState<number | null>(null)
+  const tipTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(tipTimer.current), [])
+  const armTip = (i: number) => {
+    window.clearTimeout(tipTimer.current)
+    tipTimer.current = window.setTimeout(() => setTipAt(i), TIP_DELAY)
+  }
+  const dropTip = () => {
+    window.clearTimeout(tipTimer.current)
+    setTipAt(null)
+  }
 
   const select = (v: T) => {
     setInner(v)
@@ -203,21 +219,27 @@ export function ViewSwitch<T extends string = PreviewView>({
       )}
       {options.map((o, i) => {
         const active = o.id === current
+        /* the name is on screen already while the option is on (except when narrow) */
+        const tip = tipAt === i && (!active || narrow)
         return (
+          <span key={o.id} className="relative flex shrink-0" onPointerEnter={() => armTip(i)} onPointerLeave={dropTip}>
           <button
-            key={o.id}
             ref={(el) => {
               buttons.current[i] = el
             }}
             type="button"
             onClick={() => {
               setByKey(false)
+              dropTip()
               select(o.id)
             }}
             onKeyDown={onKeyDown}
+            onFocus={(e) => {
+              if (e.currentTarget.matches(":focus-visible")) armTip(i)
+            }}
+            onBlur={dropTip}
             aria-pressed={active}
             aria-label={o.label}
-            title={o.label}
             className={cn(
               "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full text-[13px] transition-colors duration-200",
               tall ? "h-9" : "h-8",
@@ -249,6 +271,16 @@ export function ViewSwitch<T extends string = PreviewView>({
               {o.short}
             </span>
           </button>
+          {/* the library's hover tip: the popover material (spec 14.6), above the option */}
+          {tip && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max -translate-x-1/2 rounded-[12px] border border-foreground/[0.08] bg-[var(--tip-fill,color-mix(in_srgb,var(--foreground)_6%,var(--background)))] px-2.5 py-1.5 text-[11px] text-foreground/90 shadow-[0_8px_24px_-12px_color-mix(in_srgb,var(--foreground)_25%,transparent)]"
+            >
+              {o.label}
+            </span>
+          )}
+          </span>
         )
       })}
     </div>

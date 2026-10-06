@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -13,9 +14,22 @@ import { cn } from "@/lib/utils"
      at takes the one accent
    · the return is signed and coloured by direction: green for a gain, red for a loss. It
      was always green in a green pill, whatever the sign
-   · pointing at a row, or tabbing to it, dims the others and reads it out in the line
-     under the table; at rest that line carries the count and the summed weight
-   · it is a real table to a screen reader: rows, column heads and cells are named */
+   · pointing at a row, or tabbing to it, dims the others and hands its comb the accent.
+     No line under the table (user call, 2026-10-02): the count and the summed weight are
+     read out in the table's name
+   · the company's own mark beside its symbol through `renderIcon` (2026-10-02); two
+     letters on ink where none is given
+   · it is a real table to a screen reader: rows, column heads and cells are named
+   2026-10-02 audit: the first head was the 13px title "Top 10 holdings" over 6 rows; it is
+   now a plain "Holding" head like the others and the title (default "Holdings", never a
+   count) lives in the aria-label only. Every head sorts on a click like Positions Table's,
+   the sorted one /90 with a chevron, weight (largest first) by default. The company name
+   sits under the symbol at 11px /60 since it is read, row figures are 12px /90, hairlines
+   are 4%, and the width is 560, the same as Positions Table, its family.
+   Formulas:
+   · the comb      round(weight ÷ maxWeight × 24) of its 24 ticks are lit
+   · the label     Σ weight of the rows, read out in the table's name
+   · money sorts   "$52.10B" is read as 52.10 × 10^9 (K, M, B, T suffixes) */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -41,13 +55,27 @@ const DEFAULT_HOLDINGS: Holding[] = [
 ]
 
 const COMB_TICKS = 24
-const COLS = "grid-cols-[1.6fr_0.9fr_0.9fr_0.8fr_1.1fr]"
+const COLS = "grid-cols-[1.45fr_0.9fr_0.85fr_0.75fr_1.35fr]"
+
+type SortKey = "symbol" | "value" | "price" | "ytd" | "weight"
+const SUFFIX: Record<string, number> = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 }
+/** "$52.10B" → 52,100,000,000, so the string money columns sort by what they say */
+const moneyOf = (s: string) => {
+  const m = s.replace(/[$,\s]/g, "").match(/^(-?[\d.]+)([KMBT])?$/i)
+  return m ? parseFloat(m[1]) * (m[2] ? SUFFIX[m[2].toUpperCase()] : 1) : 0
+}
+const SORT_VALUE: Record<Exclude<SortKey, "symbol">, (h: Holding) => number> = {
+  value: (h) => moneyOf(h.marketValue),
+  price: (h) => moneyOf(h.price),
+  ytd: (h) => h.ytd,
+  weight: (h) => h.weight,
+}
 
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`
 const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
 
 /**
- * Fund-holdings register in the Ink register: a coin, symbol beside its muted name,
+ * Fund-holdings register in the Ink register: the company's mark, symbol beside its muted name,
  * tabular money columns, the signed return, and the weight trailed by a tick-comb bar.
  * Pointing at a row dims the rest and hands its comb the accent. The four column labels
  * are props, so a book that is not a fund can name what its return and weight actually
@@ -55,15 +83,17 @@ const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, tran
  */
 export function HoldingsTable({
   holdings = DEFAULT_HOLDINGS,
-  title = "Top 10 holdings",
+  title = "Holdings",
   maxWeight = 10,
   valueLabel = "Market value",
   priceLabel = "Current price",
   returnLabel = "YTD returns",
   weightLabel = "Percentage of fund",
+  renderIcon,
   className,
 }: {
   holdings?: Holding[]
+  /** the table's name, read out in its aria-label (no visible title) */
   title?: string
   /** Weight that fills the whole tick comb. */
   maxWeight?: number
@@ -75,30 +105,52 @@ export function HoldingsTable({
   returnLabel?: string
   /** Column header over the weight comb: name the base the share is taken of. */
   weightLabel?: string
+  /** draws the company's real mark at `size` px; two letters on ink without it */
+  renderIcon?: (symbol: string, size: number) => ReactNode
   className?: string
 }) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<string | null>(null)
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "weight", dir: -1 })
   /* the weight of everything listed, summed from the rows */
   const total = holdings.reduce((s, h) => s + h.weight, 0)
-  const shown = holdings.find((h) => h.symbol === hot)
+  const rows = [...holdings].sort((a, b) =>
+    sort.key === "symbol" ? a.symbol.localeCompare(b.symbol) * sort.dir : (SORT_VALUE[sort.key](a) - SORT_VALUE[sort.key](b)) * sort.dir,
+  )
+
+  const head = (key: SortKey, label: string, first = false) => {
+    const on = sort.key === key
+    return (
+      <span key={key} role="columnheader" aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"} className="flex">
+        <button
+          type="button"
+          onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}
+          aria-label={`Sort by ${label.toLowerCase()}`}
+          className={cn(
+            "flex w-full items-center gap-0.5 whitespace-nowrap rounded-full text-[10.5px] outline-none transition-colors duration-200",
+            !first && "justify-end",
+            on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
+          )}
+        >
+          {label}
+          {on && (sort.dir === -1 ? <ChevronDown size={10} strokeWidth={1.8} aria-hidden /> : <ChevronUp size={10} strokeWidth={1.8} aria-hidden />)}
+        </button>
+      </span>
+    )
+  }
 
   return (
-    <div className={cn("w-full max-w-[640px] tabular-nums", className)} role="table" aria-label={`${title}, ${holdings.length} holdings, ${total.toFixed(2)}% in all`}>
+    <div className={cn("w-full max-w-[560px] tabular-nums", className)} role="table" aria-label={`${title}, ${holdings.length} holdings, ${total.toFixed(2)}% in all`}>
       <div role="row" className={cn("grid gap-2 px-3 pb-2", COLS)}>
-        {[title, valueLabel, priceLabel, returnLabel, weightLabel].map((h, i) => (
-          <span
-            key={i}
-            role="columnheader"
-            className={cn("whitespace-nowrap", i === 0 ? "text-[13px] font-medium text-foreground/90" : "self-end text-right text-[10.5px] text-foreground/45")}
-          >
-            {h}
-          </span>
-        ))}
+        {head("symbol", "Holding", true)}
+        {head("value", valueLabel)}
+        {head("price", priceLabel)}
+        {head("ytd", returnLabel)}
+        {head("weight", weightLabel)}
       </div>
 
       <div role="rowgroup" onPointerLeave={() => setHot(null)}>
-        {holdings.map((h, i) => {
+        {rows.map((h, i) => {
           const cursor = Math.round((h.weight / maxWeight) * COMB_TICKS)
           const on = hot === h.symbol
           const dim = hot !== null && !on
@@ -111,7 +163,7 @@ export function HoldingsTable({
               onPointerEnter={() => setHot(h.symbol)}
               onFocus={() => setHot(h.symbol)}
               onBlur={() => setHot(null)}
-              className="border-t border-foreground/[0.05] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06]"
+              className="border-t border-foreground/[0.04] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06]"
               style={{ opacity: dim ? 0.45 : 1 }}
             >
               <motion.div
@@ -121,25 +173,31 @@ export function HoldingsTable({
                 transition={reduced ? { duration: 0 } : { duration: 0.35, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
               >
                 <span role="cell" className="flex min-w-0 items-center gap-2.5">
-                  <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-foreground/[0.06] text-[8.5px] font-semibold text-foreground/70">
-                    {h.symbol.slice(0, 2)}
-                  </span>
-                  <span className="truncate">
-                    <span className="text-[12px] font-semibold text-foreground/90">{h.symbol}</span>
-                    <span className="ml-2 text-[10.5px] text-foreground/35">{h.name}</span>
+                  {renderIcon ? (
+                    <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center">
+                      {renderIcon(h.symbol, 24)}
+                    </span>
+                  ) : (
+                    <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-foreground/[0.06] text-[8.5px] font-semibold text-foreground/70">
+                      {h.symbol.slice(0, 2)}
+                    </span>
+                  )}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate text-[12px] font-semibold text-foreground/90">{h.symbol}</span>
+                    <span className="truncate text-[11px] text-foreground/60">{h.name}</span>
                   </span>
                 </span>
-                <span role="cell" className="text-right text-[11px] text-foreground/70">
+                <span role="cell" className="text-right text-[12px] text-foreground/90">
                   {h.marketValue}
                 </span>
-                <span role="cell" className="text-right text-[11px] text-foreground/70">
+                <span role="cell" className="text-right text-[12px] text-foreground/90">
                   {h.price}
                 </span>
-                <span role="cell" className="text-right text-[11px] font-medium" style={{ color: h.ytd >= 0 ? GREEN : RED }}>
+                <span role="cell" className="text-right text-[12px] font-medium" style={{ color: h.ytd >= 0 ? GREEN : RED }}>
                   {signed(h.ytd)}
                 </span>
                 <span role="cell" className="flex items-center justify-end gap-2.5">
-                  <span className="text-[11px] text-foreground/90">{h.weight.toFixed(2)}%</span>
+                  <span className="text-[12px] text-foreground/90">{h.weight.toFixed(2)}%</span>
                   <span aria-hidden className="flex h-3 items-center gap-[2px]">
                     {Array.from({ length: COMB_TICKS }, (_, t) => (
                       <span
@@ -160,25 +218,6 @@ export function HoldingsTable({
         })}
       </div>
 
-      <div role="status" className="border-t border-foreground/[0.05] px-3 pt-2 text-[10.5px] text-foreground/45">
-        {/* the readout swaps in place, 4px and a 2px blur over 150ms, so moving row to row never jumps */}
-        <motion.span
-          key={shown?.symbol ?? ""}
-          className="inline-block"
-          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.15, ease: EASE }}
-        >
-        {shown ? (
-          <>
-            <span className="font-medium text-foreground/90">{shown.symbol}</span> {shown.name} · {shown.weight.toFixed(2)}% of {maxWeight}% on the comb ·{" "}
-            <span style={{ color: shown.ytd >= 0 ? GREEN : RED }}>{signed(shown.ytd)}</span>
-          </>
-        ) : (
-          `${holdings.length} holdings · ${total.toFixed(2)}% in all`
-        )}
-        </motion.span>
-      </div>
     </div>
   )
 }

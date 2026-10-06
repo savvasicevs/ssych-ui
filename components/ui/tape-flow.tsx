@@ -1,28 +1,50 @@
 "use client"
 
 import { useEffect, useId, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { LiveToggle } from "@/components/ui/live-toggle"
+import { LiveFigure } from "@/components/ui/live-figure"
+import { usePointed } from "@/components/ui/use-pointed"
 
 /* Tape Flow, promoted from a lab sketch through ssych-component (2026-09-29).
+   Motion pass (user call, 2026-10-02: "fix the animations and transitions … add icons"):
+   the tape now SLIDES one slot left as each print lands (x over the beat, linear, so the
+   row reads as one moving tape), the oldest bar sinks out at the left edge, the new one
+   rises in at the right; Boost grows and shrinks the bars (height 300ms) instead of
+   snapping; the buttons carry icons (a bolt that fills while Boost is on; a pulsing green
+   dot while Live, a pause mark while Paused) and their labels swap in place without the
+   button changing width; the buy/sell bar eases to its new split.
    What it is for: the last prints of one market as a row of bars, tall for size, green
    when buyers pressed and red when sellers did, so a burst on one side is seen at once.
    Read first: the price. It is the one large figure; the change on that print sits beside it.
    The pointer: scrub the bars and the pointed print stays full while the rest dim; the
    price, the change and the line under the bars become that print's. Press a bar to hold
    it, press it again or Escape to let go; with focus on the bars the arrow keys step
-   through them. "Live" starts and stops the feed, "Boost" raises the small prints.
+   through them. The feed runs while the tape is pointed at; the toggle pins it on or pauses it.
    Lab sketch: src/components/lab/TapeFlow.tsx. Kept: the data shape, 48 prints in the
    buffer, colour by buy share, hover and press, the live switch and the boost. Changed:
    no card, shadow, dotted ground, gradient bars or glow; no capitals and no mono; the
    live feed drew from Math.random and the clock, it now continues the same seeded walk,
    so two mounts print the same tape. "Flow ratio 64% buy" was typed in; it is worked out
    from the buffer. "Volume × 120 units" meant nothing; volume is BTC. "60 fps" is gone.
+   2026-10-02 audit: his calls first. The tape is still at rest and its feed runs only while
+   the pointer is on it (usePointed); the toggle pins it on, and while paused it shows a
+   filled play mark reading "Play", while live the pulsing green dot reading "Live", inside
+   one fixed width. Boost is gone, it only rescaled the bars, so there is one toggle (the
+   gain is 1). The header is the three tier one (label row "Order flow" and the symbol,
+   26px price with its cents at /35, the change in its hue then the print's time), and the
+   line under the bars reads only the pointed print and keeps its height at rest; the buy
+   share of the buffer moved to the aria-label. The width is 440, shared with Trade Tape.
+   2026-10-02 round 2: his note on the Live control, no green dot. The toggle is the shared
+   LiveToggle (live-toggle.tsx), the same in every streaming component: four looks, all in
+   ink and without a dot, picked by the LiveToggleVariant around it; it plays and pauses the
+   feed exactly as before.
    Formulas:
    · change on a print  = price − price of the print before
    · buy share, a print = 0.5 + change / 25, held between 5% and 95%
-   · bar height         = min(1, volume × gain / 10 BTC), gain 1 or 1.3 with boost
+   · bar height         = min(1, volume / 10 BTC)
    · bar strength       = 35% + |buy share − 50%| × 2 × 60% of the hue
    · buy share, buffer  = Σ (volume × buy share) / Σ volume; sell share = 100% − buy share
    · traded, buffer     = Σ volume */
@@ -37,7 +59,6 @@ const BUFFER = 48
 const BEAT = 400
 /** the volume that fills a bar, in BTC */
 const FULL = 10
-const BOOST = 1.3
 
 const W = 520
 const H = 112
@@ -63,6 +84,7 @@ export interface TapeFlowProps {
   base?: number
   /** seed of the walk; the same seed prints the same tape */
   seed?: number
+  /** start with the feed pinned on; at rest (false) it runs only while pointed at */
   initialLive?: boolean
   className?: string
 }
@@ -111,20 +133,24 @@ const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`
 const pct = (v: number) => `${Math.round(v * 100)}%`
 const fill = (t: TickBar) => `color-mix(in srgb, ${t.buyRatio >= 0.5 ? GREEN : RED} ${Math.round(35 + Math.abs(t.buyRatio - 0.5) * 2 * 60)}%, transparent)`
 
-const PILL =
-  "relative h-7 rounded-full px-3 text-[11px] outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100"
-
 /**
  * Order flow as a row of bars: height is size, hue is the side that pressed, strength is
  * how one-sided the print was. Scrubbing reads any print in place of the latest one.
  */
-export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initialLive = true, className }: TapeFlowProps) {
+export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initialLive = false, className }: TapeFlowProps) {
   const reduced = useReducedMotion()
   const uid = useId().replace(/:/g, "")
   const box = useRef<SVGSVGElement>(null)
+  const pointed = usePointed()
   const [feed, setFeed] = useState(() => seedTape(base, seed))
-  const [live, setLive] = useState(initialLive)
-  const [boost, setBoost] = useState(false)
+  /* "auto" runs while pointed at, "on" is pinned by the toggle, "off" is paused by it until
+     the pointer leaves (then it goes back to auto) */
+  const [mode, setMode] = useState<"auto" | "on" | "off">(initialLive ? "on" : "auto")
+  /* reduced motion never starts the feed on its own: only the toggle runs it */
+  const live = mode === "on" || (mode === "auto" && pointed.live && !reduced)
+  useEffect(() => {
+    if (!pointed.live && mode === "off") setMode("auto")
+  }, [pointed.live, mode])
   const [hover, setHover] = useState<number | null>(null)
   const [pin, setPin] = useState<number | null>(null)
   /* the first tape rises in once, 6ms a bar (48 bars inside 300ms); after that each new
@@ -133,11 +159,6 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
   useEffect(() => {
     const t = setTimeout(() => setLanded(true), reduced ? 0 : BUFFER * 6 + 320)
     return () => clearTimeout(t)
-  }, [reduced])
-
-  /* reduced motion holds the tape still until it is asked to run */
-  useEffect(() => {
-    if (reduced) setLive(false)
   }, [reduced])
 
   useEffect(() => {
@@ -156,13 +177,13 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
   const hotId = hover ?? pin
   const hot = ticks.find((t) => t.id === hotId) ?? null
   const shown = hot ?? latest
-  const gain = boost ? BOOST : 1
 
   const traded = ticks.reduce((s, t) => s + t.volume, 0)
   const bought = ticks.reduce((s, t) => s + t.volume * t.buyRatio, 0) / (traded || 1)
 
   /* the sell share is what is left of 100, so the two always add up */
-  const buy = Math.round((hot ? hot.buyRatio : bought) * 100)
+  const buy = hot ? Math.round(hot.buyRatio * 100) : 0
+  const [whole, cents] = usd(shown.price).split(".")
 
   const at = (clientX: number) => {
     const r = box.current?.getBoundingClientRect()
@@ -181,48 +202,29 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
   }
 
   return (
-    <div className={cn("w-full max-w-[520px] tabular-nums", className)}>
+    <div ref={pointed.ref} {...pointed.bind} className={cn("w-[440px] max-w-full tabular-nums", className)}>
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="text-foreground/45">Order flow</span>
+        <span className="font-medium text-foreground/90">{symbol}</span>
+      </div>
       <div className="flex items-end justify-between gap-3 pb-3">
         <div role="status">
-          <div className="text-[11.5px] font-medium text-foreground/45">
-            {symbol}
-            {hot ? ` · ${hot.timestamp}` : ""}
-          </div>
-          {/* each new live print pops in (4px, 2px blur, 150ms); a scrubbed one reads at once */}
-          <motion.div
-            key={hot ? "held" : latest.id}
-            className="mt-1.5 flex items-baseline gap-2"
-            initial={reduced || !landed ? false : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-            <span className="text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">${usd(shown.price)}</span>
-            <span className="text-[11px] font-medium" style={{ color: shown.delta >= 0 ? GREEN : RED }}>
-              {signed(shown.delta)}
-            </span>
-          </motion.div>
+          {/* the live price changes in place (live-figure.tsx): it swaps only when the pointer
+              takes a print or lets it go, never on each print (user call, 2026-10-02) */}
+          <LiveFigure intent={hot ? hot.id : null}>
+            <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+              ${whole}
+              <span className="text-foreground/35">.{cents}</span>
+            </p>
+            <p className="mb-0 mt-2 flex items-baseline gap-1.5 text-[12px] font-medium" style={{ color: shown.delta >= 0 ? GREEN : RED }}>
+              <span>{signed(shown.delta)}</span>
+              <span className="font-normal text-foreground/45">{shown.timestamp}</span>
+            </p>
+          </LiveFigure>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-pressed={boost}
-            onClick={() => setBoost((b) => !b)}
-            className={cn(PILL, boost ? "bg-foreground/[0.08] text-foreground/90" : "text-foreground/45 hover:text-foreground/90")}
-          >
-            Boost
-          </button>
-          <button
-            type="button"
-            aria-pressed={live}
-            onClick={() => setLive((l) => !l)}
-            className={cn(PILL, "flex items-center gap-1.5", live ? "bg-foreground/[0.08] text-foreground/90" : "text-foreground/45 hover:text-foreground/90")}
-          >
-            {/* live is a healthy state: the dot is green while the feed runs */}
-            <span aria-hidden className={cn("h-[5px] w-[5px] rounded-full transition-colors duration-150", !live && "bg-foreground/30")} style={live ? { background: GREEN } : undefined} />
-            {live ? "Live" : "Paused"}
-          </button>
-        </div>
+        {/* live-toggle.tsx: the family's play and pause control, ink only, one fixed width */}
+        <LiveToggle live={live} onLiveChange={(next) => setMode(next ? "on" : "off")} />
       </div>
 
       <div
@@ -237,7 +239,7 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
           viewBox={`0 0 ${W} ${H + 6}`}
           className="block w-full cursor-crosshair touch-none overflow-visible"
           role="img"
-          aria-label={`${symbol} order flow, last ${ticks.length} prints, ${pct(bought)} bought, latest $${usd(latest.price)}`}
+          aria-label={`${symbol} order flow, last ${ticks.length} prints, ${traded.toFixed(1)} BTC traded, ${pct(bought)} bought and ${100 - Math.round(bought * 100)}% sold, latest $${usd(latest.price)}`}
           onPointerMove={(e) => setHover(at(e.clientX))}
           onPointerLeave={() => setHover(null)}
           onClick={(e) => {
@@ -247,50 +249,60 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
         >
           <line x1={0} x2={W} y1={H + 0.5} y2={H + 0.5} stroke="var(--foreground)" strokeOpacity={0.05} strokeWidth={1} />
           <g key={uid}>
-            {ticks.map((t, i) => {
-              const h = Math.max(2, Math.min(1, (t.volume * gain) / FULL) * H)
-              return (
-                <motion.rect
-                  key={t.id}
-                  initial={reduced ? false : { scaleY: 0 }}
-                  animate={{ scaleY: 1 }}
-                  transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: landed ? 0 : i * 0.006 }}
-                  x={i * (BW + GAP)}
-                  y={H - h}
-                  width={BW}
-                  height={h}
-                  rx={2}
-                  fill={fill(t)}
-                  style={{ transformBox: "fill-box", originY: 1, opacity: hotId !== null && hot && hot.id !== t.id ? 0.4 : 1, transition: "opacity 150ms" }}
-                />
-              )
-            })}
+            {/* each bar owns its place by id: when a print lands every bar glides one slot
+                left over the beat, the oldest sinks out at the edge and the new one rises in */}
+            <AnimatePresence initial={false}>
+              {ticks.map((t, i) => {
+                const h = Math.max(2, Math.min(1, t.volume / FULL) * H)
+                const x = i * (BW + GAP)
+                return (
+                  <motion.rect
+                    key={t.id}
+                    initial={reduced ? false : landed ? { x: x + BW + GAP, y: H, height: 0 } : { x, y: H, height: 0 }}
+                    animate={{ x, y: H - h, height: h }}
+                    exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { x: x - BW - GAP, y: H, height: 0, opacity: 0 }}
+                    transition={
+                      reduced
+                        ? { duration: 0 }
+                        : {
+                            x: { duration: BEAT / 1000, ease: "linear" },
+                            y: { duration: 0.3, ease: EASE, delay: landed ? 0 : i * 0.006 },
+                            height: { duration: 0.3, ease: EASE, delay: landed ? 0 : i * 0.006 },
+                            opacity: { duration: 0.2 },
+                          }
+                    }
+                    width={BW}
+                    rx={2}
+                    fill={fill(t)}
+                    style={{ opacity: hotId !== null && hot && hot.id !== t.id ? 0.4 : 1, transition: "opacity 150ms" }}
+                  />
+                )
+              })}
+            </AnimatePresence>
           </g>
           {ticks.map((t, i) => (pin === t.id ? <rect key={t.id} x={i * (BW + GAP)} y={H + 3} width={BW} height={2} rx={1} fill="var(--foreground)" /> : null))}
         </svg>
       </div>
 
-      <div role="status" className="mt-2 flex items-center justify-between gap-3 text-[10.5px] text-foreground/45">
-        <span className="truncate">
-          {hot ? (
-            <>
+      {/* the pointed print only; at rest the line keeps its height empty */}
+      <div role="status" className="mt-2 flex h-4 items-center justify-between gap-3 text-[10.5px] text-foreground/60">
+        {hot ? (
+          <>
+            <span className="truncate">
               <span className="text-foreground/90">{hot.volume.toFixed(1)} BTC</span> at {hot.timestamp}
-            </>
-          ) : (
-            <>
-              <span className="text-foreground/90">{traded.toFixed(1)} BTC</span> over {ticks.length} prints
-            </>
-          )}
-        </span>
-        <span className="flex shrink-0 items-center gap-2.5">
-          <span>
-            <span style={{ color: GREEN }}>{buy}% buy</span> · <span style={{ color: RED }}>{100 - buy}% sell</span>
-          </span>
-          <span aria-hidden className="flex h-[3px] w-16 overflow-hidden rounded-full">
-            <span style={{ width: `${(hot ? hot.buyRatio : bought) * 100}%`, background: GREEN }} />
-            <span className="flex-1" style={{ background: RED }} />
-          </span>
-        </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span style={{ color: GREEN }}>{buy}% buy</span>
+              <span style={{ color: RED }}>{100 - buy}% sell</span>
+              <span aria-hidden className="flex h-[3px] w-16 overflow-hidden rounded-full">
+                <span style={{ width: `${hot.buyRatio * 100}%`, background: GREEN, transition: reduced ? undefined : "width 300ms cubic-bezier(0.16, 1, 0.3, 1)" }} />
+                <span className="flex-1" style={{ background: RED }} />
+              </span>
+            </span>
+          </>
+        ) : (
+          <span aria-hidden>&nbsp;</span>
+        )}
       </div>
     </div>
   )

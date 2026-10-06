@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
 
 /* Volume Profile, new through ssych-component (2026-09-29).
    What it is for: seeing at which prices the trading actually happened, so the fair
@@ -27,18 +28,60 @@ import { cn } from "@/lib/utils"
                         the top of the highest one (price + step)
    · bar length       = volume / volume at the point of control
    · share of volume  = volume / total × 100
+   Restyle (user call, 2026-10-02: "more similar to the rest of the UI", the readout line
+   above the bars removed): the library's chart language from Candlestick and Price
+   Scrubber. Dollar figures on the right with solid faint gridlines; the value area's
+   edges tagged VAH and VAL on the axis; the point of control a
+   dashed rule across with an outlined tag. Pointing at a level lights its bar in the
+   accent, dims the rest, draws a rule across, tags its price on the axis and lays a card
+   over the chart (its range, volume, share and where it sits), which glides from row to
+   row; the card leaves with a fade.
    Motion (2026-10-01): the bars grow out from the left once the profile is a third in view,
    top row first, 15ms apart (capped at 360ms) over 450ms, as CSS transitions; reduced motion
-   shows them grown. No data changes here, so nothing else moves. */
+   shows them grown. No data changes here, so nothing else moves.
+   2026-10-02: the outlined POC, VAH and VAL pills on the right looked out of place, so the
+   three references are now plain axis text at 9px (spec 14.7): the point of control's price
+   in medium at /90 with its name at /45 after it, the value area's edges wholly at /45. The
+   outlined tag in the accent stays for the one pointed price only, on any row, and a
+   reference next to it fades aside while it is there.
+   2026-10-02 audit: the card's closing line was set in the accent, and the accent is never
+   for text, so it now reads in ink at /60 (the point of control at /90). The value area's
+   soft band was a 4% fill that vanished on white and on black; the bar strengths already
+   mark the value area, so the band is gone.
+   2026-10-02 round 2: his notes, it still did not feel like his. The bars are straight on
+   the left, where they grow from the axis, and fully round on the right, and thinner (6px
+   in a 12px row, they were 9). Styled after Market Heatmap and Price Scrubber: when a level
+   carries its buy volume (the new optional `buy` on VolumeLevel, which the sample now has)
+   its bar is a soft tint of the level's net side, up hue where buyers led and down hue where
+   sellers did, stronger the more one side led, with no outline, like the heatmap's tiles;
+   bars outside the value area step back to 55%. Without `buy` the bars keep the ink
+   strengths. Pointing a level lays a soft wash across its whole row, rounded, which glides
+   from row to row on transform only (180ms ease out), dims the other bars to 35% (the
+   heatmap's dim) and tags its price on the axis in the bar's hue; the accent blue and the
+   dashed rule across are gone. The card is parked clear of the pointed row, above it in the
+   lower half and below it in the upper half, against the plot's right edge, so it never
+   covers the level it reads; it adds the level's delta in its hue.
+   Formulas, added:
+   · delta            = buy − (volume − buy) = 2 × buy − volume
+   · lead             = |delta| ÷ volume
+   · bar tint         = the up hue (delta ≥ 0) or the down hue at 22 + min(lead ÷ 0.3, 1) × 48
+                        percent, over nothing */
 
 const CSS_EASE = "cubic-bezier(0.16, 1, 0.3, 1)"
-const ACCENT = "var(--chart-1)"
+const UP = "var(--chart-up)"
+const DOWN = "var(--chart-down)"
+const INK = "var(--foreground)"
+/** a hue as text: its lightness capped in light so small figures reach AA (Market Heatmap's
+ *  rule; `--ink-l` is set on the root per theme) */
+const textHue = (c: string) => `oklch(from ${c} min(l, var(--ink-l, 1)) c h)`
 
 export interface VolumeLevel {
   /** lower edge of the price bucket */
   price: number
   /** volume traded inside the bucket, in units of the asset */
   volume: number
+  /** the part of `volume` that buyers initiated; when given, the bar is tinted by the net side */
+  buy?: number
 }
 
 export interface VolumeProfileProps {
@@ -63,18 +106,45 @@ const DEFAULT_LEVELS: VolumeLevel[] = (() => {
   return Array.from({ length: 24 }, (_, i) => {
     const node = Math.exp(-((i - 14) ** 2) / 18)
     const shelf = 0.45 * Math.exp(-((i - 5) ** 2) / 8)
-    return { price: 2940 + i * 10, volume: Math.round((node + shelf + 0.08 + rnd() * 0.12) * 2400) }
+    const volume = Math.round((node + shelf + 0.08 + rnd() * 0.12) * 2400)
+    /* buyers absorb the lows and sellers lean on the highs, with some noise level to level */
+    const lean = Math.max(0.22, Math.min(0.78, 0.5 + ((12 - i) / 24) * 0.3 + Math.sin(i / 2.6) * 0.07 + (rnd() - 0.5) * 0.12))
+    return { price: 2940 + i * 10, volume, buy: Math.round(volume * lean) }
   })
 })()
 
 const W = 440
 const ROW = 12
-const AXIS = 122
-const BAR_W = W - AXIS
-const BAR_H = ROW - 2
+/** the right-hand axis, wide enough for a reference like "$3,090 POC" */
+const AXIS = 86
+/** air between the longest bar and the axis */
+const BAR_W = W - AXIS - 10
+/** round 2: thinner bars, 6px in a 12px row */
+const BAR_H = 6
+const TOP = 6
+const CARD_W = 168
+/** the card's height from its fixed type: heading, three rows and the closing line */
+const CARD_H = 124
+/** the hover dim, the heatmap's */
+const DIM = 0.35
+
+/** a bar straight on the left (the axis it grows from) and fully round on the right */
+const barPath = (x0: number, y0: number, len: number, h: number) => {
+  const r = h / 2
+  const l = Math.max(len, h)
+  return `M${x0},${y0} H${x0 + l - r} A${r},${r} 0 0 1 ${x0 + l - r},${y0 + h} H${x0} Z`
+}
+
+/** the tint of a level's net side: the hue at 22 to 70 percent, stronger the more one side led */
+const sideFill = (volume: number, buy: number) => {
+  const delta = 2 * buy - volume
+  const lead = volume ? Math.abs(delta) / volume : 0
+  return `color-mix(in srgb, ${delta >= 0 ? UP : DOWN} ${Math.round(22 + Math.min(lead / 0.3, 1) * 48)}%, transparent)`
+}
 
 const ink = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, transparent)`
 const whole = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 })
+const usd = (v: number) => `$${whole(v)}`
 
 function valueArea(vols: number[], share: number) {
   const total = vols.reduce((s, v) => s + v, 0)
@@ -97,8 +167,9 @@ function valueArea(vols: number[], share: number) {
 }
 
 /**
- * Volume by price: one bar per price level beside the axis, the point of control named,
- * the value area at full strength and the thin edges dimmer. Scrubbing reads any level.
+ * Volume by price: one bar per price level, the point of control named, the value area at
+ * full strength inside its band and the thin edges dimmer. Pointing at a level reads it in
+ * a card over the chart.
  */
 export function VolumeProfile({
   levels = DEFAULT_LEVELS,
@@ -117,114 +188,184 @@ export function VolumeProfile({
   /* lowest price first, so index 0 is the bottom row */
   const rows = [...levels].sort((a, b) => a.price - b.price)
   const n = rows.length
-  const H = Math.max(1, n) * ROW
-  const { total, poc, lo, hi, held } = valueArea(
+  const H = TOP * 2 + Math.max(1, n) * ROW
+  const { total, poc, lo, hi } = valueArea(
     rows.map((r) => r.volume),
     share,
   )
   const top = Math.max(1e-6, rows[poc]?.volume ?? 0)
-  const y = (i: number) => (n - 1 - i) * ROW
+  const y = (i: number) => TOP + (n - 1 - i) * ROW
+  const mid = (i: number) => y(i) + ROW / 2
+  const len = (v: number) => Math.max(2, (v / top) * BAR_W)
 
   const onMove = (e: React.PointerEvent) => {
     const el = svgRef.current
     if (!el || n === 0) return
     const r = el.getBoundingClientRect()
-    const row = Math.floor(((e.clientY - r.top) / r.height) * n)
+    const py = ((e.clientY - r.top) / r.height) * H
+    const row = Math.floor((py - TOP) / ROW)
     setHot(n - 1 - Math.max(0, Math.min(n - 1, row)))
   }
 
-  /* the axis names the three levels that matter and a quiet tick every fourth level */
-  const named = new Map<number, string>([
-    [hi, "value area high"],
-    [lo, "value area low"],
-    [poc, "point of control"],
+  /* the axis: a figure every fourth level, and plain references for the three that matter */
+  const tags = new Map<number, string>([
+    [hi, "VAH"],
+    [lo, "VAL"],
+    [poc, "POC"],
   ])
-  const pocPrice = rows[poc]?.price ?? 0
-  const areaLow = rows[lo]?.price ?? 0
-  const areaHigh = (rows[hi]?.price ?? 0) + step
   const shown = hot !== null ? rows[hot] : null
+  const where = (i: number) => (i === poc ? "Point of control" : i >= lo && i <= hi ? "Inside the value area" : "Outside the value area")
+  /* the card is parked clear of the pointed row, against the plot's right edge: above the row
+     in the lower half, below it in the upper half, kept inside the chart */
+  const cardX = BAR_W + 4 - CARD_W
+  const cardY =
+    hot !== null
+      ? Math.max(0, Math.min(H - CARD_H, mid(hot) > H / 2 ? y(hot) - 6 - CARD_H : y(hot) + ROW + 6))
+      : 0
+  const shownDelta = shown?.buy != null ? 2 * shown.buy - shown.volume : null
+  const shownHue = shownDelta == null ? INK : textHue(shownDelta >= 0 ? UP : DOWN)
+  /* the wash keeps its last row while it fades out, so it never slides home on the way out */
+  const lastHot = useRef(0)
+  if (hot !== null) lastHot.current = hot
 
   return (
-    <div role="group" aria-label={`${symbol} ${title.toLowerCase()}`} className={cn("w-[440px] max-w-full tabular-nums", className)}>
-      {/* no visible title (2026-10-01): the axis names the point of control and the value area */}
-      <div className="mb-3">
-        <div role="status" className="text-[10.5px] text-foreground/45">
-          {shown && hot !== null ? (
-            <>
-              <span className="font-medium text-foreground/90">
-                {whole(shown.price)} to {whole(shown.price + step)}
-              </span>{" "}
-              · {whole(shown.volume)} {symbol} · {((shown.volume / (total || 1)) * 100).toFixed(1)}% of volume ·{" "}
-              {hot === poc ? "point of control" : hot >= lo && hot <= hi ? "inside the value area" : "outside the value area"}
-            </>
-          ) : (
-            <>
-              Point of control <span className="font-medium text-foreground/90">{whole(pocPrice)}</span> · {((held / (total || 1)) * 100).toFixed(1)}% of volume between {whole(areaLow)} and{" "}
-              {whole(areaHigh)}
-            </>
+    <div role="group" aria-label={`${symbol} ${title.toLowerCase()}`} className={cn("w-[440px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
+      <div className="relative">
+        <svg
+          ref={svgRef}
+          width={W}
+          height={H}
+          viewBox={`0 0 ${W} ${H}`}
+          className="block h-auto max-w-full cursor-crosshair touch-none"
+          role="img"
+          aria-label={`${symbol} ${title.toLowerCase()}, point of control ${usd(rows[poc]?.price ?? 0)}, value area ${usd(rows[lo]?.price ?? 0)} to ${usd((rows[hi]?.price ?? 0) + step)}`}
+          onPointerMove={onMove}
+          onPointerLeave={() => setHot(null)}
+        >
+          {/* gridlines on every fourth level, the figures on the right */}
+          {rows.map((r, i) =>
+            /* a figure next to a reference steps aside for it */
+            i % 4 === 0 && ![...tags.keys()].some((t) => Math.abs(mid(t) - mid(i)) < 16) ? (
+              <g key={`g-${r.price}`}>
+                <line x1={0} x2={BAR_W + 4} y1={mid(i)} y2={mid(i)} stroke="var(--foreground)" strokeOpacity={0.05} />
+                <text
+                  x={W - 4}
+                  y={mid(i) + 3}
+                  textAnchor="end"
+                  fontSize={9}
+                  fill="var(--foreground)"
+                  fillOpacity={0.45}
+                  style={{ opacity: hot !== null && Math.abs(mid(i) - mid(hot)) < 11 ? 0 : 1, transition: "opacity 150ms" }}
+                >
+                  {usd(r.price)}
+                </text>
+              </g>
+            ) : null,
           )}
-        </div>
-      </div>
 
-      <svg
-        ref={svgRef}
-        width={W}
-        height={H}
-        viewBox={`0 0 ${W} ${H}`}
-        className="block h-auto max-w-full cursor-crosshair touch-none"
-        role="img"
-        aria-label={`${symbol} ${title.toLowerCase()}, point of control ${whole(pocPrice)}, value area ${whole(areaLow)} to ${whole(areaHigh)}`}
-        onPointerMove={onMove}
-        onPointerLeave={() => setHot(null)}
-      >
-        {rows.map((r, i) => {
-          const on = hot === i
-          const inside = i >= lo && i <= hi
-          const fill = on ? ACCENT : i === poc ? ink(92) : inside ? ink(60) : ink(22)
-          return (
-            <g key={r.price} style={{ opacity: hot !== null && !on ? 0.45 : 1, transition: "opacity 150ms" }}>
-              <rect
-                x={0}
-                y={y(i) + 1}
-                width={Math.max(1, (r.volume / top) * (BAR_W - 14))}
-                height={BAR_H}
-                rx={2}
+          {/* the pointed row: a soft wash across the whole row, gliding row to row on transform only */}
+          <rect
+            x={0}
+            y={0}
+            width={BAR_W + 4}
+            height={ROW}
+            rx={ROW / 2}
+            fill={INK}
+            fillOpacity={0.06}
+            pointerEvents="none"
+            style={{
+              opacity: hot !== null ? 1 : 0,
+              transform: `translateY(${y(hot ?? lastHot.current)}px)`,
+              transition: reduced ? "opacity 150ms" : `opacity 150ms, transform 180ms ${CSS_EASE}`,
+            }}
+          />
+
+          {/* the point of control, a dashed rule across */}
+          {n > 0 && <line x1={0} x2={BAR_W + 4} y1={mid(poc)} y2={mid(poc)} stroke="var(--foreground)" strokeOpacity={0.3} strokeDasharray="2 4" />}
+
+          {rows.map((r, i) => {
+            const on = hot === i
+            const inside = i >= lo && i <= hi
+            const sided = r.buy != null
+            const fill = sided ? sideFill(r.volume, r.buy ?? 0) : on ? ink(92) : i === poc ? ink(92) : inside ? ink(55) : ink(20)
+            const rest = sided && !inside ? 0.55 : 1
+            return (
+              <path
+                key={r.price}
+                d={barPath(0, mid(i) - BAR_H / 2, len(r.volume), BAR_H)}
                 fill={fill}
                 style={{
+                  opacity: hot !== null && !on ? rest * DIM : on ? 1 : rest,
                   transformBox: "fill-box",
                   transformOrigin: "0% 50%",
                   transform: play ? "none" : "scaleX(0)",
-                  transition: reduced ? "fill 150ms" : `fill 150ms, transform 450ms ${CSS_EASE} ${Math.min(0.36, (n - 1 - i) * 0.015).toFixed(3)}s`,
+                  transition: reduced
+                    ? "fill 150ms, opacity 150ms"
+                    : `fill 150ms, opacity 150ms, transform 450ms ${CSS_EASE} ${Math.min(0.36, (n - 1 - i) * 0.015).toFixed(3)}s`,
                 }}
               />
-            </g>
-          )
-        })}
+            )
+          })}
 
-        {/* the value area, as one thin filled bracket between the bars and the axis */}
-        {n > 0 && <rect x={BAR_W - 8} y={y(hi) + 1} width={2} height={(hi - lo + 1) * ROW - 2} rx={1} fill={ink(35)} />}
+          {/* the references, plain text on the axis: POC's price at /90 with its name at /45,
+              the value area's edges at /45; one fades aside while the pointed tag sits on it */}
+          {[...tags].map(([i, name]) => {
+            const r = rows[i]
+            if (!r) return null
+            const named = name === "POC"
+            return (
+              <text
+                key={name}
+                x={W - 4}
+                y={mid(i) + 3}
+                textAnchor="end"
+                fontSize={9}
+                fill="var(--foreground)"
+                pointerEvents="none"
+                style={{ opacity: hot !== null && Math.abs(mid(i) - mid(hot)) < 13 ? 0 : 1, transition: "opacity 150ms" }}
+              >
+                <tspan fontWeight={named ? 500 : 400} fillOpacity={named ? 0.9 : 0.45}>
+                  {usd(r.price)}
+                </tspan>
+                <tspan fillOpacity={0.45}> {name}</tspan>
+              </text>
+            )
+          })}
 
-        {rows.map((r, i) => {
-          const name = named.get(i)
-          const on = hot === i
-          if (!name && !on && i % 4 !== 0) return null
-          return (
-            <text
-              key={r.price}
-              x={BAR_W + 2}
-              y={y(i) + ROW / 2 + 3}
-              fontSize={9}
-              fontWeight={on || i === poc ? 600 : 400}
-              fill="var(--foreground)"
-              fillOpacity={on || i === poc ? 0.9 : name ? 0.45 : 0.35}
-              className="tabular-nums"
-            >
-              {whole(r.price)}
-              {name ? ` · ${name}` : ""}
-            </text>
-          )
-        })}
-      </svg>
+          {/* the pointed price tagged on the axis in the bar's hue, ink without sides (chart-overlay.tsx) */}
+          {hot !== null && shown && (
+            <AxisTag x={BAR_W + 14} y={mid(hot)} width={AXIS - 14} color={shownHue}>
+              {usd(shown.price)}
+            </AxisTag>
+          )}
+        </svg>
+
+        {/* the level under the pointer, read out in a card over the chart (chart-overlay.tsx);
+            it glides from row to row */}
+        <ChartCard
+          open={hot !== null && shown !== null}
+          x={cardX - 12}
+          y={cardY}
+          width={CARD_W}
+          heading={shown ? `${usd(shown.price)} to ${usd(shown.price + step)}` : ""}
+          rows={
+            shown
+              ? [
+                  { label: "Volume", value: `${whole(shown.volume)} ${symbol}` },
+                  ...(shownDelta != null
+                    ? [{ label: "Delta", value: `${shownDelta >= 0 ? "+" : "−"}${whole(Math.abs(shownDelta))} ${symbol}`, color: shownHue }]
+                    : []),
+                  { label: "Share", value: `${((shown.volume / (total || 1)) * 100).toFixed(1)}%` },
+                ]
+              : []
+          }
+          footer={
+            hot !== null && (
+              <span className={hot === poc ? "text-foreground/90" : "text-foreground/60"}>{where(hot)}</span>
+            )
+          }
+        />
+      </div>
     </div>
   )
 }

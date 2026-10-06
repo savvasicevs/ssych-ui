@@ -25,7 +25,23 @@ import { cn } from "@/lib/utils"
    Motion (2026-10-01): once the diagram is in view the ribbons sweep in left to right
    through one clip, sources to hub to uses, in 0.9s (they faded in on mount, off screen
    too); the nodes and the hub are there on arrival. New amounts morph every ribbon and
-   glide each node, hub band and label to its new place and depth */
+   glide each node, hub band and label to its new place and depth
+   2026-10-02 audit: the header printed the total twice at rest ("$9,300 in · $9,300 out")
+   beside a 13px title, and the node amounts were too small to read. The header is now the
+   library's three tiers: the title at /45, the total as the 26px headline with its cents at
+   /35, and a sub line that reads only the pointed node (its name and amount, then its share
+   at /45) and keeps its height with a blank at rest. Node amounts are 10.5px at /60, the hub
+   label 10px at weight 500, and the diagram is 480 wide with 80px label columns so it sits
+   with the other charts.
+   Formulas:
+   · total = the sum of the sources (the uses sum to the same)
+   · share = a node's amount ÷ total × 100
+   · depth = amount × (plot height − the gaps) ÷ total
+   2026-10-02 round 2: the sample is an exchange's month in place of a personal budget.
+   Trading fees $5.3M, staking $1.8M, listing fees $1.2M and market data $0.7M come in
+   (total $9.0M); payroll $2.7M, operations $2.1M, treasury $1.9M, buybacks $1.5M and
+   market maker rebates $0.8M go out (the same $9.0M). The smallest source is still about
+   20px deep: 0.7M × (292 − 3 × 9) ÷ 9.0M = 20.6. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /** the house order for things that must be told apart; nothing on this surface means up */
@@ -56,27 +72,26 @@ export interface SankeyFlowProps {
 }
 
 const DEFAULT_SOURCES: FlowNode[] = [
-  { id: "salary", label: "Salary", value: 6200, color: "var(--chart-1)" },
-  { id: "rental", label: "Rental", value: 1500, color: "var(--chart-4)" },
-  { id: "divs", label: "Dividends", value: 900, color: "var(--chart-2)" },
-  { id: "side", label: "Side work", value: 700, color: "var(--chart-5)" },
+  { id: "fees", label: "Trading fees", value: 5300000, color: "var(--chart-1)" },
+  { id: "staking", label: "Staking", value: 1800000, color: "var(--chart-4)" },
+  { id: "listings", label: "Listing fees", value: 1200000, color: "var(--chart-2)" },
+  { id: "data", label: "Market data", value: 700000, color: "var(--chart-5)" },
 ]
 const DEFAULT_USES: FlowNode[] = [
-  { id: "invest", label: "Investing", value: 2400, color: "var(--chart-1)" },
-  { id: "rent", label: "Rent", value: 2200, color: "var(--chart-amber)" },
-  { id: "living", label: "Living", value: 1600, color: "var(--chart-3)" },
-  { id: "debt", label: "Debt", value: 1100, color: "var(--chart-5)" },
-  { id: "save", label: "Savings", value: 1300, color: "var(--chart-2)" },
-  { id: "fun", label: "Fun", value: 700, color: "var(--chart-4)" },
+  { id: "payroll", label: "Payroll", value: 2700000, color: "var(--chart-1)" },
+  { id: "ops", label: "Operations", value: 2100000, color: "var(--chart-amber)" },
+  { id: "treasury", label: "Treasury", value: 1900000, color: "var(--chart-3)" },
+  { id: "buybacks", label: "Buybacks", value: 1500000, color: "var(--chart-5)" },
+  { id: "rebates", label: "MM rebates", value: 800000, color: "var(--chart-2)" },
 ]
 
-const W = 540
+const W = 480
 const H = 320
 const PAD = { t: 14, b: 14, x: 4 }
 const NODE_W = 11
 const GAP = 9
 /** the room a label takes beside its node */
-const LABEL_W = 92
+const LABEL_W = 80
 const contentH = H - PAD.t - PAD.b
 
 const leftX = PAD.x + LABEL_W
@@ -122,17 +137,18 @@ function ribbon(x0: number, y0: number, x1: number, y1: number, w: number) {
 
 const usd = (n: number) => `$${n.toLocaleString("en-US")}`
 const pctOf = (part: number, whole: number) => `${((part / (whole || 1)) * 100).toFixed(1)}%`
+const cents = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /**
  * A fund-flow diagram where income pools in one hub and fans out into uses, node and
  * ribbon depth standing for amount. Flow is conserved through the middle, so pointing at
  * any node lights the strands that pass through it the whole way across, dims the rest and
- * reads its amount and share beside the title. Pressing pins it.
+ * reads its amount and share under the total. Pressing pins it.
  */
 export function SankeyFlow({
   sources = DEFAULT_SOURCES,
   uses = DEFAULT_USES,
-  title = "Monthly cash flow",
+  title = "Exchange cash flow, September",
   className,
 }: SankeyFlowProps) {
   const reduced = useReducedMotion()
@@ -238,48 +254,53 @@ export function SankeyFlow({
   return (
     <div
       ref={rootRef}
-      className={cn("w-[540px] max-w-full tabular-nums", className)}
+      className={cn("w-[480px] max-w-full tabular-nums", className)}
       onKeyDown={(e) => {
         if (e.key === "Escape") setPin(null)
       }}
     >
-      <div className="mb-1 flex items-baseline justify-between gap-4 px-1">
-        <span className="text-[13px] font-medium text-foreground/90">{title}</span>
-        <span role="status" className="whitespace-nowrap text-[11px] text-foreground/45">
-          {/* the readout swaps in place: 4px out of a 2px blur over 150ms */}
-          <motion.span
-            key={hot ?? "rest"}
-            className="flex items-baseline gap-2"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
+      {/* the header, three tiers (spec 14.1): the title, the total, the pointed node */}
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-foreground/45">{title}</span>
+      </div>
+      <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+        ${cents(total).split(".")[0]}
+        <span className="text-foreground/35">.{cents(total).split(".")[1]}</span>
+      </p>
+      {/* the sub line reads only the pointed node and keeps its height at rest; it swaps in
+          place when the pointer takes another node (4px, 2px blur, 150ms) */}
+      <div role="status" className="mt-2 text-[12px]">
+        <motion.p
+          key={hot ?? "rest"}
+          className="m-0 flex items-baseline gap-[7px] whitespace-nowrap"
+          initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.15, ease: EASE }}
+        >
           {hot === "mid" ? (
             <>
-              <span className="font-semibold text-foreground/90">{usd(total)}</span>
-              <span>through cash</span>
+              <span className="font-medium text-foreground/90">Cash</span>
+              <span className="text-foreground/45">all of it passes through</span>
             </>
           ) : hotNode ? (
             <>
               {hotNode.side === "l" && (
-                <span aria-hidden className="h-1.5 w-1.5 self-center rounded-full" style={{ background: hotNode.n.hue }} />
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 self-center rounded-full" style={{ background: hotNode.n.hue }} />
               )}
-              <span>{hotNode.n.label}</span>
-              <span className="font-semibold text-foreground/90">{usd(hotNode.n.value)}</span>
-              <span>
-                {pctOf(hotNode.n.value, total)} of {hotNode.side === "l" ? "what comes in" : "what goes out"}
+              <span className="font-medium text-foreground/90">
+                {hotNode.n.label} {usd(hotNode.n.value)}
+              </span>
+              <span className="text-foreground/45">
+                {pctOf(hotNode.n.value, total)} of what {hotNode.side === "l" ? "comes in" : "goes out"}
               </span>
             </>
           ) : (
-            <span>
-              {usd(total)} in · {usd(total)} out
-            </span>
+            "\u00a0"
           )}
-          </motion.span>
-        </span>
+        </motion.p>
       </div>
 
-      <div className="relative" onPointerLeave={() => setHover(null)}>
+      <div className="relative mt-4" onPointerLeave={() => setHover(null)}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block h-auto w-full"
@@ -369,8 +390,8 @@ export function SankeyFlow({
               animate={{ attrY: mid.top - 6 }}
               transition={morph}
               textAnchor="middle"
-              fontSize={9.5}
-              fontWeight={600}
+              fontSize={10}
+              fontWeight={500}
               fill="var(--foreground)"
               fillOpacity={0.9}
             >
@@ -424,11 +445,11 @@ export function SankeyFlow({
                 <motion.text
                   x={tx}
                   textAnchor={anchor}
-                  fontSize={9}
+                  fontSize={10.5}
                   fill="var(--foreground)"
-                  fillOpacity={0.45}
+                  fillOpacity={0.6}
                   initial={false}
-                  animate={{ attrY: n.mid + 9 }}
+                  animate={{ attrY: n.mid + 10 }}
                   transition={morph}
                 >
                   {usd(n.value)}

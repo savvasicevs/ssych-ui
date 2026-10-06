@@ -4,6 +4,24 @@ import { useEffect, useRef } from "react"
 import { useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { usePointed } from "@/components/ui/use-pointed"
+
+/* 2026-10-02 audit: his call that changing numbers start under the pointer, so the board now
+   rests fully lit and still; the quote sequence (and the marquee, when on) runs only while it
+   is pointed at (usePointed; in view on touch). The animation frame used to run forever and
+   read the theme with getComputedStyle every frame; colours are now read on mount and when
+   the page's theme changes (a MutationObserver on the html class), and frames run only while
+   a row dissolves or the marquee moves. A falling change is drawn with a true minus (a U+2212
+   glyph added to the font) and the lit dots' halo is 12% instead of 30%, softer, as befits an
+   art piece. Formula: each step moves one row's price by the step's delta in percent of its
+   base, and its change by the same delta in points (quoteAt).
+   2026-10-02 round 2: a light look, the dark one unchanged. The halo round each lit dot is a
+   glow that only works on black (on white it blurred the ink into grey fuzz), so it now draws
+   only when the ink is light: the ink's luminance is measured off a 1px canvas when the
+   colours are read, above 0.5 keeps the 12% halo, below draws crisp ink dots on white. The
+   colours were read on a change of the app's html class, but a library preview renders into
+   an iframe whose html class flips a beat later, so the first read caught the old theme; the
+   board now also watches its own document's root (and the system scheme) and re-reads there. */
 
 const TAU = Math.PI * 2
 
@@ -54,6 +72,7 @@ const RAW: Record<string, string> = {
   "%": "##..# ##..# ...#. ..#.. .#... #..## #..##",
   "+": "..... ..#.. ..#.. ##### ..#.. ..#.. .....",
   "-": "..... ..... ..... ##### ..... ..... .....",
+  "\u2212": "..... ..... ..... ##### ..... ..... .....",
   " ": "..... ..... ..... ..... ..... ..... .....",
 }
 /** glyph → 7 bitmask rows (bit gx set = dot lit) */
@@ -65,6 +84,10 @@ for (const [ch, s] of Object.entries(RAW)) {
     return bits
   })
 }
+
+const MINUS = "\u2212"
+/** a change string as a number, whichever minus it carries */
+const changeOf = (s: string) => parseFloat(s.replace(MINUS, "-"))
 
 type Tone = "text" | "up" | "down"
 type Cell = { ch: string; tone: Tone }
@@ -79,7 +102,8 @@ function cellsFor(r: TickerRow): Cell[] {
   push(r.symbol.toUpperCase().padEnd(5).slice(0, 5), "text")
   push(r.price.padStart(7).slice(-7), "text")
   push(" ", "text")
-  push(r.change.padStart(6).slice(-6), r.up ? "up" : "down")
+  // a falling change reads with the true minus, whatever the feed sends
+  push(r.change.replace(/-/g, MINUS).padStart(6).slice(-6), r.up ? "up" : "down")
   return out
 }
 
@@ -93,11 +117,11 @@ function quoteAt(base: TickerRow, t: number): TickerRow {
   const d = SEQ_DELTAS[t % SEQ_DELTAS.length]
   const p = parseFloat(base.price.replace(/,/g, ""))
   const dec = (base.price.split(".")[1] ?? "").length
-  const c = parseFloat(base.change) + d
+  const c = changeOf(base.change) + d
   return {
     symbol: base.symbol,
     price: Number.isFinite(p) ? (p * (1 + d / 100)).toFixed(dec) : base.price,
-    change: `${c >= 0 ? "+" : "-"}${Math.abs(c).toFixed(1)}%`,
+    change: `${c >= 0 ? "+" : MINUS}${Math.abs(c).toFixed(1)}%`,
     up: c >= 0,
   }
 }
@@ -113,8 +137,8 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v)
 const DEFAULT_ROWS: TickerRow[] = [
   { symbol: "TSLA", price: "178.52", change: "+2.4%", up: true },
   { symbol: "NVDA", price: "921.30", change: "+1.1%", up: true },
-  { symbol: "AAPL", price: "226.14", change: "-0.6%", up: false },
-  { symbol: "AMZN", price: "187.09", change: "-1.3%", up: false },
+  { symbol: "AAPL", price: "226.14", change: "\u22120.6%", up: false },
+  { symbol: "AMZN", price: "187.09", change: "\u22121.3%", up: false },
 ]
 
 export interface MatrixTickerBoardProps {
@@ -132,18 +156,27 @@ export interface MatrixTickerBoardProps {
  * A retro dot-matrix price wall on a real canvas. Every character is
  * rasterized through a hand-authored 5×7 dot font onto a grid of ~3px circular
  * cells, the unlit cells sitting at 7% ink so the matrix reads as hardware.
- * Every ~2.5s one row's quote advances through a deterministic sequence: only
+ * At rest it is fully lit and still. While it is pointed at, every ~2.5s one
+ * row's quote advances through a deterministic sequence: only
  * the characters that differ dissolve out dot by dot, staggered by a spatial
  * hash, and the new characters bloom back in the same way, the split-flap
- * feel without the flaps. Colours are read from the theme variables at draw
- * time, so the board recolours live on a theme switch. HiDPI canvas, a
+ * feel without the flaps. Colours are read from the theme variables on mount and
+ * on a theme switch, so the board recolours live. HiDPI canvas, a
  * ResizeObserver refit, the unlit grid cached offscreen, and it paints only
  * while something moves. Fully lit and still under reduced motion.
  */
 export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSize = 3, className }: MatrixTickerBoardProps) {
   const reduced = useReducedMotion()
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const { ref: wrapRef, live, bind } = usePointed<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  /* the effect below builds the board once; it reads whether it is pointed at through this,
+     and `wake` restarts its frames when that changes */
+  const liveRef = useRef(live)
+  const wakeRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    liveRef.current = live
+    wakeRef.current()
+  }, [live])
 
   useEffect(() => {
     const wrap = wrapRef.current
@@ -168,6 +201,7 @@ export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSiz
     let colorKey = ""
     let dirty = true
     let raf = 0
+    let mqAt = 0
 
     function draw(now: number, fg: string, upC: string, downC: string) {
       const dpr = window.devicePixelRatio || 1
@@ -219,7 +253,9 @@ export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSiz
       const textCols = (state[0]?.cur.length ?? 0) * 6
       const hMargin = Math.max(1, Math.floor((cols - textCols) / 2))
       const loopCols = textCols + 12
-      const mq = marquee && !still ? Math.floor(now / 110) % loopCols : 0
+      /* the marquee holds where it is when the pointer leaves, and starts from there again */
+      if (marquee && !still && liveRef.current) mqAt = Math.floor(now / 110) % loopCols
+      const mq = marquee && !still ? mqAt : 0
       const toneColor = (tone: Tone) => (tone === "up" ? upC : tone === "down" ? downC : fg)
 
       for (let ri = 0; ri < n; ri++) {
@@ -259,10 +295,12 @@ export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSiz
                 }
                 const x = offX + col * pitch
                 const y = offY + rowG * pitch
-                ctx!.globalAlpha = a * 0.3 // soft glow halo
-                ctx!.beginPath()
-                ctx!.arc(x, y, dotR * 1.8, 0, TAU)
-                ctx!.fill()
+                if (halo) {
+                  ctx!.globalAlpha = a * 0.12 // a faint halo, no glow; light ink only (dark theme)
+                  ctx!.beginPath()
+                  ctx!.arc(x, y, dotR * 1.8, 0, TAU)
+                  ctx!.fill()
+                }
                 ctx!.globalAlpha = a
                 ctx!.beginPath()
                 ctx!.arc(x, y, dotR, 0, TAU)
@@ -284,17 +322,42 @@ export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSiz
       dirty = false
     }
 
-    const loop = (now: number) => {
-      raf = requestAnimationFrame(loop)
+    /* the theme's colours, read on mount and again whenever the page's theme class changes */
+    let fg = "", upC = "", downC = ""
+    let halo = true
+    /* the ink's luminance, whatever colour syntax the token uses: paint it on 1px and read it back */
+    const probe = document.createElement("canvas")
+    probe.width = probe.height = 1
+    const pctx = probe.getContext("2d", { willReadFrequently: true })
+    const inkIsLight = (c: string) => {
+      if (!pctx) return true
+      pctx.clearRect(0, 0, 1, 1)
+      pctx.fillStyle = "#808080"
+      pctx.fillStyle = c
+      pctx.fillRect(0, 0, 1, 1)
+      const [r, g, b] = pctx.getImageData(0, 0, 1, 1).data
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5
+    }
+    const readColors = () => {
       const cs = getComputedStyle(wrap!)
-      const fg = cs.getPropertyValue("--foreground").trim() || "#ffffff"
-      const upC = cs.getPropertyValue("--chart-up").trim() || "#34c28a"
-      const downC = cs.getPropertyValue("--chart-down").trim() || "#e06a6a"
+      fg = cs.getPropertyValue("--foreground").trim() || "#ffffff"
+      upC = cs.getPropertyValue("--chart-up").trim() || "#34c28a"
+      downC = cs.getPropertyValue("--chart-down").trim() || "#e06a6a"
+      halo = inkIsLight(fg)
       const key = fg + upC + downC
       if (key !== colorKey) {
         colorKey = key
         dirty = true
       }
+    }
+    readColors()
+
+    /* frames run only while something moves; anything that changes the picture calls wake */
+    const wake = () => {
+      if (!raf) raf = requestAnimationFrame(loop)
+    }
+    function loop(now: number) {
+      raf = 0
       let animating = false
       for (const s of state) {
         if (s.start < 0) continue
@@ -304,13 +367,34 @@ export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSiz
           dirty = true
         } else animating = true
       }
-      if (dirty || animating || (marquee && !still)) draw(now, fg, upC, downC)
+      const scrolling = marquee && !still && liveRef.current
+      if (dirty || animating || scrolling) draw(now, fg, upC, downC)
+      if (animating || scrolling) wake()
     }
-    raf = requestAnimationFrame(loop)
+    wake()
+    wakeRef.current = wake
+
+    const mo = new MutationObserver(() => {
+      readColors()
+      wake()
+    })
+    const themeAttrs = { attributes: true, attributeFilter: ["class", "data-theme", "style"] }
+    mo.observe(document.documentElement, themeAttrs)
+    /* a preview iframe flips its own root's class after the app's: read again when it does */
+    const ownRoot = wrap.ownerDocument.documentElement
+    if (ownRoot !== document.documentElement) mo.observe(ownRoot, themeAttrs)
+    /* a system theme change with no class on the root at all */
+    const scheme = window.matchMedia?.("(prefers-color-scheme: dark)")
+    const onScheme = () => {
+      readColors()
+      wake()
+    }
+    scheme?.addEventListener?.("change", onScheme)
 
     let iv = 0
     if (!still)
       iv = window.setInterval(() => {
+        if (!liveRef.current) return
         tick++
         const which = SEQ_ROWS[tick % SEQ_ROWS.length] % state.length
         const s = state[which]
@@ -318,23 +402,29 @@ export function MatrixTickerBoard({ rows = DEFAULT_ROWS, marquee = false, dotSiz
         s.cur = cellsFor(quoteAt(rows[which], tick))
         s.start = performance.now()
         wrap.dataset.seq = String(tick)
+        wake()
       }, 2500)
 
     const ro = new ResizeObserver(() => {
       dirty = true
+      wake()
     })
     ro.observe(wrap)
 
     return () => {
       cancelAnimationFrame(raf)
+      wakeRef.current = () => {}
       if (iv) clearInterval(iv)
       ro.disconnect()
+      mo.disconnect()
+      scheme?.removeEventListener?.("change", onScheme)
     }
-  }, [rows, marquee, dotSize, reduced])
+  }, [rows, marquee, dotSize, reduced, wrapRef])
 
   return (
     <div
       ref={wrapRef}
+      {...bind}
       className={cn("relative h-[180px] w-full max-w-[600px]", className)}
       role="img"
       aria-label={rows.map((r) => `${r.symbol} ${r.price} ${r.change}`).join(", ")}

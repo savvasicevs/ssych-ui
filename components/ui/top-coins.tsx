@@ -4,6 +4,8 @@ import { useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { ICON_BUTTON } from "@/components/ui/control-classes"
+import { SegmentedControl } from "@/components/ui/segmented-control"
 
 /* Top Coins, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: the largest coins side by side over one window: price, how far each
@@ -30,10 +32,18 @@ import { cn } from "@/lib/utils"
    · weeks ago the window's length − the point's place in it
    Motion (2026-10-01): once the rail is a third in view each column's line and area sweep in
    from the left (one clip, 900ms, columns 50ms apart); a new window tweens every line and
-   area to the new cut (400ms) where they drew again; reduced motion shows each state at once. */
+   area to the new cut (400ms) where they drew again; reduced motion shows each state at once.
+   2026-10-02 audit: three 22px prices side by side competed for the eye; prices are 15px
+   now, one size, since no single figure is read first. The window pills are the shared
+   SegmentedControl and the paging arrows the control material's ICON_BUTTON with a tip
+   ("Earlier coins", "More coins"). The coin name, each column's only label, reads /60. It is
+   the shelf look's variant in the Watchlist family (library-variants.ts), at the same 520. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const TAB_EASE = [0.22, 1, 0.36, 1] as const
+/** the small tip the paging arrows carry: the library popover, after a 300ms wait */
+const TIP =
+  "pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-[8px] border border-foreground/[0.08] bg-[var(--tip-fill,color-mix(in_srgb,var(--foreground)_6%,var(--background)))] px-2 py-1 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/tip:opacity-100 group-hover/tip:delay-300 group-has-[:focus-visible]/tip:opacity-100"
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 /** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
@@ -203,7 +213,7 @@ function Column({
     <div className="shrink-0 transition-opacity duration-150 ease-out" style={{ width: COL, opacity: dim ? 0.45 : 1 }}>
       <div className="flex items-center gap-2">
         <Mark symbol={c.symbol} size={24} renderIcon={renderIcon} />
-        <span className="truncate text-[11.5px] font-medium text-foreground/45">{c.name}</span>
+        <span className="truncate text-[11.5px] font-medium text-foreground/60">{c.name}</span>
       </div>
       {/* the readout crosses over between the price and a scrubbed week, and when the window
           changes (4px, 2px blur, 150ms); while scrubbing it follows the pointer in place */}
@@ -215,7 +225,7 @@ function Column({
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ duration: 0.15, ease: EASE }}
       >
-        <div className="text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">{usd(data[shown])}</div>
+        <div className="text-[15px] font-semibold leading-none tracking-[-0.01em] text-foreground/90">{usd(data[shown])}</div>
         <div className="mt-1.5 flex items-baseline gap-1.5 text-[10.5px]">
           {hi === null ? (
             <span className="font-medium" style={{ color: ink(change >= 0 ? GREEN : RED) }}>
@@ -291,7 +301,6 @@ function Column({
  */
 export function TopCoins({ title = "Top coins", coins = DEFAULT_COINS, ranges = DEFAULT_RANGES, renderIcon, className }: TopCoinsProps) {
   const reduced = useReducedMotion()
-  const uid = useId().replace(/:/g, "")
   const [rangeAt, setRangeAt] = useState(0)
   const [page, setPage] = useState(0)
   const [hot, setHot] = useState<string | null>(null)
@@ -304,18 +313,26 @@ export function TopCoins({ title = "Top coins", coins = DEFAULT_COINS, ranges = 
 
   const arrow = (dir: -1 | 1) => {
     const off = dir === -1 ? at === 0 : at === pages - 1
+    const name = dir === -1 ? "Earlier coins" : "More coins"
     return (
-      <button
-        type="button"
-        disabled={off}
-        aria-label={dir === -1 ? "Earlier coins" : "More coins"}
-        onClick={() => setPage(Math.max(0, Math.min(pages - 1, at + dir)))}
-        className="grid h-7 w-7 place-items-center rounded-full text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 ease-out active:scale-[0.97] motion-reduce:active:scale-100 hover:bg-foreground/[0.08] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] focus-visible:text-foreground/90 disabled:pointer-events-none disabled:opacity-35"
-      >
-        <svg aria-hidden width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d={dir === -1 ? "m15 6-6 6 6 6" : "m9 6 6 6-6 6"} />
-        </svg>
-      </button>
+      <span className="group/tip relative inline-flex">
+        <button
+          type="button"
+          disabled={off}
+          aria-label={name}
+          onClick={() => setPage(Math.max(0, Math.min(pages - 1, at + dir)))}
+          className={cn(ICON_BUTTON, "h-7 w-7 active:scale-[0.97] motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-35")}
+        >
+          <svg aria-hidden width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d={dir === -1 ? "m15 6-6 6 6 6" : "m9 6 6 6-6 6"} />
+          </svg>
+        </button>
+        {!off && (
+          <span role="tooltip" className={TIP}>
+            {name}
+          </span>
+        )}
+      </span>
     )
   }
 
@@ -324,32 +341,7 @@ export function TopCoins({ title = "Top coins", coins = DEFAULT_COINS, ranges = 
       {/* no title: the coins name themselves; the window and the paging keep the top corner */}
       <div className="mb-4 flex items-center justify-end">
         <span className="-mr-1 flex items-center">
-          <span role="radiogroup" aria-label="Window" className="flex">
-            {ranges.map((r, i) => {
-              const on = i === rangeAt
-              return (
-                <button
-                  key={r.label}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => setRangeAt(i)}
-                  className={cn(
-                    "relative h-7 rounded-full px-3 text-[11px] font-medium outline-none transition-colors duration-200",
-                    on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
-                  )}
-                >
-                  {on &&
-                    (reduced ? (
-                      <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-                    ) : (
-                      <motion.span aria-hidden layoutId={`${uid}-range`} className="absolute inset-0 rounded-full bg-foreground/[0.08]" transition={{ duration: 0.25, ease: TAB_EASE }} />
-                    ))}
-                  <span className="relative">{r.label}</span>
-                </button>
-              )
-            })}
-          </span>
+          <SegmentedControl options={ranges.map((r) => r.label)} value={range.label} onChange={(v) => setRangeAt(Math.max(0, ranges.findIndex((r) => r.label === v)))} />
           {pages > 1 && (
             <span className="ml-2 flex items-center">
               {arrow(-1)}

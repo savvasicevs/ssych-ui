@@ -3,7 +3,7 @@
   "name": "bento-gallery",
   "type": "registry:ui",
   "title": "Bento Gallery",
-  "description": "Draggable bento grid of media that expands into a shared lightbox modal with a floating dock switcher.",
+  "description": "A draggable bento grid gallery for product shots and dashboard screenshots that opens into a shared lightbox.",
   "categories": [
     "cards"
   ],

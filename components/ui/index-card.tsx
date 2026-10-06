@@ -4,6 +4,8 @@ import { useId, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { SEGMENT_OFF, SURFACE, THUMB, TRACK } from "@/components/ui/control-classes"
+import { LiveFigure } from "@/components/ui/live-figure"
 
 /* Index Card, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -21,76 +23,97 @@ import { cn } from "@/lib/utils"
    in from the left by one clip, 850ms. Changing index morphs the line and the fill from the
    old session into the new one in 380ms (both walks are 48 samples, so the paths tween
    point for point) and the hue crosses over; it used to wipe out and redraw. Reduced
-   motion draws every state at once. */
+   motion draws every state at once.
+   2026-10-02 audit: it sits in a box now (his call), the surface step at 7% with radius 24
+   and a 10px padding, the type 16px in. The eyebrow and the 19px price gave way to the
+   three tier header: the index's name at /45 with its symbol at /90, the level at 26px
+   with its decimals at /35, then the change in its hue and "today" or the pointed time at
+   /45. Index levels are points, so no dollar sign anywhere. Scrubbing changes the figures
+   in place; they swap only when a scrub starts or ends or the index changes (they used to
+   blur in again on every pointer step). The index switch is cut from the control material
+   (TRACK, THUMB, SEGMENT_OFF) and glides on the tab ease; the note is 12px at /70, two
+   lines at most. "Russel 2K" is spelled Russell 2000. IndexQuote gains optional `name`
+   and `symbol` for the label row, and the pointed level is now anchored to the day's open
+   so the move on the sub line is derivable.
+   Formulas:
+   · open = close − the change written in `delta`
+   · level at a sample i = open + (close − open) × i ÷ 47 + 0.0004 × close × (w_i − w_0 −
+     (w_47 − w_0) × i ÷ 47), where w is the index's seeded walk; it opens at the open and
+     closes on the close exactly
+   · pointed move = level − open; percent = move ÷ open × 100
+   2026-10-02 round 2: his notes. The index switch is roomier: the box's padding is 6px
+   instead of 10, so the track runs 328px wide, and each switch is 30px tall with 4px between
+   them (corner 24 = the track's 18 + the 6px gap). The small caps index reads "Russell 2K"
+   again on its switch and in the label row. The day's line runs the box's full width, edge
+   to edge, with no side padding (the plot is 340 wide now, drawn 1:1); the type keeps its
+   16px inset. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 
-const W = 300
+/** the plot spans the box's full width, edge to edge (round 2) */
+const W = 340
 const H = 110
 const SAMPLES = 48
 /** fractions down the plot where a gridline sits */
 const GRID = [0.25, 0.5, 0.75]
+/** the walk's units, as a share of the close */
+const WIGGLE = 0.0004
 
 export interface IndexQuote {
+  /** the short name on its switch */
   label: string
-  /** Already-formatted close, e.g. "5,648.40". */
+  /** the full name in the label row; falls back to `label` */
+  name?: string
+  /** the symbol on the label row's right, e.g. "SPX" */
+  symbol?: string
+  /** Already-formatted close in points, e.g. "5,648.40". */
   price: string
   /** Already-formatted change, e.g. "+63.97 (+1.15%)". A leading − flips the hue. */
   delta: string
   /** Deterministic seed for this index's intraday walk. */
   seed: number
-  /** The one-paragraph read under the tabs. */
+  /** The short read under the line, two lines at most. */
   note: string
 }
 
 const DEFAULT_INDICES: IndexQuote[] = [
   {
     label: "S&P 500",
+    symbol: "SPX",
     price: "5,648.40",
     delta: "+63.97 (+1.15%)",
     seed: 5,
-    note: "Broad strength into the close; breadth improved with 8 of 11 sectors green, led by industrials and financials.",
+    note: "Broad strength into the close; 8 of 11 sectors finished green, led by industrials and financials.",
   },
   {
     label: "Dow 30",
+    name: "Dow Jones 30",
+    symbol: "DJI",
     price: "41,563.08",
     delta: "+228.03 (+0.55%)",
     seed: 31,
-    note: "Blue chips ground higher through the session, helped by a soft-landing read on the latest inflation print.",
+    note: "Blue chips ground higher through the session on a soft landing read of the latest inflation print.",
   },
   {
     label: "Nasdaq",
+    name: "Nasdaq Composite",
+    symbol: "IXIC",
     price: "17,713.62",
     delta: "+197.19 (+1.13%)",
     seed: 77,
     note: "Megacap tech carried the tape; semis rebounded from early weakness to finish near session highs.",
   },
   {
-    label: "Russel 2K",
+    label: "Russell 2K",
+    symbol: "RUT",
     price: "2,178.52",
     delta: "+14.10 (+0.65%)",
     seed: 111,
-    note: "Consumer sentiment turned up for the first time after five months of stagnant readings, and small caps took the hint.",
+    note: "Consumer sentiment turned up for the first time in five months, and small caps took the hint.",
   },
 ]
-
-/** a figure that changes while scrubbing re-enters 4px out of a 2px blur over 150ms;
-    reduced motion keeps the fade and drops the travel */
-function Swap({ k, reduced, children }: { k: string; reduced: boolean; children: React.ReactNode }) {
-  return (
-    <motion.span
-      key={k}
-      className="inline-block"
-      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-      transition={{ duration: 0.15, ease: EASE }}
-    >
-      {children}
-    </motion.span>
-  )
-}
 
 /** Deterministic intraday walk: same seed, same shape, every render. */
 function walk(seed: number, n: number) {
@@ -112,26 +135,29 @@ function timeAt(i: number, n: number, openMin: number, closeMin: number) {
   return `${((h + 11) % 12) + 1}:${String(m % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`
 }
 
+const points = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const signed = (v: number) => `${v >= 0 ? "+" : "−"}${points(Math.abs(v))}`
+
 export interface IndexCardProps {
-  /** Quiet label above the price. */
+  /** what the indices are; read in the aria-label (it was a visible eyebrow before 2026-10-02) */
   eyebrow?: string
-  /** One tab per index; the first four fit the 300px width comfortably. */
+  /** One switch per index; four fit the 340px width. */
   indices?: IndexQuote[]
-  /** Which tab opens selected. */
+  /** Which index opens selected. */
   defaultIndex?: number
   /** Session bounds for the scrub readout, in minutes past midnight. */
   openMinutes?: number
   closeMinutes?: number
-  /** Fires when a tab is chosen. */
+  /** Fires when an index is chosen. */
   onSelect?: (index: IndexQuote, i: number) => void
   className?: string
 }
 
 /**
- * Markets block: one price, the day's line you can scrub, a row of pills to change index
- * and the one-paragraph read below. Scrubbing snaps a rule to the nearest real sample,
- * recomputes the price off that point, prints its session time beside it and dims the
- * line to the right of the pointer. Changing index swaps price, line and story together.
+ * Markets block in a box: one index level, the day's line you can scrub, a short read and
+ * a switch to change index. Scrubbing snaps a rule to the nearest sample, reads that
+ * level, its move from the open and its session time in the header, and dims the line to
+ * the right of the pointer. Changing index swaps level, line and read together.
  */
 export function IndexCard({
   eyebrow = "Markets",
@@ -152,7 +178,16 @@ export function IndexCard({
   /** the change as written, with every hyphen minus made a true minus */
   const delta = idx.delta.replace(/-(?=[\d.])/g, "−")
 
-  const data = useMemo(() => walk(idx.seed, SAMPLES), [idx.seed])
+  /* the level at every sample, anchored to the day's open and its close (formulas above) */
+  const close = parseFloat(idx.price.replace(/,/g, ""))
+  const change = parseFloat(idx.delta.trim().replace(/^−/, "-").replace(/,/g, "").replace(/[^\d.+-].*$/, "")) || 0
+  const open = close - change
+  const data = useMemo(() => {
+    const w = walk(idx.seed, SAMPLES)
+    const n = w.length
+    const drift = w[n - 1] - w[0]
+    return w.map((v, i) => open + ((close - open) * i) / (n - 1) + WIGGLE * close * (v - w[0] - (drift * i) / (n - 1)))
+  }, [idx.seed, open, close])
   const n = data.length
   const min = Math.min(...data)
   const max = Math.max(...data)
@@ -174,63 +209,50 @@ export function IndexCard({
   }
   const onLeave = () => setHover(null)
 
-  /** the price at a sample: the close scaled by that sample over the last one */
-  const close = parseFloat(idx.price.replace(/,/g, ""))
-  const shownPrice =
-    hover == null || !Number.isFinite(close)
-      ? idx.price
-      : ((close * data[hover]) / data[n - 1]).toLocaleString("en-US", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })
+  const pointed = hover == null || !Number.isFinite(close) ? null : data[hover]
+  const [whole, decimals] = (pointed == null ? idx.price : points(pointed)).split(".")
+  const move = pointed == null ? change : pointed - open
+  const pct = open ? (move / open) * 100 : 0
+  const moveText = pointed == null ? delta : `${signed(move)} (${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%)`
   const crossX = hover == null ? 0 : px(hover)
 
   return (
-    <div className={cn("w-[300px] tabular-nums", className)} role="group" aria-label={`${eyebrow}: ${idx.label}`}>
-      <div className="text-[11px] font-medium text-foreground/45">{eyebrow}</div>
-
-      <div role="status" className="mt-1.5">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={idx.label}
-            className="flex items-baseline gap-2"
-            initial={reduced ? false : { opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.1 } }}
-            transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}
-          >
-            <span className="text-[19px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
-              <Swap k={`p${hover ?? "close"}`} reduced={reduced}>
-                ${shownPrice}
-              </Swap>
-            </span>
-            {hover == null ? (
-              <span className="text-[11px] font-medium" style={{ color: hue }}>
-                <Swap k="delta" reduced={reduced}>
-                  {delta}
-                </Swap>
-              </span>
-            ) : (
-              <span className="text-[11px] text-foreground/45">
-                <Swap k={`t${hover}`} reduced={reduced}>
-                  {timeAt(hover, n, openMinutes, closeMinutes)}
-                </Swap>
-              </span>
-            )}
-          </motion.div>
-        </AnimatePresence>
+    <div
+      className={cn("w-[340px] max-w-full overflow-hidden rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
+      role="group"
+      aria-label={`${eyebrow}: ${idx.name ?? idx.label}, ${idx.price} points, ${delta} today`}
+    >
+      <div className="px-2.5 pt-2.5">
+        {/* the header, three tiers (spec 14.1) */}
+        <div className="mb-3 flex items-baseline justify-between text-[12px]">
+          <span className="truncate text-foreground/45">{idx.name ?? idx.label}</span>
+          {idx.symbol && <span className="shrink-0 pl-3 font-medium text-foreground/90">{idx.symbol}</span>}
+        </div>
+        <div role="status">
+          {/* the figures swap only when a scrub starts or ends or the index changes */}
+          <LiveFigure intent={`${active}-${hover == null ? "close" : "scrub"}`}>
+            <p className="m-0 text-[26px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
+              {whole}
+              {decimals && <span className="text-foreground/35">.{decimals}</span>}
+            </p>
+            <p className="mb-0 mt-2 flex items-baseline gap-[7px] text-[12px] font-medium" style={{ color: move >= 0 ? GREEN : RED }}>
+              <span>{moveText}</span>
+              <span className="font-normal text-foreground/45">{hover == null ? "today" : timeAt(hover, n, openMinutes, closeMinutes)}</span>
+            </p>
+          </LiveFigure>
+        </div>
       </div>
 
       {/* the day's line; right of the pointer dims */}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        className="mt-3 block w-full cursor-crosshair touch-none overflow-visible"
+        className="-mx-1.5 mt-4 block w-[calc(100%+12px)] max-w-none cursor-crosshair touch-none overflow-visible"
         onPointerMove={onMove}
         onPointerLeave={onLeave}
         onPointerCancel={onLeave}
         role="img"
-        aria-label={`${idx.label} through the session, closing at $${idx.price}, ${delta}`}
+        aria-label={`${idx.name ?? idx.label} through the session, closing at ${idx.price} points, ${delta}`}
       >
         <defs>
           <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
@@ -258,7 +280,7 @@ export function IndexCard({
         ))}
 
         {/* the whole line, which steps back while scrubbing; a new index morphs it in place */}
-        <g clipPath={`url(#${uid}-wipe)`} opacity={hover == null ? 1 : 0.35} style={{ transition: reduced ? "none" : "opacity 200ms" }}>
+        <g clipPath={`url(#${uid}-wipe)`} opacity={hover == null ? 1 : 0.45} style={{ transition: reduced ? "none" : "opacity 200ms" }}>
           <motion.path
             initial={false}
             animate={{ d: `M${line} L ${W},${H} L 0,${H} Z` }}
@@ -288,50 +310,16 @@ export function IndexCard({
 
         {hover != null && (
           <g pointerEvents="none">
-            <line x1={crossX} x2={crossX} y1={0} y2={H} stroke="var(--foreground)" strokeOpacity={0.22} strokeWidth={1} />
-            <circle cx={crossX} cy={py(data[hover])} r={3} fill={hue} />
+            <line x1={crossX} x2={crossX} y1={0} y2={H} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} />
+            <circle cx={crossX} cy={py(data[hover])} r={3} fill={hue} stroke="var(--background)" strokeWidth={1.5} />
           </g>
         )}
       </svg>
 
-      {/* index pills: one fill slides to the chosen one */}
-      <div className="-mx-1 mt-3 flex" role="group" aria-label="Index">
-        {indices.map((ix, i) => (
-          <button
-            key={ix.label}
-            type="button"
-            aria-pressed={active === i}
-            aria-label={`${ix.label}, $${ix.price}`}
-            onClick={() => {
-              setActive(i)
-              onLeave()
-              onSelect?.(ix, i)
-            }}
-            className={cn(
-              "relative h-7 flex-1 whitespace-nowrap rounded-full text-center text-[11px] font-medium outline-none transition-colors duration-150 focus-visible:bg-foreground/[0.06]",
-              active === i ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/80",
-            )}
-          >
-            {active === i &&
-              (reduced ? (
-                <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
-              ) : (
-                <motion.span
-                  aria-hidden
-                  layoutId={`${uid}-pill`}
-                  className="absolute inset-0 rounded-full bg-foreground/[0.08]"
-                  transition={{ duration: 0.25, ease: EASE }}
-                />
-              ))}
-            <span className="relative">{ix.label}</span>
-          </button>
-        ))}
-      </div>
-
       <AnimatePresence mode="wait" initial={false}>
         <motion.p
           key={idx.label}
-          className="mt-3 text-[11.5px] leading-[1.6] text-foreground/45"
+          className="mx-2.5 mb-0 mt-3 line-clamp-2 text-[12px] leading-[1.5] text-foreground/70"
           initial={{ opacity: reduced ? 1 : 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.1 } }}
@@ -340,6 +328,41 @@ export function IndexCard({
           {idx.note}
         </motion.p>
       </AnimatePresence>
+
+      {/* the index switch, in the control material; it sits on the box's edge so the corners
+          nest: 30px switches + 2px padding + 1px border = 36 tall, corner 18; 18 + the 6px gap = 24 */}
+      <div className={cn("mt-4 flex gap-1", TRACK)} role="group" aria-label="Index">
+        {indices.map((ix, i) => (
+          <button
+            key={ix.label}
+            type="button"
+            aria-pressed={active === i}
+            aria-label={`${ix.name ?? ix.label}, ${ix.price} points`}
+            onClick={() => {
+              setActive(i)
+              onLeave()
+              onSelect?.(ix, i)
+            }}
+            className={cn(
+              "relative h-[30px] flex-1 whitespace-nowrap rounded-full px-2 text-center text-[11.5px] font-medium outline-none transition-colors duration-150 focus-visible:text-foreground/90",
+              active === i ? "text-foreground/90" : SEGMENT_OFF,
+            )}
+          >
+            {active === i &&
+              (reduced ? (
+                <span aria-hidden className={cn("absolute inset-0 rounded-full", THUMB)} />
+              ) : (
+                <motion.span
+                  aria-hidden
+                  layoutId={`${uid}-pill`}
+                  className={cn("absolute inset-0 rounded-full", THUMB)}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                />
+              ))}
+            <span className="relative">{ix.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { animate, AnimatePresence, motion, useMotionValue, useReducedMotion } from "motion/react"
 
+import { BUTTON } from "@/components/ui/control-classes"
+import { Line } from "@/components/ui/swap-ticket-field"
 import { cn } from "@/lib/utils"
 
 /* Execution Controls, written new through ssych-component (2026-09-29).
@@ -21,7 +23,14 @@ import { cn } from "@/lib/utils"
    Formulas:
    · order value  size × price
    · hold         the sweep covers the button in hold time; the order fires at the end
-   · undo         the hairline drains over the undo window, then the line leaves */
+   · undo         the hairline drains over the undo window, then the line leaves
+   2026-10-02 audit: the idle label says it must be held ("Hold to buy 25 TSLA"); the button
+   is the control material (var(--control-fill)) at 48px, the height of the tickets' primary,
+   with the hold sweep in the side's hue over it (it sat on a 6% fill that disappears on
+   white). 320 wide like the tickets. The rest line no longer repeats size and symbol from the
+   button: it reads the order value alone, its formula (size × price) on hover. The undo line
+   is the Undo button and its draining hairline only, since the button already carries the
+   fill price; `undoLabel` is kept as the Undo button's accessible name. Status text at /60. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -154,16 +163,17 @@ export function ExecutionControls({
 
   const text =
     phase === "idle"
-      ? `${verb} ${size} ${symbol}`
+      ? `Hold to ${verb.toLowerCase()} ${size} ${symbol}`
       : phase === "working"
         ? workingLabel
         : phase === "filled"
           ? `Filled at ${usd(price)}`
           : rejectLabel
-  const colour = phase === "working" ? undefined : ink(phase === "filled" ? GREEN : phase === "rejected" ? RED : hue)
+  /* the idle label is ink (the side shows in the sweep); a fill and a reject say their result in hue */
+  const colour = phase === "filled" ? ink(GREEN) : phase === "rejected" ? ink(RED) : undefined
 
   return (
-    <div className={cn("w-[300px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
+    <div className={cn("w-[320px] max-w-full tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)}>
       <motion.button
         type="button"
         aria-busy={phase === "working"}
@@ -191,15 +201,15 @@ export function ExecutionControls({
         }}
         onBlur={endHold}
         className={cn(
-          "relative h-11 w-full select-none overflow-hidden rounded-full text-[13px] font-semibold text-foreground/90 outline-none transition-colors duration-200",
-          phase === "idle" ? "cursor-pointer hover:bg-foreground/[0.1] focus-visible:bg-foreground/[0.1]" : "cursor-default",
+          BUTTON,
+          "relative flex h-12 w-full select-none overflow-hidden text-[14px] font-medium active:scale-100",
+          phase === "idle" ? "cursor-pointer" : "cursor-default",
         )}
         style={{
           background: phase === "filled" ? mix(GREEN, 12) : phase === "rejected" ? mix(RED, 12) : holding && reduced ? mix(hue, 22) : undefined,
           touchAction: "none",
         }}
       >
-        <span aria-hidden className="absolute inset-0 bg-foreground/[0.06]" />
         {!reduced && phase === "idle" && (
           <motion.span aria-hidden className="absolute inset-0" style={{ scaleX: progress, transformOrigin: "left", background: mix(hue, 24) }} />
         )}
@@ -237,7 +247,7 @@ export function ExecutionControls({
         </AnimatePresence>
       </motion.button>
 
-      <div role="status" className="mt-2 px-1 text-[11px] text-foreground/45">
+      <div role="status" className="mt-2 px-1 text-[12px] text-foreground/60">
         <AnimatePresence mode="wait" initial={false}>
           {phase === "filled" ? (
             <motion.div
@@ -246,18 +256,16 @@ export function ExecutionControls({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, transition: { duration: 0.12 } }}
               transition={{ duration: 0.2, ease: EASE }}
-              className="relative flex items-center justify-between pb-2"
+              className="relative flex min-h-7 items-center justify-end pb-2"
             >
-              <span>
-                {undoLabel} · {size} {symbol} · {usd(value)}
-              </span>
               <button
                 type="button"
+                aria-label={`Undo: ${undoLabel}`}
                 onClick={() => {
                   setPhase("idle")
                   onUndo?.()
                 }}
-                className="h-6 rounded-full px-2 text-[11px] font-medium text-foreground/90 outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.08] focus-visible:bg-foreground/[0.08] active:scale-[0.97]"
+                className={cn("h-7 px-3 text-[12px] font-medium", BUTTON)}
               >
                 Undo
               </button>
@@ -278,12 +286,11 @@ export function ExecutionControls({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.12 } }}
               transition={{ duration: 0.15, ease: EASE }}
-              className="flex items-center justify-between pb-2"
+              className="flex min-h-7 items-center justify-between pb-2"
             >
-              <span>
-                {size} {symbol} at {usd(price)}
+              <span className="block w-full">
+                <Line label="Order value" value={usd(value)} tip={`size × price = ${size} × ${usd(price)}`} />
               </span>
-              <span className="text-foreground/90">{usd(value)}</span>
             </motion.div>
           )}
         </AnimatePresence>

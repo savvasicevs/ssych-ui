@@ -4,9 +4,17 @@ import { useEffect, useRef } from "react"
 import { useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON_PRIMARY } from "@/components/ui/control-classes"
 
-const ACCENT: [number, number, number] = [90, 170, 255]
-const accentRgba = (a: number) => `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${a})`
+/* 2026-10-02 audit: the button was an outlined 60px-corner pill that wiped a fill up on hover
+   and glowed blue (a border colour, an accent box-shadow glow and an inset accent ring at
+   once). It is now the library's one white primary (BUTTON_PRIMARY at h-12 px-6, 14px
+   medium, fully round) with one elevation: the charge the particles bring only brightens a
+   1px top highlight in the accent, so the ring and the glow are gone. The particles are ink
+   (the foreground, read from the stage) instead of blue and white, so the accent stays a
+   small part of the field.
+   2026-10-02 round 2: the default label is "Open an account", the step a broker or exchange
+   asks for, instead of a generic SaaS free trial. */
 
 type Particle = { x: number; y: number; vx: number; vy: number; born: number; size: number }
 
@@ -16,12 +24,12 @@ const SPAWN_GAP_MS = 28
 
 /**
  * A CTA stage where the cursor leaves a restrained particle trail (1–2px
- * accent dots with a soft additive glow, 0.6s decay). Near the pill the dots
- * gravitate toward it and feed its border glow — signal language, no glitter.
+ * ink dots with a soft halo, 0.6s decay). Near the button the dots gravitate
+ * toward it and brighten its top highlight — signal language, no glitter.
  * Honors reduced motion by rendering a static pill.
  */
 export function MouseTrailCta({
-  label = "Start your free trial",
+  label = "Open an account",
   href = "#",
   className,
   onClick,
@@ -34,7 +42,6 @@ export function MouseTrailCta({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const pillRef = useRef<HTMLAnchorElement | null>(null)
-  const ringRef = useRef<HTMLDivElement | null>(null)
   const reduced = useReducedMotion() ?? false
 
   useEffect(() => {
@@ -42,7 +49,6 @@ export function MouseTrailCta({
     const root = rootRef.current
     const canvas = canvasRef.current
     const pill = pillRef.current
-    const ring = ringRef.current
     if (!root || !canvas || !pill) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
@@ -53,6 +59,9 @@ export function MouseTrailCta({
     let lastSpawn = 0
     let charge = 0 // 0..1 — particles arriving at the pill feed this
     const particles: Particle[] = []
+    /* the ink: the stage's own text colour (text-foreground), read when a run starts so a
+       theme change between runs is picked up; canvas takes any CSS colour, alpha goes on globalAlpha */
+    let ink = getComputedStyle(root).color
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const resize = () => {
@@ -70,19 +79,11 @@ export function MouseTrailCta({
       return { x: pr.left - rr.left + pr.width / 2, y: pr.top - rr.top + pr.height / 2, rx: pr.width / 2 }
     }
 
+    /* the charge brightens the button's 1px top highlight, in the accent, up to 70% */
     const applyCharge = () => {
-      const [cr, cg, cb] = ACCENT
       const t = charge
-      const r = Math.round(255 + (cr - 255) * t)
-      const g = Math.round(255 + (cg - 255) * t)
-      const b = Math.round(255 + (cb - 255) * t)
-      pill.style.borderColor = `rgba(${r},${g},${b},${0.4 + 0.5 * t})`
-      pill.style.boxShadow = t > 0.02 ? `0 0 ${22 * t}px ${accentRgba(0.34 * t)}` : "none"
-      // the hairline ring brightens as charge arrives
-      if (ring) {
-        ring.style.opacity = String(0.35 + 0.65 * t)
-        ring.style.filter = `saturate(${1 + t}) brightness(${1 + 0.5 * t})`
-      }
+      pill.style.boxShadow =
+        t > 0.02 ? `inset 0 1px 0 0 color-mix(in srgb, var(--chart-1, #489ffa) ${Math.round(70 * t)}%, transparent)` : ""
     }
 
     const tick = (now: number) => {
@@ -91,7 +92,7 @@ export function MouseTrailCta({
       const h = canvas.height / dpr
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
-      ctx.globalCompositeOperation = "lighter"
+      ctx.fillStyle = ink
 
       const c = pillCenter()
       for (let i = particles.length - 1; i >= 0; i--) {
@@ -119,17 +120,17 @@ export function MouseTrailCta({
         p.x += p.vx
         p.y += p.vy
         const fade = 1 - age
-        // soft additive glow halo + crisp core
+        // a soft halo + a crisp core, both ink
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.size * 2.4, 0, Math.PI * 2)
-        ctx.fillStyle = accentRgba(0.16 * fade)
+        ctx.globalAlpha = 0.12 * fade
         ctx.fill()
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.size * 0.75, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(${Math.round(160 + 95 * fade)},${Math.round(200 + 55 * fade)},255,${0.85 * fade})`
+        ctx.globalAlpha = 0.85 * fade
         ctx.fill()
       }
-      ctx.globalCompositeOperation = "source-over"
+      ctx.globalAlpha = 1
 
       charge = Math.max(0, charge - 0.012)
       applyCharge()
@@ -141,6 +142,7 @@ export function MouseTrailCta({
     const ensureLoop = () => {
       if (!running && onScreen) {
         running = true
+        ink = getComputedStyle(root).color
         raf = requestAnimationFrame(tick)
       }
     }
@@ -184,27 +186,12 @@ export function MouseTrailCta({
   return (
     <div
       ref={rootRef}
-      className={cn("relative flex items-center justify-center overflow-hidden", className)}
+      className={cn("relative flex items-center justify-center overflow-hidden text-foreground", className)}
     >
       <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden />
-      <div className="relative">
-        {/* hairline accent ring — intensity driven by the charge (opacity/filter on the ref) */}
-        <div
-          ref={ringRef}
-          aria-hidden
-          className="pointer-events-none absolute -inset-px z-0 rounded-[60px]"
-          style={{ opacity: 0.35, boxShadow: `inset 0 0 0 1px ${accentRgba(0.55)}` }}
-        />
-        <a
-          ref={pillRef}
-          href={href}
-          onClick={onClick}
-          className="group relative z-10 inline-flex overflow-hidden rounded-[60px] border border-foreground/40 px-6 py-3 text-[15px] font-semibold text-foreground transition-colors"
-        >
-          <span className="absolute inset-0 origin-bottom scale-y-0 bg-foreground transition-transform duration-300 ease-out group-hover:scale-y-100" />
-          <span className="relative transition-colors duration-300 group-hover:text-background">{label}</span>
-        </a>
-      </div>
+      <a ref={pillRef} href={href} onClick={onClick} className={cn(BUTTON_PRIMARY, "relative z-10 w-auto px-6")}>
+        {label}
+      </a>
     </div>
   )
 }

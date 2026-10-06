@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 
+import { AmountBox, FlipButton, Line, PILL, PrimaryButton, TICKET_WIDTH, amountText } from "@/components/ui/swap-ticket-field"
+import { TicketSelect } from "@/components/ui/swap-ticket-modal"
 import { cn } from "@/lib/utils"
 
 /* Swap Confirm, written new through ssych-component (2026-09-29).
@@ -26,13 +28,29 @@ import { cn } from "@/lib/utils"
    · you receive    sell value ÷ price of the asset received
    · rate           price sold ÷ price received
    · minimum        you receive × (1 − max slippage)
-   · can be placed  linked, 0 < amount ≤ balance of the asset sold    Marks (2026-09-30): a token shows its real mark (TokenIcon), a company or a wallet its
+   · can be placed  linked, 0 < amount ≤ balance of the asset sold
+   Marks (2026-09-30): a token shows its real mark (TokenIcon), a company or a wallet its
    real logo (BrandIcon); two letters on an ink disc only where no mark exists.
    Library (2026-09-30): ships alone, so a mark is a disc in its --coin-<symbol> colour with
-   its letters in white; `renderIcon` draws the real mark in its place. */
+   its letters in white; `renderIcon` draws the real mark in its place.
+   2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
+   2026-10-02 audit: the confirm member of the swap family, cut from the same parts as Swap
+   Ticket and Cross Chain Swap (swap-ticket-field.tsx, swap-ticket-modal.tsx) at 320 wide:
+   the amount field (28 = the 32px chip's 16 + 12), the flip on the seam, the 48px white
+   BUTTON_PRIMARY. The figure under You receive is read first, so it is the 22px one and the
+   typed amount 17px. Under the fields only Rate and Minimum received stay; the slippage is
+   in the minimum's formula and the $0.00 commission line is gone. The ready label is
+   "Confirm" (the amount is in its field). Each side's chip opens the shared dropdown over a
+   book of holdings (new prop `choices`), so the pair can be changed; picking the asset the
+   other side holds turns the pair around. Formulas are unchanged.
+   Shown where: rate on its line (tip: price ÷ price); minimum on its line (tip: you receive
+   × (1 − slippage)).
+   2026-10-02 round 2: (his notes after the side by side, for every swap): the held line ran
+   under the flip arrow at the seam. Half and Max moved from that line into the amount row,
+   right of the typed figure, and both fields keep a clear lane over the arrow (AmountBox
+   `seam`), so nothing touches it. The amount field shows focus on its own edge. Formulas are
+   unchanged. */
 
-const EASE = [0.16, 1, 0.3, 1] as const
-const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const LINK_MS = 1100
 const PLACE_MS = 1400
 
@@ -54,8 +72,10 @@ export interface SwapOrder {
 }
 
 export interface SwapConfirmProps {
-  /** the pair; the first is sold, the second received, until it is flipped */
+  /** the pair; the first is sold, the second received, until it is flipped or changed */
   assets?: [SwapAsset, SwapAsset]
+  /** the holdings either side can be changed to; the pair is added when missing */
+  choices?: SwapAsset[]
   /** opening amount, as typed */
   defaultAmount?: string
   /** whether the account is linked when it opens */
@@ -71,6 +91,14 @@ export interface SwapConfirmProps {
 const DEFAULT_ASSETS: [SwapAsset, SwapAsset] = [
   { symbol: "MSFT", name: "Microsoft Corp", price: 415.6, balance: 76.0132 },
   { symbol: "AAPL", name: "Apple Inc", price: 228.02, balance: 12.402 },
+]
+
+const DEFAULT_CHOICES: SwapAsset[] = [
+  ...DEFAULT_ASSETS,
+  { symbol: "NVDA", name: "NVIDIA Corp", price: 121.44, balance: 40 },
+  { symbol: "GOOGL", name: "Alphabet Inc", price: 167.3, balance: 8.5 },
+  { symbol: "AMZN", name: "Amazon.com Inc", price: 186.9, balance: 5.25 },
+  { symbol: "TSLA", name: "Tesla Inc", price: 178.52, balance: 3 },
 ]
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -94,12 +122,13 @@ const MARKS: Record<string, { disc: string; glyph?: string }> = {
 }
 
 /**
- * The convert ticket, open: what is sold on top, what arrives under it, then the rate, the
- * slippage allowed and the least that can arrive. The white button is the state of the
- * ticket and the only thing that places it.
+ * The convert ticket, open: what is sold on top, what arrives under it, then the rate and the
+ * least that can arrive. The white button is the state of the ticket and the only thing that
+ * places it.
  */
 export function SwapConfirm({
   assets = DEFAULT_ASSETS,
+  choices,
   defaultAmount = "20",
   defaultLinked = true,
   slippage = 0.005,
@@ -108,19 +137,19 @@ export function SwapConfirm({
   className,
 }: SwapConfirmProps) {
   const reduced = useReducedMotion()
-  const [flipped, setFlipped] = useState(false)
-  const [turns, setTurns] = useState(0)
+  const book = (() => {
+    const list = [...(choices ?? (assets === DEFAULT_ASSETS ? DEFAULT_CHOICES : assets))]
+    for (const a of assets) if (!list.some((c) => c.symbol === a.symbol)) list.push(a)
+    return list
+  })()
+  const [sell, setSell] = useState<SwapAsset>(assets[0])
+  const [receive, setReceive] = useState<SwapAsset>(assets[1])
   const [amountStr, setAmountStr] = useState(defaultAmount)
   const [linked, setLinked] = useState(defaultLinked)
   const [phase, setPhase] = useState<"idle" | "linking" | "placing">("idle")
-  /* counts the presses that write the amount (Half, Max, the flip), so the figures they move
-     swap in; typing writes them at once, since a held key repeats */
-  const [bump, setBump] = useState(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
 
-  const sell = assets[flipped ? 1 : 0]
-  const receive = assets[flipped ? 0 : 1]
   const amount = parseFloat(amountStr) || 0
   const sellValue = amount * sell.price
   const received = receive.price > 0 ? sellValue / receive.price : 0
@@ -135,9 +164,24 @@ export function SwapConfirm({
     placing: "Placing…",
     amount: "Enter an amount",
     short: `Insufficient ${sell.symbol}`,
-    ready: `Confirm, sell ${upTo(amount, 4)} ${sell.symbol}`,
+    ready: "Confirm",
   }[state]
   const enabled = state === "link" || state === "ready"
+
+  const flip = () => {
+    setSell(receive)
+    setReceive(sell)
+    setAmountStr("")
+  }
+  const pick = (side: "sell" | "receive", symbol: string) => {
+    const a = book.find((c) => c.symbol === symbol)
+    if (!a) return
+    if (a.symbol === (side === "sell" ? receive : sell).symbol) return flip()
+    if (side === "sell") {
+      setSell(a)
+      setAmountStr("")
+    } else setReceive(a)
+  }
 
   const press = () => {
     if (state === "link") {
@@ -156,76 +200,46 @@ export function SwapConfirm({
     }
   }
 
-  const head = (label: string, asset: SwapAsset, fill: boolean) => (
-    <div className="flex items-center justify-between">
-      <span className="text-[11px] text-foreground/45">{label}</span>
-      <span className="flex items-center gap-1">
-        <span className="text-[10.5px] text-foreground/45">
-          Held {upTo(asset.balance, 4)} {asset.symbol}
-        </span>
-        {fill &&
-          [
-            { label: "Half", share: 0.5 },
-            { label: "Max", share: 1 },
-          ].map((c) => (
-            <button
-              key={c.label}
-              type="button"
-              onClick={() => {
-                setAmountStr(String(cut(asset.balance * c.share, 4)))
-                setBump((b) => b + 1)
-              }}
-              aria-label={`${c.label} of the ${asset.symbol} held`}
-              className="h-6 rounded-full px-2 text-[10.5px] text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] hover:bg-foreground/[0.08] hover:text-foreground/90 focus-visible:bg-foreground/[0.08] focus-visible:text-foreground/90"
-            >
-              {c.label}
-            </button>
-          ))}
-      </span>
-    </div>
-  )
-
-  const token = (asset: SwapAsset) => {
-    const mark = MARKS[asset.symbol.toUpperCase()]
+  const mark = (asset: SwapAsset, size: number) => {
+    if (renderIcon) return <span className="inline-flex shrink-0">{renderIcon(asset.symbol, size)}</span>
+    const m = MARKS[asset.symbol.toUpperCase()]
     return (
-    <span className="flex shrink-0 items-center gap-1.5">
-      {renderIcon ? (
-        renderIcon(asset.symbol, 24)
-      ) : mark ? (
-        <span
-          aria-hidden
-          className="grid h-6 w-6 place-items-center rounded-full text-[8.5px] font-semibold"
-          style={{ background: mark.disc, color: mark.glyph ?? "var(--coin-glyph, #fff)" }}
-        >
-          {asset.symbol.slice(0, 2)}
-        </span>
-      ) : (
-        <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full bg-foreground/[0.12] text-[8.5px] font-semibold text-foreground/90">
-          {asset.symbol.slice(0, 2)}
-        </span>
-      )}
-      <span>
-        <span className="block text-[12px] font-semibold leading-tight text-foreground/90">{asset.symbol}</span>
-        <span className="block text-[9.5px] leading-tight text-foreground/45">{asset.name}</span>
+      <span
+        aria-hidden
+        className={cn("grid shrink-0 place-items-center rounded-full font-semibold", !m && "bg-foreground/[0.12] text-foreground/90")}
+        style={{ width: size, height: size, fontSize: Math.max(7, Math.round(size * 0.35)), background: m?.disc, color: m ? (m.glyph ?? "var(--coin-glyph, #fff)") : undefined }}
+      >
+        {asset.symbol.slice(0, 2)}
       </span>
-    </span>
     )
   }
-
-  const line = (label: string, value: string, strong = false) => (
-    <div className="flex items-baseline justify-between text-[11px]">
-      <span className="text-foreground/45">{label}</span>
-      <span className={cn("text-foreground/90", strong && "font-semibold")}>{value}</span>
-    </div>
+  const options = book.map((a) => ({ value: a.symbol, label: a.symbol, hint: a.name, icon: mark(a, 22) }))
+  const chip = (side: "sell" | "receive", asset: SwapAsset) => (
+    <TicketSelect
+      look="chip"
+      label={side === "sell" ? "Holding to sell" : "Holding to receive"}
+      value={asset.symbol}
+      options={options}
+      onChange={(v) => pick(side, v)}
+      trigger={
+        <>
+          {mark(asset, 24)}
+          <span className="text-foreground/90">{asset.symbol}</span>
+        </>
+      }
+    />
   )
 
   return (
-    <div className={cn("w-[340px] max-w-full tabular-nums", className)} role="group" aria-label={`Sell ${sell.symbol} for ${receive.symbol}, ${verdict}`}>
-      {/* 12 (the 24px Half and Max pills) + 10 top padding = 22 */}
-      <div className="rounded-[22px] bg-foreground/[0.04] px-3 py-2.5 transition-colors duration-150 focus-within:bg-foreground/[0.06]">
-        {head("You sell", sell, true)}
-        <div className="mt-2 flex items-center gap-3">
-          {token(sell)}
+    <div className={cn(TICKET_WIDTH, "tabular-nums", className)} role="group" aria-label={`Sell ${sell.symbol} for ${receive.symbol}, ${verdict}`}>
+      <div className="relative flex flex-col gap-1">
+        <AmountBox
+          label="You sell"
+          aside={chip("sell", sell)}
+          seam="bottom"
+          foot={usd(sellValue)}
+          footAside={<span className="truncate">Held {upTo(sell.balance, 4)}</span>}
+        >
           <input
             value={amountStr}
             onChange={(e) => {
@@ -234,103 +248,66 @@ export function SwapConfirm({
             placeholder="0"
             inputMode="decimal"
             aria-label={`Amount of ${sell.symbol} to sell`}
-            className="min-w-0 flex-1 bg-transparent text-right text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90 caret-foreground outline-none transition-colors duration-150 placeholder:text-foreground/35"
+            className={amountText("second", !amountStr)}
             /* more than is held is a fail: the typed figure turns red (colour pass, 2026-09-30) */
             style={state === "short" ? { color: "var(--chart-down)" } : undefined}
           />
-        </div>
-        <div className="mt-1 text-right text-[11px] text-foreground/45">{usd(sellValue)}</div>
+          {/* Half and Max sit in the amount row, clear of the flip on the seam */}
+          <span className="flex shrink-0 items-center gap-1">
+            {[
+              { label: "Half", share: 0.5 },
+              { label: "Max", share: 1 },
+            ].map((c) => (
+              <button key={c.label} type="button" onClick={() => setAmountStr(String(cut(sell.balance * c.share, 4)))} aria-label={`${c.label} of the ${sell.symbol} held`} className={PILL}>
+                {c.label}
+              </button>
+            ))}
+          </span>
+        </AmountBox>
+        <FlipButton onClick={flip} label="Turn the pair around" />
+        <AmountBox label="You receive" seam="top" aside={chip("receive", receive)} foot={usd(received * receive.price)} footAside={<span>Held {upTo(receive.balance, 4)}</span>}>
+          <span className={cn(amountText("lead", amount <= 0), "truncate")}>{amount > 0 ? upTo(received, 4) : "0"}</span>
+        </AmountBox>
       </div>
 
-      <div className="my-1.5 flex justify-center">
-        <motion.button
-          type="button"
-          onClick={() => {
-            setFlipped((f) => !f)
-            setTurns((t) => t + 1)
-            setAmountStr("")
-            setBump((b) => b + 1)
-          }}
-          aria-label="Turn the pair around"
-          animate={{ rotate: turns * 180 }}
-          whileTap={reduced ? undefined : { scale: 0.97 }}
-          transition={reduced ? { duration: 0 } : { rotate: { duration: 0.3, ease: EASE }, scale: LIFT_SPRING }}
-          className="grid h-7 w-7 place-items-center rounded-full bg-foreground/[0.08] text-foreground/70 outline-none transition-colors duration-150 hover:bg-foreground/[0.12] hover:text-foreground/90 focus-visible:bg-foreground/[0.12]"
-        >
-          <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M6 1.5v9M2.5 7 6 10.5 9.5 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </motion.button>
+      <div role="status" className="flex flex-col gap-1.5 px-1 pt-3">
+        <Line label="Rate" value={`1 ${sell.symbol} = ${upTo(rate, 4)} ${receive.symbol}`} tip={`${sell.symbol} price ÷ ${receive.symbol} price = ${usd(sell.price)} ÷ ${usd(receive.price)}`} />
+        <Line
+          label="Minimum received"
+          strong
+          value={`${upTo(minimum, 4)} ${receive.symbol}`}
+          tip={`you receive × (1 − ${(slippage * 100).toFixed(1)}% max slippage) = ${upTo(received, 4)} × ${(1 - slippage).toFixed(3)}`}
+        />
       </div>
 
-      {/* 22, the same as the sell panel it pairs with */}
-      <div className="rounded-[22px] bg-foreground/[0.04] px-3 py-2.5">
-        {head("You receive", receive, false)}
-        <div className="mt-2 flex items-center gap-3">
-          {token(receive)}
-          {/* a press that writes the amount swaps the figure in (text swap: 4px, 2px blur, 150ms) */}
-          <motion.span
-            key={bump}
-            initial={bump === 0 ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-            className={cn("min-w-0 flex-1 text-right text-[22px] font-semibold leading-none tracking-[-0.02em]", amount > 0 ? "text-foreground/90" : "text-foreground/35")}
-          >
-            {amount > 0 ? upTo(received, 4) : "0"}
-          </motion.span>
-        </div>
-        <div className="mt-1 text-right text-[11px] text-foreground/45">{usd(received * receive.price)}</div>
-      </div>
-
-      <div role="status" className="mt-3 flex flex-col gap-1.5 px-1">
-        {line("Rate", `1 ${sell.symbol} = ${upTo(rate, 4)} ${receive.symbol}`)}
-        {line("Max slippage", `${(slippage * 100).toFixed(1)}%`)}
-        {line("Commission", usd(0))}
-        {line("Minimum received", `${upTo(minimum, 4)} ${receive.symbol}`, true)}
-      </div>
-
-      {/* the one solid control; its label is the state of the ticket */}
-      <motion.button
-        type="button"
+      {/* the one loud control; its label is the state of the ticket */}
+      <PrimaryButton
+        className="mt-4"
+        state={state}
         disabled={!enabled}
-        aria-busy={phase !== "idle"}
+        busy={phase !== "idle"}
         onClick={press}
-        whileTap={enabled && !reduced ? { scale: 0.98 } : undefined}
-        transition={reduced ? { duration: 0 } : LIFT_SPRING}
-        className="mt-4 h-11 w-full rounded-full bg-foreground/[0.92] text-[13px] font-semibold text-background outline-none transition-[background-color,opacity] duration-200 enabled:cursor-pointer enabled:hover:bg-foreground enabled:focus-visible:bg-foreground disabled:cursor-not-allowed disabled:opacity-35"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          {/* the label is the state: it swaps in place (text swap: 4px, 2px blur, 150ms); reduced
-              motion keeps the cross-fade and drops the travel and the blur */}
-          <motion.span
-            key={state}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(2px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-            className="block"
-          >
-            {(state === "linking" || state === "placing") && !reduced ? (
-              /* while it links or places, a highlight sweeps the label (transitions.dev shimmer text) */
-              <motion.span
-                className="bg-clip-text text-transparent"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(90deg, color-mix(in srgb, var(--background) 55%, transparent) 35%, var(--background) 50%, color-mix(in srgb, var(--background) 55%, transparent) 65%)",
-                  backgroundSize: "200% 100%",
-                }}
-                initial={{ backgroundPosition: "100% 0%" }}
-                animate={{ backgroundPosition: "-100% 0%" }}
-                transition={{ duration: 1.2, ease: "linear", repeat: Infinity }}
-              >
-                {verdict}
-              </motion.span>
-            ) : (
-              verdict
-            )}
-          </motion.span>
-        </AnimatePresence>
-      </motion.button>
+        label={
+          (state === "linking" || state === "placing") && !reduced ? (
+            /* while it links or places, a highlight sweeps the label (transitions.dev shimmer text) */
+            <motion.span
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage:
+                  "linear-gradient(90deg, color-mix(in srgb, var(--background) 55%, transparent) 35%, var(--background) 50%, color-mix(in srgb, var(--background) 55%, transparent) 65%)",
+                backgroundSize: "200% 100%",
+              }}
+              initial={{ backgroundPosition: "100% 0%" }}
+              animate={{ backgroundPosition: "-100% 0%" }}
+              transition={{ duration: 1.2, ease: "linear", repeat: Infinity }}
+            >
+              {verdict}
+            </motion.span>
+          ) : (
+            verdict
+          )
+        }
+      />
     </div>
   )
 }

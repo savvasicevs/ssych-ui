@@ -1,9 +1,11 @@
 "use client"
 
-import { type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { BUTTON_PRIMARY } from "@/components/ui/control-classes"
+import { EmptyStateDialog, type EmptyStateDigest } from "@/components/ui/empty-state-dialog"
 
 /* Empty State, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -13,7 +15,18 @@ import { cn } from "@/lib/utils"
    · the action is a round fill with no outline
    · it names itself to a screen reader and the message is a status
    · it settles in once on mount and honours reduced motion (it had neither)
-   Props are the same. */
+   Props are the same.
+   2026-10-02 audit: the action is the shared primary at 36px (it is the one action here),
+   12.5px, where it was a hand made 6% pill at 11px; the hint is a sentence with a capital
+   ("Your first send shows up here.") at 11.5px and 60%, so it can be read; the default
+   width is 400.
+   2026-10-02 round 2: his note was to do something real, on topic, with the popup. The
+   default is now a trader's empty alerts list ("No price alerts yet", a bell), and its one
+   action opens a popup in the library Modal's look (empty-state-dialog.tsx) that subscribes
+   an email to market alerts: the field shows focus on its own edge, a digest is chosen from
+   three rows (price alerts, the daily close, a weekly recap), and Subscribe plays out into a
+   confirm state in place. `onAction` still works: a host that passes it gets the press and
+   no popup. New: `digests` and `onSubscribe(email, digest)`. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
@@ -21,10 +34,11 @@ const LIFT_SPRING = { type: "spring", stiffness: 500, damping: 30 } as const
 const DOTS = "radial-gradient(color-mix(in srgb, var(--foreground) 9%, transparent) 1px, transparent 1px) 0 0 / 14px 14px"
 const FADE = "radial-gradient(closest-side, black 35%, transparent 100%)"
 
-const EnvelopeGlyph = (
+/** a bell: the alerts list is empty */
+const BellGlyph = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
     <path
-      d="M3 8l9 5 9-5M4.8 5h14.4c1 0 1.8.8 1.8 1.8v10.4c0 1-.8 1.8-1.8 1.8H4.8c-1 0-1.8-.8-1.8-1.8V6.8C3 5.8 3.8 5 4.8 5z"
+      d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15L6 16.5zM10 20.5a2.2 2.2 0 0 0 4 0"
       stroke="currentColor"
       strokeWidth="1.4"
       strokeLinecap="round"
@@ -35,14 +49,17 @@ const EnvelopeGlyph = (
 
 /**
  * "Nothing yet": a dotted field that fades into the page, a glyph, one line of ink, one
- * quiet line under it and a single action.
+ * quiet line under it and a single action. Without `onAction`, the action opens a popup
+ * that subscribes an email to market alerts.
  */
 export function EmptyState({
-  icon = EnvelopeGlyph,
-  title = "No emails sent yet",
-  hint = "your first send appears here in real time",
-  action = "Send a test email",
+  icon = BellGlyph,
+  title = "No price alerts yet",
+  hint = "Get an email the moment a market on your watchlist crosses your level.",
+  action = "Create an alert",
   onAction,
+  digests,
+  onSubscribe,
   className,
 }: {
   icon?: ReactNode
@@ -50,13 +67,19 @@ export function EmptyState({
   hint?: string
   /** Button label; pass null to render no action. */
   action?: string | null
+  /** the host's own action; without it the button opens the built-in email alerts popup */
   onAction?: () => void
+  /** the popup's digest choices (price alerts, daily close, weekly recap by default) */
+  digests?: EmptyStateDigest[]
+  /** told when the popup subscribes an address */
+  onSubscribe?: (email: string, digest: EmptyStateDigest) => void
   className?: string
 }) {
   const reduced = useReducedMotion()
+  const [open, setOpen] = useState(false)
   return (
     <div
-      className={cn("relative flex w-full max-w-[420px] flex-col items-center px-8 py-12 tabular-nums", className)}
+      className={cn("relative flex w-[400px] max-w-full flex-col items-center px-8 py-12 tabular-nums", className)}
       role="group"
       aria-label={title}
     >
@@ -77,20 +100,22 @@ export function EmptyState({
         <span className="grid h-6 w-6 place-items-center text-foreground/45">{icon}</span>
         <div role="status" className="mt-3 flex flex-col items-center text-center">
           <span className="text-[13px] font-medium text-foreground/90">{title}</span>
-          <span className="mt-1 text-[11px] text-foreground/45">{hint}</span>
+          <span className="mt-1 text-[11.5px] text-foreground/60">{hint}</span>
         </div>
         {action && (
           <motion.button
             type="button"
-            onClick={onAction}
+            onClick={onAction ?? (() => setOpen(true))}
+            aria-haspopup={onAction ? undefined : "dialog"}
             whileTap={reduced ? undefined : { scale: 0.97 }}
             transition={LIFT_SPRING}
-            className="mt-5 rounded-full bg-foreground/[0.06] px-3.5 py-1.5 text-[11px] font-medium text-foreground/90 outline-none transition-colors duration-150 hover:bg-foreground/[0.1] focus-visible:bg-foreground/[0.1] motion-reduce:transition-none"
+            className={cn(BUTTON_PRIMARY, "mt-5 h-9 w-auto px-4 text-[12.5px] active:scale-100")}
           >
             {action}
           </motion.button>
         )}
       </motion.div>
+      {!onAction && <EmptyStateDialog open={open} onClose={() => setOpen(false)} digests={digests} onSubscribe={onSubscribe} />}
     </div>
   )
 }
