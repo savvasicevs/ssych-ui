@@ -5,7 +5,8 @@
   "title": "Order Book",
   "description": "A crypto exchange order book with bids, asks and depth bars, reading the cumulative size and value up to any price level.",
   "categories": [
-    "data"
+    "data",
+    "trading"
   ],
   "dependencies": [
     "clsx",

@@ -5,7 +5,8 @@
   "title": "Quick Ticket",
   "description": "A watchlist row that expands into a quick order ticket for market and limit orders, for broker and stock trading apps.",
   "categories": [
-    "flows"
+    "flows",
+    "trading"
   ],
   "dependencies": [
     "clsx",

@@ -5,7 +5,8 @@
   "title": "Leverage Ticket",
   "description": "A perpetual futures order ticket with margin, long or short and a leverage slider that updates position size, fees and the liquidation price.",
   "categories": [
-    "flows"
+    "flows",
+    "trading"
   ],
   "dependencies": [
     "clsx",

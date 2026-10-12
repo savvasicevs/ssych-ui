@@ -5,7 +5,8 @@
   "title": "Execution Controls",
   "description": "A hold to confirm order button for trading apps that shows the order as working, filled or rejected, with a timed undo.",
   "categories": [
-    "controls"
+    "controls",
+    "trading"
   ],
   "dependencies": [
     "clsx",

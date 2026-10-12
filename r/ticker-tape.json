@@ -5,7 +5,9 @@
   "title": "Ticker Tape",
   "description": "A scrolling stock and crypto ticker tape with BTC, ETH, TAO and NVDA, green up and red down, paused on hover, for headers and trading dashboards.",
   "categories": [
-    "data"
+    "data",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

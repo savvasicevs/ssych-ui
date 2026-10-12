@@ -5,7 +5,8 @@
   "title": "Top Coins",
   "description": "A top cryptocurrencies widget with Bitcoin, Ethereum and Solana prices and sparklines over 3M to 1Y, scrubbable for any week.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

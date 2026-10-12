@@ -5,7 +5,8 @@
   "title": "Order Ticket",
   "description": "A buy and sell order form for limit and market orders where price, amount and total stay in sync, for crypto exchanges and broker apps.",
   "categories": [
-    "controls"
+    "controls",
+    "trading"
   ],
   "dependencies": [
     "clsx",

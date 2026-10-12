@@ -5,7 +5,8 @@
   "title": "Price Scrubber",
   "description": "A stock price chart you scrub with a magnet crosshair and price and time badges on the axes, the headline price turning green or red against the open.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

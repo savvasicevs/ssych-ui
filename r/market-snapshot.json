@@ -5,7 +5,8 @@
   "title": "Market Snapshot",
   "description": "A stock price card with periods from 1D to All and a line chart you scrub for the price at any moment, for broker and market apps.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

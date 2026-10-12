@@ -5,7 +5,9 @@
   "title": "Currency Amount",
   "description": "Currency and crypto amount formatters that keep symbols, decimals, abbreviations and signed colours consistent across a fintech screen.",
   "categories": [
-    "data"
+    "data",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

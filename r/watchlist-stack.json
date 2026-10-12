@@ -5,7 +5,8 @@
   "title": "Watchlist Stack",
   "description": "A stock watchlist with an intraday sparkline, price and daily move per ticker, scrubbable for the price at any moment.",
   "categories": [
-    "data"
+    "data",
+    "trading"
   ],
   "dependencies": [
     "clsx",

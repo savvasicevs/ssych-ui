@@ -5,7 +5,9 @@
   "title": "Candlestick Chart",
   "description": "A candlestick chart with a volume histogram, a magnet crosshair and a live OHLC legend, for stock and crypto trading terminals.",
   "categories": [
-    "charts"
+    "charts",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

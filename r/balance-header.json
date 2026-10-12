@@ -5,7 +5,9 @@
   "title": "Balance Header",
   "description": "A wallet and bank balance header with the total, the 24h move and a privacy toggle that masks every figure, for crypto and fintech apps.",
   "categories": [
-    "data"
+    "data",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

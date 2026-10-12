@@ -5,7 +5,9 @@
   "title": "Market Heatmap",
   "description": "A stock market heatmap with tiles sized by market cap and tinted by the daily move, for market overview and trading dashboards.",
   "categories": [
-    "charts"
+    "charts",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

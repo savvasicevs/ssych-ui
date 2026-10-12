@@ -89,6 +89,8 @@ interface BrowserWindowProps {
   dividers?: boolean
   /** The URL pill in the header (and its row on the phone layout). Off leaves the window controls alone in the bar. */
   showAddressBar?: boolean
+  /** Extra classes on the page area beside the sidebar, e.g. a rounded inset panel. */
+  pageClassName?: string
   sidebarItems?: Array<{
     icon?: React.ReactNode
     label: string
@@ -337,6 +339,7 @@ export function BrowserWindow({
   sidebar,
   sidebarWidthClassName,
   addressBarAlign = "center",
+  pageClassName,
   sidebarItems,
   mobileBreakpoint = 480,
   dividers = true,
@@ -403,7 +406,7 @@ export function BrowserWindow({
 
       <div className="flex h-0 flex-1">
         {showSidebar && sidebarPosition === "left" && side("left")}
-        <div className="relative h-full min-w-0 flex-1">
+        <div className={cn("relative h-full min-w-0 flex-1", pageClassName)}>
           <Page load={state.load}>{children}</Page>
         </div>
         {showSidebar && sidebarPosition === "right" && side("right")}

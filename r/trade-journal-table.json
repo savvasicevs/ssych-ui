@@ -5,7 +5,8 @@
   "title": "Trade Journal Table",
   "description": "A trade journal table for crypto and stock traders, with the open position lit and every closed trade settled to a win or loss.",
   "categories": [
-    "data"
+    "data",
+    "trading"
   ],
   "dependencies": [
     "clsx",

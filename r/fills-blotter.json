@@ -5,7 +5,8 @@
   "title": "Fills Blotter",
   "description": "A live order fills blotter for brokers and trading desks, streaming executions that land as working and resolve to filled or rejected.",
   "categories": [
-    "data"
+    "data",
+    "trading"
   ],
   "dependencies": [
     "clsx",

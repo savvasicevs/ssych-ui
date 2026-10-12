@@ -5,7 +5,8 @@
   "title": "Graph Comparison",
   "description": "A stock comparison chart that indexes up to four tickers to the same start, for relative performance from 1M to 1Y.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

@@ -5,7 +5,8 @@
   "title": "Positions Table",
   "description": "An open positions table for futures and margin trading with entry, mark, liquidation price and unrealised P&L, plus hold to close.",
   "categories": [
-    "data"
+    "data",
+    "trading"
   ],
   "dependencies": [
     "clsx",

@@ -5,7 +5,8 @@
   "title": "Cross Chain Swap",
   "description": "A cross chain bridge and swap widget for moving tokens between networks like Ethereum, Solana and Arbitrum, reversible in one click.",
   "categories": [
-    "flows"
+    "flows",
+    "trading"
   ],
   "dependencies": [
     "clsx",

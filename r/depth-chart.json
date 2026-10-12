@@ -5,7 +5,8 @@
   "title": "Depth Chart",
   "description": "A market depth chart for crypto exchanges showing bid and ask liquidity around the mid price, with a readout of size on each side.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

@@ -5,7 +5,9 @@
   "title": "Swap Ticket",
   "description": "A token swap widget for DEX and crypto wallet apps, with an editable amount, a flip button, a token picker and slippage settings.",
   "categories": [
-    "flows"
+    "flows",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

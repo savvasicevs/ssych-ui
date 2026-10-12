@@ -5,7 +5,8 @@
   "title": "Assets Balance Card",
   "description": "A portfolio balance card with rolling odometer digits and an intraday chart you can drag taller, for crypto wallets and banking apps.",
   "categories": [
-    "charts"
+    "charts",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

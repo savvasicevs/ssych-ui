@@ -5,7 +5,8 @@
   "title": "Volume Profile",
   "description": "A volume profile chart of traded volume by price with the point of control and value area, for futures and crypto traders.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

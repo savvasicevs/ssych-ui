@@ -5,7 +5,8 @@
   "title": "Equity & Drawdown",
   "description": "An equity curve with a synced drawdown chart for backtests and trading performance, one crosshair reading return, drawdown and days below peak.",
   "categories": [
-    "charts"
+    "charts",
+    "trading"
   ],
   "dependencies": [
     "clsx",

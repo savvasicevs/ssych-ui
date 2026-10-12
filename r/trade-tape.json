@@ -5,7 +5,8 @@
   "title": "Trade Tape",
   "description": "A live time and sales tape for trading terminals, streaming prints coloured by side and sized by volume, with block trades highlighted.",
   "categories": [
-    "data"
+    "data",
+    "trading"
   ],
   "dependencies": [
     "clsx",

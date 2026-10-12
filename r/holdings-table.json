@@ -5,7 +5,9 @@
   "title": "Holdings Table",
   "description": "A fund holdings table with market value, price, YTD return and portfolio weight bars, sortable by any column, for ETF and wealth apps.",
   "categories": [
-    "data"
+    "data",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",

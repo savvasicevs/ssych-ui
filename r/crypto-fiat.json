@@ -5,7 +5,9 @@
   "title": "Crypto/Fiat",
   "description": "A crypto amount input that switches between fiat and token units at the current rate, for wallets, exchanges and payment flows.",
   "categories": [
-    "controls"
+    "controls",
+    "trading",
+    "crypto"
   ],
   "dependencies": [
     "clsx",
