@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useState } from "react"
@@ -65,14 +66,14 @@ export interface SetupStepperProps {
 const DEFAULT_STEPS: SetupStep[] = [
   { title: "Connect a model provider", body: "Anthropic, OpenAI or Google keys." },
   { title: "Upload an eval set", body: "480 test cases as one JSONL file." },
-  { title: "Run the first eval", body: "Claude Opus 5.5 against the set." },
+  { title: "Run the first eval", body: "Atlas 3 against the set." },
   { title: "Set an alert threshold", body: "Page on call under an 85% pass rate." },
 ]
 
 const solid = (pct: number) => `color-mix(in srgb, var(--foreground) ${pct}%, var(--background))`
 
 /**
- * A setup rail in the Resend register (sample: an AI ops setup): numbered coins down a hairline, the open step
+ * A quiet developer-tool setup rail (sample: an AI ops setup): numbered coins down a hairline, the open step
  * with its detail, finished steps checked. Any step can be pressed; the rail follows.
  */
 export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChange, onFinish, className }: SetupStepperProps) {

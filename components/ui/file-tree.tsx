@@ -1,3 +1,4 @@
+// provenance: original
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { ChevronRight, File, Folder, FolderOpen } from "lucide-react"

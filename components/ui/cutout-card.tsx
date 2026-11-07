@@ -1,344 +1,129 @@
+// provenance: original, idea from Cult UI (MIT); this implementation is original, see THIRD_PARTY_NOTICES.md
 "use client"
 
-
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ComponentProps,
-  type HTMLAttributes,
-  type ImgHTMLAttributes,
-  type MouseEventHandler,
-} from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { createContext, createElement, useContext, useState, type ComponentProps, type HTMLAttributes, type ImgHTMLAttributes } from "react"
+import { motion as m, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
-// Minimal controllable-state hook (replaces @radix-ui/react-use-controllable-state)
-function useControllableState<T>({
-  prop,
-  defaultProp,
-  onChange,
-}: {
-  prop?: T
-  defaultProp: T
-  onChange?: (value: T) => void
-}) {
-  const [uncontrolled, setUncontrolled] = useState<T>(defaultProp)
-  const isControlled = prop !== undefined
-  const value = isControlled ? (prop as T) : uncontrolled
-  const setValue = useCallback(
-    (next: T) => {
-      if (!isControlled) setUncontrolled(next)
-      onChange?.(next)
-    },
-    [isControlled, onChange],
-  )
-  return [value, setValue] as const
-}
+/* transitions.dev signature smooth-out easing */
+const SMOOTH = [0.22, 1, 0.36, 1] as const
 
-const CORNER_PATH = "M0 200C155.996 199.961 200.029 156.308 200 0V200H0Z"
+/* The notch that makes the "cutout": a filled corner whose inner edge is a soft curve,
+   placed beside a label or pin so the card's surface seems to wrap around it. K sets how
+   square the curve is (0.55 ≈ a circle, 1 = a sharp corner). */
+const K = 0.75
+const NOTCH = `M0 200C${200 * K} 200 200 ${200 * K} 200 0V200H0Z`
 
-// ============================================================================
-// Context
-// ============================================================================
+/** What every part of one card can read: whether the card is hovered, and a setter. */
+export type CutoutCardContextValue = { hovered: boolean; setHovered: (next: boolean) => void }
 
-export interface CutoutCardContextValue {
-  hovered: boolean
-  setHovered: (next: boolean) => void
-}
+const HoverContext = createContext<CutoutCardContextValue | null>(null)
 
-const CutoutCardContext = createContext<CutoutCardContextValue | null>(null)
+/** hovered: controlled hover, for a parent that drives several cards. defaultHovered: the
+ *  starting state when uncontrolled. onHoveredChange: told about every change.
+ *  trackPointerHover: false = the pointer does not change hover; drive it yourself. */
+export type CutoutCardProps = Omit<ComponentProps<typeof m.div>, "defaultValue"> & { hovered?: boolean; defaultHovered?: boolean; onHoveredChange?: (hovered: boolean) => void; trackPointerHover?: boolean }
 
-function useCutoutCard() {
-  const ctx = useContext(CutoutCardContext)
-  if (!ctx) {
-    throw new Error("useCutoutCard must be used within <CutoutCard>")
+/** A media card whose labels and pins sit in notches cut into the image. The root owns
+ *  one hover state (controlled or not) that its action region reads, and fades in once
+ *  on mount. */
+export function CutoutCard({ className, hovered, defaultHovered = false, onHoveredChange, trackPointerHover = true, onMouseEnter, onMouseLeave, children, ...rest }: CutoutCardProps) {
+  const reduced = useReducedMotion()
+  const [own, setOwn] = useState(defaultHovered)
+  const on = hovered ?? own
+  const setHovered = (next: boolean) => {
+    if (hovered === undefined) setOwn(next)
+    onHoveredChange?.(next)
   }
-  return ctx
-}
-
-// ============================================================================
-// Root
-// ============================================================================
-
-export type CutoutCardProps = Omit<
-  ComponentProps<typeof motion.div>,
-  "defaultValue"
-> & {
-  /** When set, hover state is controlled by the parent. */
-  hovered?: boolean
-  /** Initial hover state when uncontrolled. */
-  defaultHovered?: boolean
-  /** Called when pointer hover changes (after internal state updates). */
-  onHoveredChange?: (hovered: boolean) => void
-  /**
-   * When true (default), pointer enter/leave on the root update hover state.
-   * Set false if you only drive hover programmatically or via CSS.
-   */
-  trackPointerHover?: boolean
-}
-
-export function CutoutCard({
-  className,
-  hovered: hoveredProp,
-  defaultHovered = false,
-  onHoveredChange,
-  trackPointerHover = true,
-  onMouseEnter,
-  onMouseLeave,
-  children,
-  ...props
-}: CutoutCardProps) {
-  const reduceMotion = useReducedMotion()
-  const [hovered, setHovered] = useControllableState({
-    prop: hoveredProp,
-    defaultProp: defaultHovered,
-    onChange: onHoveredChange,
-  })
-
-  const setHoveredStable = useCallback(
-    (next: boolean) => {
-      setHovered(next)
-    },
-    [setHovered]
-  )
-
-  const ctx = useMemo<CutoutCardContextValue>(
-    () => ({
-      hovered: hovered ?? false,
-      setHovered: setHoveredStable,
-    }),
-    [hovered, setHoveredStable]
-  )
-
-  const handleMouseEnter: MouseEventHandler<HTMLDivElement> = (e) => {
-    onMouseEnter?.(e)
-    if (e.defaultPrevented || !trackPointerHover) {
-      return
-    }
-    setHoveredStable(true)
-  }
-
-  const handleMouseLeave: MouseEventHandler<HTMLDivElement> = (e) => {
-    onMouseLeave?.(e)
-    if (e.defaultPrevented || !trackPointerHover) {
-      return
-    }
-    setHoveredStable(false)
+  /* the pointer counts unless the caller opted out or handled the event itself */
+  const follow = (next: boolean) => (e: React.MouseEvent<HTMLDivElement>, user?: (e: React.MouseEvent<HTMLDivElement>) => void) => {
+    user?.(e)
+    if (trackPointerHover && !e.defaultPrevented) setHovered(next)
   }
 
   return (
-    <CutoutCardContext.Provider value={ctx}>
-      <motion.div
-        animate={{ opacity: 1 }}
-        className={cn(className)}
-        data-slot="cutout-card"
-        data-state={ctx.hovered ? "hovered" : "idle"}
-        initial={{ opacity: 0 }}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        transition={
-          reduceMotion
-            ? { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-            : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
-        }
-        {...props}
+    <HoverContext.Provider value={{ hovered: on, setHovered }}>
+      <m.div className={cn(className)} data-slot="cutout-card" data-state={on ? "hovered" : "idle"} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        transition={{ duration: reduced ? 0.22 : 0.36, ease: SMOOTH }}
+        onMouseEnter={(e) => follow(true)(e, onMouseEnter)}
+        onMouseLeave={(e) => follow(false)(e, onMouseLeave)}
+        {...rest}
       >
-        {children}
-      </motion.div>
-    </CutoutCardContext.Provider>
+        {children}</m.div>
+    </HoverContext.Provider>
   )
 }
 
-// ============================================================================
-// Layout primitives
-// ============================================================================
+type Div = HTMLAttributes<HTMLDivElement>
+export type { Div as CutoutCardMediaProps, Div as CutoutCardOverlayProps, Div as CutoutCardContentProps, Div as CutoutCardFooterProps, Div as CutoutCardInsetLabelProps, Div as CutoutCardPinProps }
 
-export type CutoutCardMediaProps = HTMLAttributes<HTMLDivElement>
-
-export function CutoutCardMedia({ className, ...props }: CutoutCardMediaProps) {
-  return (
-    <div
-      className={cn("relative overflow-hidden", className)}
-      data-slot="cutout-card-media"
-      {...props}
-    />
-  )
+/* the plain parts: a div with base classes and a data-slot, nothing else */
+function slot(name: string, base: string) {
+  const Part = ({ className, ...rest }: Div) =>
+    createElement("div", { ...rest, className: cn(base, className), "data-slot": `cutout-card-${name}` })
+  return Part
 }
+
+/** the image well: give it a size; the image fills it */
+export const CutoutCardMedia = slot("media", "relative overflow-hidden")
+
+/** a wash from the bottom so text over the image stays readable */
+export const CutoutCardOverlay = slot(
+  "overlay",
+  "pointer-events-none absolute inset-0 bg-linear-to-t from-background/35 via-transparent to-transparent dark:from-background/50",
+)
+
+export const CutoutCardContent = slot("content", "p-6")
+
+export const CutoutCardFooter = slot("footer", "flex items-center justify-between")
+
+/** a strip set into an edge of the media (a "Featured" tab); put CutoutCorner notches
+ *  beside it. It does not animate in, so no seam shows against the image edge. */
+export const CutoutCardInsetLabel = slot("inset-label", "absolute")
+
+/** a badge set into a corner (a "New" pin); same rules as the inset label */
+export const CutoutCardPin = slot("pin", "absolute")
 
 export type CutoutCardImageProps = ImgHTMLAttributes<HTMLImageElement>
-
-/** Parent `CutoutCardMedia` should be `relative` with a defined block size. */
-export function CutoutCardImage({ className, alt = "", ...props }: CutoutCardImageProps) {
+/** the picture, covering its media well, drifting in a little on card hover */
+export function CutoutCardImage({ className, alt = "", ...rest }: CutoutCardImageProps) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      alt={alt}
-      className={cn(
-        "absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/cutout:scale-105",
-        className
-      )}
-      data-slot="cutout-card-image"
-      {...props}
-    />
+    <img {...rest} alt={alt} data-slot="cutout-card-image"
+      className={cn("absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/cutout:scale-105", className)} />
   )
 }
 
-export type CutoutCardOverlayProps = HTMLAttributes<HTMLDivElement>
+/** size: rendered width and height, px */
+export type CutoutCornerProps = ComponentProps<"svg"> & { size?: number }
 
-export function CutoutCardOverlay({
-  className,
-  ...props
-}: CutoutCardOverlayProps) {
+/** One notch. Colour it with the card's surface (text-card, text-background…) and
+ *  rotate it to the corner it fills. */
+export function CutoutCorner({ className, size = 32, viewBox = "0 0 200 200", ...rest }: CutoutCornerProps) {
   return (
-    <div
-      className={cn(
-        "pointer-events-none absolute inset-0 bg-linear-to-t from-background/35 via-transparent to-transparent dark:from-background/50",
-        className
-      )}
-      data-slot="cutout-card-overlay"
-      {...props}
-    />
+    <svg aria-hidden className={cn(className)} data-slot="cutout-corner" width={size} height={size} viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" {...rest}>
+      <path d={NOTCH} fill="currentColor" />
+    </svg>
   )
 }
 
-export type CutoutCardContentProps = HTMLAttributes<HTMLDivElement>
+/** revealOnHover: true = shown only while the card is hovered; false = always shown */
+export type CutoutCardActionProps = ComponentProps<typeof m.div> & { revealOnHover?: boolean }
 
-export function CutoutCardContent({
-  className,
-  ...props
-}: CutoutCardContentProps) {
-  return (
-    <div
-      className={cn("p-6", className)}
-      data-slot="cutout-card-content"
-      {...props}
-    />
-  )
-}
-
-export type CutoutCardFooterProps = HTMLAttributes<HTMLDivElement>
-
-export function CutoutCardFooter({
-  className,
-  ...props
-}: CutoutCardFooterProps) {
-  return (
-    <div
-      className={cn("flex items-center justify-between", className)}
-      data-slot="cutout-card-footer"
-      {...props}
-    />
-  )
-}
-
-// ============================================================================
-// Cutout geometry
-// ============================================================================
-
-export type CutoutCornerProps = ComponentProps<"svg"> & {
-  /** Pixel width/height of the SVG viewBox (square). */
-  size?: number
-}
-
-export function CutoutCorner({
-  className,
-  size = 32,
-  viewBox = "0 0 200 200",
-  ...props
-}: CutoutCornerProps) {
-  return (
-    <>
-      {/* biome-ignore lint/a11y/noSvgWithoutTitle: decorative corner mask; hidden from AT via aria-hidden */}
-      <svg
-        aria-hidden
-        className={cn(className)}
-        data-slot="cutout-corner"
-        height={size}
-        viewBox={viewBox}
-        width={size}
-        xmlns="http://www.w3.org/2000/svg"
-        {...props}
-      >
-        <path d={CORNER_PATH} fill="currentColor" />
-      </svg>
-    </>
-  )
-}
-
-export type CutoutCardInsetLabelProps = HTMLAttributes<HTMLDivElement>
-
-/** Absolutely positioned strip (e.g. bottom-left “Featured”); add corners as siblings inside. Static (no entrance motion) to avoid compositing seams next to the media edge. */
-export function CutoutCardInsetLabel({
-  className,
-  ...props
-}: CutoutCardInsetLabelProps) {
-  return (
-    <div
-      className={cn("absolute", className)}
-      data-slot="cutout-card-inset-label"
-      {...props}
-    />
-  )
-}
-
-export type CutoutCardPinProps = HTMLAttributes<HTMLDivElement>
-
-/** Corner badge shell (e.g. top-right “New”); add corners as siblings inside. Static (no entrance motion). */
-export function CutoutCardPin({ className, ...props }: CutoutCardPinProps) {
-  return (
-    <div
-      className={cn("absolute", className)}
-      data-slot="cutout-card-pin"
-      {...props}
-    />
-  )
-}
-
-// ============================================================================
-// Context-sensitive action region
-// ============================================================================
-
-export type CutoutCardActionProps = ComponentProps<typeof motion.div> & {
-  /**
-   * When true (default), visibility follows card hover from context.
-   * Set false to always show the region.
-   */
-  revealOnHover?: boolean
-}
-
-export function CutoutCardAction({
-  className,
-  revealOnHover = true,
-  ...props
-}: CutoutCardActionProps) {
-  const { hovered } = useCutoutCard()
-  const reduceMotion = useReducedMotion()
-  const visible = !revealOnHover || hovered
+/** A control that rises 8px into place when the card is hovered. */
+export function CutoutCardAction({ className, revealOnHover = true, ...rest }: CutoutCardActionProps) {
+  const card = useContext(HoverContext)
+  if (!card) throw new Error("CutoutCardAction must sit inside a CutoutCard")
+  const reduced = useReducedMotion()
+  const shown = card.hovered || !revealOnHover
 
   return (
-    <motion.div
-      animate={
-        visible
-          ? { opacity: 1, transform: "translateY(0px)" }
-          : { opacity: 0, transform: "translateY(8px)" }
-      }
-      className={cn(
-        "absolute",
-        revealOnHover && !visible && "pointer-events-none",
-        className
-      )}
-      data-reveal={revealOnHover ? "hover" : "always"}
-      data-slot="cutout-card-action"
-      transition={
-        reduceMotion
-          ? { duration: 0.15, ease: [0.22, 1, 0.36, 1] }
-          : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
-      }
-      {...props}
+    <m.div
+      className={cn("absolute", !shown && "pointer-events-none", className)}
+      data-slot="cutout-card-action" data-reveal={revealOnHover ? "hover" : "always"}
+      animate={{ opacity: shown ? 1 : 0, transform: `translateY(${shown ? 0 : 8}px)` }}
+      transition={{ duration: reduced ? 0.15 : 0.24, ease: SMOOTH }}
+      {...rest}
     />
   )
 }

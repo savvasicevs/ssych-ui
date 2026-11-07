@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useState, type ReactNode } from "react"
@@ -22,7 +23,7 @@ import { LiveFigure } from "@/components/ui/live-figure"
    plausible (one ticker at two far prices) and the headlines did not belong to their
    tickers: both are rewritten, and the two AAPL prints now agree with each other.
    Formulas:
-   · price before = price / (1 + delta / 100)      (SMCI 41.86 / 0.918 = 45.60)
+   · price before = price / (1 + delta / 100)      (QRDX 41.86 / 0.918 = 45.60)
    · move         = price − price before           (41.86 − 45.60 = −3.74)
    · up and down  = count of events by the sign of delta (sample: 4 up, 1 down)
    Marks (2026-09-30): a token shows its real mark (TokenIcon), a company or a wallet its
@@ -35,10 +36,11 @@ import { LiveFigure } from "@/components/ui/live-figure"
    at /45, hairlines at 4% and none under a day head, the pinned and pointed row on 12px
    corners, and the width set to 440 like the other AI and operations lists.
    2026-10-02 round 2: the sample is market moving events in place of consumer tech news:
-   an NVDA earnings beat with EPS against the estimate, a TAO exchange listing and spot SOL
-   ETF inflows today, an SMCI guidance cut and an MSFT analyst upgrade yesterday, each with
-   the move it left. Prices stay under $1,000 so the price column holds. The formulas below
-   use the SMCI print. */
+   an earnings beat with EPS against the estimate, a token listing and fund inflows today, a
+   guidance cut and an analyst upgrade yesterday, each with the move it left. Prices stay
+   under $1,000 so the price column holds. The formulas above use the QRDX print.
+   2026-11-07: every issuer in the sample is invented (no real company may carry made-up
+   news), and a quiet "Sample data" line says so under the feed. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -61,19 +63,18 @@ export interface EventFeedProps {
   title?: string
   /** draws a ticker's mark in place of the brand-coloured disc */
   renderIcon?: (symbol: string, size: number) => ReactNode
+  /** the quiet line under the feed; "" hides it (pass your own when the feed is live) */
+  note?: string
   className?: string
 }
 
 /** brand discs by ticker; the hex is only the fallback of the custom property */
 const BRAND: Record<string, string> = {
-  AAPL: "var(--coin-aapl, #7d7d82)",
-  SMCI: "var(--coin-smci, #151f6d)",
-  MSFT: "var(--coin-msft, #00a4ef)",
-  NVDA: "var(--coin-nvda, #76b900)",
-  GOOGL: "var(--coin-googl, #4285f4)",
-  AMZN: "var(--coin-amzn, #ff9900)",
-  META: "var(--coin-meta, #0467df)",
-  TSLA: "var(--coin-tsla, #cc0000)",
+  TBRD: "var(--coin-tbrd, #3a5bd9)",
+  KVR: "var(--coin-kvr, #7a4fd0)",
+  ORLA: "var(--coin-orla, #1f9d8b)",
+  QRDX: "var(--coin-qrdx, #2b3a67)",
+  VLMR: "var(--coin-vlmr, #c2672f)",
 }
 
 /** a ticker's mark: the caller's drawing, the brand disc, or two letters on ink */
@@ -96,16 +97,16 @@ const DEFAULT_DAYS: FeedDay[] = [
   {
     day: "Today, October 2",
     events: [
-      { symbol: "NVDA", time: "16:20", headline: "Q3 EPS of $1.24 against $1.12 expected; data center revenue up 48% on the year.", price: 186.42, delta: 4.6 },
-      { symbol: "TAO", time: "14:05", headline: "Listed for spot trading on two Korean exchanges; KRW and USDT books opened at 14:00.", price: 412.3, delta: 9.8 },
-      { symbol: "SOL", time: "11:30", headline: "Spot SOL ETFs take $184M of net inflows, the fifth straight day of inflows.", price: 148.2, delta: 3.1 },
+      { symbol: "TBRD", time: "16:20", headline: "Q3 EPS of $1.24 against $1.12 expected; platform revenue up 48% on the year.", price: 186.42, delta: 4.6 },
+      { symbol: "KVR", time: "14:05", headline: "Listed for spot trading on two new venues; USD and USDT books opened at 14:00.", price: 412.3, delta: 9.8 },
+      { symbol: "ORLA", time: "11:30", headline: "Funds tracking it take $184M of net inflows, the fifth straight day of inflows.", price: 148.2, delta: 3.1 },
     ],
   },
   {
     day: "Yesterday, October 1",
     events: [
-      { symbol: "SMCI", time: "16:10", headline: "Cuts full year revenue guidance to $21B from $23B on delayed rack shipments.", price: 41.86, delta: -8.2 },
-      { symbol: "MSFT", time: "09:15", headline: "Analyst upgrade to buy with a $560 target, up from $500, on Azure AI capacity.", price: 512.4, delta: 1.9 },
+      { symbol: "QRDX", time: "16:10", headline: "Cuts full year revenue guidance to $21B from $23B on delayed rack shipments.", price: 41.86, delta: -8.2 },
+      { symbol: "VLMR", time: "09:15", headline: "Analyst upgrade to buy with a $560 target, up from $500, on cloud capacity.", price: 512.4, delta: 1.9 },
     ],
   },
 ]
@@ -119,7 +120,7 @@ const before = (e: FeedEvent) => e.price / (1 + e.delta / 100)
  * dollars in the readout at the top.
  * 2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
  */
-export function EventFeed({ days = DEFAULT_DAYS, title = "Market events", renderIcon, className }: EventFeedProps) {
+export function EventFeed({ days = DEFAULT_DAYS, title = "Market events", renderIcon, note = "Sample data: issuers, news and prices are invented.", className }: EventFeedProps) {
   const reduced = useReducedMotion()
   const [hover, setHover] = useState<string | null>(null)
   const [pin, setPin] = useState<string | null>(null)
@@ -192,8 +193,9 @@ export function EventFeed({ days = DEFAULT_DAYS, title = "Market events", render
               )
             })}
           </div>
-        ))}
+                ))}
       </div>
+      {note && <p className="px-3 pt-3 text-[10px] text-foreground/45">{note}</p>}
     </div>
   )
 }

@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"

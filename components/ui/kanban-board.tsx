@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react"
@@ -125,7 +126,7 @@ function Tip({ label, children, align = "right" }: { label: string; children: Re
 }
 
 /**
- * A three-column board in the Linear register. Each card's arrow sends it to the next
+ * A quiet three-column board. Each card's arrow sends it to the next
  * column on the layout spring; every count is the cards in that column, so the numbers add up.
  */
 export function KanbanBoard({ cards = DEFAULT_CARDS, onMove, renderIcon, className }: KanbanBoardProps) {

@@ -1,3 +1,4 @@
+// provenance: original
 import { useState, useMemo, useCallback, createElement, type ReactNode } from "react";
 import { AnimatePresence } from "motion/react";
 import { GalleryModal, type MediaItemType } from "@/components/ui/interactive-bento-gallery";

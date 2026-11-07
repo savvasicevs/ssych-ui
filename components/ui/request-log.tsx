@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useEffect, useRef, useState } from "react"
@@ -86,7 +87,7 @@ function CopyBody({ text }: { text: string }) {
 }
 
 /**
- * API log in the Stripe/Supabase register: status code, method, path, latency and time
+ * A developer-console API log: status code, method, path, latency and time
  * per row. Pointing at a row dims the rest; pressing it unfolds the response body in
  * place. One row open at a time.
  */

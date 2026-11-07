@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useMemo, useRef, useState } from "react"
@@ -52,9 +53,9 @@ import { ChartCard } from "@/components/ui/chart-overlay"
    first, then the bar's total. Pointing a name in the legend still reads the series in the
    header. The year under the months was 8.5px and is now 9px like the other ticks, and the
    axis and month figures moved from /35 to /45, the floor for axis text.
-   2026-10-02 round 2: the series are named for current models, Claude Opus 5.5, GPT-5 and
-   Gemini 3 Pro (the set Model Comparison shows), in place of claude-sonnet-4.5, gpt-4.1 and
-   gemini-2.5-pro. The monthly figures are unchanged, so every total and share holds. */
+   2026-11-07: the series are invented models, Atlas 3, Kestrel 2 Pro and Fable Mini (the set
+   Model Comparison shows), so no real maker's name sits next to made-up spend. The monthly
+   figures are unchanged, so every total and share holds. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 /** the house order for things that must be told apart; nothing on this chart means up */
@@ -80,7 +81,7 @@ export interface StackedBarsProps {
   className?: string
 }
 
-const SERIES = ["Claude Opus 5.5", "GPT-5", "Gemini 3 Pro", "Other"]
+const SERIES = ["Atlas 3", "Kestrel 2 Pro", "Fable Mini", "Other"]
 /** monthly spend in thousands of dollars, one column for each name in SERIES */
 const SPEND: [string, string, number[]][] = [
   ["Oct", "2025", [31.2, 22.4, 9.8, 6.1]],

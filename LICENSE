@@ -19,3 +19,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Third-party portions: some files contain, or in earlier published versions
+contained, code from other open-source projects. Those portions remain under
+their own licences, listed with their full texts in THIRD_PARTY_NOTICES.md.
+Names and marks of other companies that appear in components belong to their
+owners; the MIT licence above does not cover them.

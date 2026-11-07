@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useRef, useState } from "react"
@@ -105,7 +106,7 @@ function dateOf(d: number, month: number, day: number) {
 }
 
 /**
- * A sprint strip in the Linear register: a quiet day grid, bars that draw in from the
+ * A quiet sprint strip: a quiet day grid, bars that draw in from the
  * left and a hairline for today. Pointing at a task steps the rest back and reads its
  * dates and owner above the plan.
  * 2026-10-02: weekend washes lifted to 6% so the weekends read on white and on black.

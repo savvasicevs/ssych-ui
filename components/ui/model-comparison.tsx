@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useRef, useState, type ReactNode } from "react"
@@ -5,7 +6,6 @@ import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import { ChartCard } from "@/components/ui/chart-overlay"
-import { ModelMark, modelMaker, type ModelMaker } from "@/components/ui/model-comparison-marks"
 
 /* Model Comparison, written new through ssych-component (2026-09-29).
    What it is for: choosing between two to four models on the same four measures.
@@ -33,15 +33,11 @@ import { ModelMark, modelMaker, type ModelMaker } from "@/components/ui/model-co
    is gone, the blend formula now sits in the Cost label's tooltip and in the cost card;
    pointing lights the row and the column together with one glide fill and opens a ChartCard
    by the cell; a click pins the cell. Width 440, the AI and operations list width.
-   2026-10-02 round 2: his note asked for real icons for the actual models. The default models
-   are one from each maker now, Claude Opus 5.5, GPT-5 and Gemini 3 Pro, with plausible
-   figures (sample values still, not published ones), and each column head carries its
-   maker's mark at 12px beside the name. The marks are the Claude, OpenAI and Google Gemini
-   marks from Simple Icons (CC0), drawn inline in model-comparison-marks.tsx. They come in
-   through a `renderIcon(name, size, model)` prop whose default draws these marks (the maker
-   is read from the name, or from the new optional `maker` field); pass your own to draw
-   other marks, or null for none. The blend on the defaults: Claude (3 × $5.00 + $25.00) ÷ 4
-   = $10.00, GPT-5 (3 × $1.25 + $10.00) ÷ 4 = $3.44, Gemini (3 × $2.00 + $12.00) ÷ 4 = $4.50. */
+   2026-10-02 round 2: column heads gained a mark slot, `renderIcon(name, size, model)`, with
+   an optional `maker` field on each model for it to read.
+   2026-11-07: the defaults are three invented models (Atlas 3, Kestrel 2 Pro, Fable Mini) with
+   no marks and a quiet "Sample data" line under the table; `renderIcon` is opt-in. The blend on the defaults: Atlas 3 (3 × $5.00 + $25.00) ÷ 4 = $10.00,
+   Kestrel 2 Pro (3 × $1.25 + $10.00) ÷ 4 = $3.44, Fable Mini (3 × $2.00 + $12.00) ÷ 4 = $4.50. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GLIDE = { type: "spring", stiffness: 520, damping: 40 } as const
@@ -60,8 +56,8 @@ export interface ComparedModel {
   outputPrice: number
   /** context size in tokens */
   context: number
-  /** whose model it is, for its mark; read from the name when absent */
-  maker?: ModelMaker
+  /** whose model it is, handed to your renderIcon */
+  maker?: string
 }
 
 export interface ModelComparisonProps {
@@ -69,18 +65,17 @@ export interface ModelComparisonProps {
   models?: ComparedModel[]
   /** the table's screen-reader name; the model names head the columns, so nothing is drawn */
   title?: string
-  /** draws a model's mark beside its column head; the Claude, OpenAI and Gemini marks by
-   *  default, null for none */
+  /** draws a model's mark beside its column head; none by default */
   renderIcon?: ((name: string, size: number, model: ComparedModel) => ReactNode) | null
+  /** the quiet line under the table; "" hides it (pass your own for real benchmarks) */
+  note?: string
   className?: string
 }
 
-const defaultIcon = (name: string, size: number, model: ComparedModel) => <ModelMark maker={model.maker ?? modelMaker(name)} size={size} />
-
 const DEFAULT_MODELS: ComparedModel[] = [
-  { name: "Claude Opus 5.5", maker: "anthropic", quality: 92.4, latency: 1.9, inputPrice: 5, outputPrice: 25, context: 1000000 },
-  { name: "GPT-5", maker: "openai", quality: 90.6, latency: 2.4, inputPrice: 1.25, outputPrice: 10, context: 400000 },
-  { name: "Gemini 3 Pro", maker: "google", quality: 91.3, latency: 1.4, inputPrice: 2, outputPrice: 12, context: 1000000 },
+  { name: "Atlas 3", quality: 92.4, latency: 1.9, inputPrice: 5, outputPrice: 25, context: 1000000 },
+  { name: "Kestrel 2 Pro", quality: 90.6, latency: 2.4, inputPrice: 1.25, outputPrice: 10, context: 400000 },
+  { name: "Fable Mini", quality: 91.3, latency: 1.4, inputPrice: 2, outputPrice: 12, context: 1000000 },
 ]
 
 const blended = (m: ComparedModel) => (MIX * m.inputPrice + m.outputPrice) / (MIX + 1)
@@ -115,7 +110,7 @@ type Box = { left: number; top: number; width: number; height: number }
  * over a 2px ink bar in every cell. The best value of a row is full ink, the rest step back,
  * so the winner of each measure reads without a legend or a colour.
  */
-export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", renderIcon = defaultIcon, className }: ModelComparisonProps) {
+export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", renderIcon = null, note = "Sample data: models and scores are invented.", className }: ModelComparisonProps) {
   const reduced = useReducedMotion()
   const boxRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<Cell | null>(null)
@@ -134,7 +129,7 @@ export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", ren
   const key = (c: Cell) => `${c.row}-${c.col}`
   /* each cell reports where it sits once it is pointed at, so the glide fill and the card
      can find it without measuring the whole table */
-  const note = (c: Cell, el: HTMLElement) => {
+  const place = (c: Cell, el: HTMLElement) => {
     const table = boxRef.current
     const root = table?.getBoundingClientRect()
     const own = el.getBoundingClientRect()
@@ -226,11 +221,11 @@ export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", ren
                 aria-label={`${cols[c].name}, ${row.id} ${row.show(val)} ${row.unit}${best ? ", best" : `, ${row.gap(Math.abs(val - row.best))} behind ${row.leader}`}`}
                 aria-pressed={pinned}
                 onPointerEnter={(e) => {
-                  note({ row: ri, col: c }, e.currentTarget)
+                  place({ row: ri, col: c }, e.currentTarget)
                   setHover({ row: ri, col: c })
                 }}
                 onFocus={(e) => {
-                  note({ row: ri, col: c }, e.currentTarget)
+                  place({ row: ri, col: c }, e.currentTarget)
                   setHover({ row: ri, col: c })
                 }}
                 onBlur={() => setHover(null)}
@@ -288,6 +283,7 @@ export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", ren
           ) : undefined
         }
       />
+      {note && <p className="pt-3 text-[10px] text-foreground/45">{note}</p>}
     </div>
   )
 }

@@ -1,3 +1,4 @@
+// provenance: original
 "use client"
 
 import { useEffect, useId, useRef, useState } from "react"
@@ -103,7 +104,7 @@ function Dot({ kind, className }: { kind: ReleaseKind; className?: string }) {
 }
 
 /**
- * A changelog in the Linear register: versions on a hairline rail, each note led by its
+ * A quiet changelog: versions on a hairline rail, each note led by its
  * kind. Pointing at a release or at a kind dims everything else; pressing a version
  * copies it.
  */

@@ -1,3 +1,4 @@
+// provenance: original; the GitHub mark it draws belongs to its owner
 "use client"
 
 import { useEffect, useId, useState, type ComponentType } from "react"

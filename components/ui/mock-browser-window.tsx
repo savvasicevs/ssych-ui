@@ -1,3 +1,4 @@
+// provenance: original, idea from Cult UI (MIT); earlier versions kept its props API and sidebar, see THIRD_PARTY_NOTICES.md
 "use client"
 
 import type React from "react"
@@ -38,65 +39,34 @@ import { Tip } from "@/components/ui/browser-window-tip"
    app.tradeboard.io (the house brand on the library dashboards) instead of example.com, and
    the sidebar list is Markets, Portfolio, Orders with 3 open, and API keys. */
 
-interface SidebarItem {
-  icon?: React.ReactNode
-  label: string
-  active?: boolean
-  badge?: string | number
-}
+/** One row of the passive sidebar list: a label, an optional icon, a badge, one active. */
+type SidebarItem = { label: string; icon?: React.ReactNode; active?: boolean; badge?: string | number }
 
-interface AddressBarProps {
-  url?: string
-  className?: string
-  /** "right" biases the bar toward the content area on mobile (centered again from sm+). */
-  align?: "center" | "right"
-}
+/** align "right" biases the bar toward the content area on mobile (centred again from sm). */
+type AddressBarProps = { url?: string; className?: string; align?: "center" | "right" }
 
-interface SidebarContentProps {
-  items?: SidebarItem[]
-  /** "row" lays the items side by side for a top or bottom bar */
-  direction?: "column" | "row"
-  className?: string
-}
+/** direction "row" lays the items side by side, for a top or bottom bar. */
+type SidebarContentProps = { items?: SidebarItem[]; direction?: "column" | "row"; className?: string }
 
-interface BrowserWindowProps {
-  children?: React.ReactNode
-  className?: string
-  /** the sidebar's width preset (sm 128, md 192, lg 224, xl 256) */
-  size?: "sm" | "md" | "lg" | "xl"
-  showSidebar?: boolean
-  sidebarPosition?: "left" | "right" | "top" | "bottom"
-  /** "minimal" keeps the window dots alone in the bar; "full" adds the address and the controls */
-  headerStyle?: "minimal" | "full"
-  /** kept for old installs: all three draw the same frame since 2026-10-02 */
-  variant?: "chrome" | "safari" | "generic"
-  /** "dark" or "light" scopes that theme's tokens to the window; "auto" follows the page */
-  theme?: "light" | "dark" | "auto"
-  url?: string
-  /** Back / forward / reload buttons after the window controls (full header). */
-  showNavButtons?: boolean
-  /** Right-side toolbar: bookmark and copy link (full header). */
-  showActions?: boolean
-  /** Custom sidebar node — overrides the default passive SidebarContent when provided (e.g. an interactive sidebar). */
-  sidebar?: React.ReactNode
-  /** Override the sidebar width class (e.g. responsive `w-40 lg:w-48`); falls back to the `size` preset. */
-  sidebarWidthClassName?: string
-  /** "right" biases the address bar toward the content area on mobile. */
-  addressBarAlign?: "center" | "right"
-  /** Below this container width (px) the frame turns into a phone browser: status row, one address pill, a bottom toolbar. 0 disables it. */
-  mobileBreakpoint?: number
-  /** The rules under the header and beside the sidebar. Off lets the chrome, sidebar and page read as one surface. */
-  dividers?: boolean
-  /** The URL pill in the header (and its row on the phone layout). Off leaves the window controls alone in the bar. */
-  showAddressBar?: boolean
-  /** Extra classes on the page area beside the sidebar, e.g. a rounded inset panel. */
-  pageClassName?: string
-  sidebarItems?: Array<{
-    icon?: React.ReactNode
-    label: string
-    active?: boolean
-    badge?: string | number
-  }>
+/** The frame's props. Old installs keep working, so every name below stays.
+ *  · size: sidebar width preset (sm 128, md 192, lg 224, xl 256); sidebarWidthClassName overrides it.
+ *  · showSidebar / sidebarPosition / sidebar / sidebarItems: the side or edge bar, a custom node,
+ *    or the passive list.
+ *  · headerStyle: "minimal" keeps the window dots alone; "full" adds the address and controls.
+ *  · variant: kept for old installs, all three draw the same frame since 2026-10-02.
+ *  · theme: "dark" or "light" scopes that theme's tokens to the window; "auto" follows the page.
+ *  · showNavButtons: back, forward, reload; showActions: bookmark and copy link (full header).
+ *  · addressBarAlign, showAddressBar: the url pill and where it leans on mobile.
+ *  · mobileBreakpoint: below this container width (px) the frame becomes a phone browser; 0 = never.
+ *  · dividers: the rules under the header and beside the sidebar.
+ *  · pageClassName: extra classes on the page area beside the sidebar. */
+type BrowserWindowProps = {
+  children?: React.ReactNode; className?: string; url?: string; pageClassName?: string
+  size?: "sm" | "md" | "lg" | "xl"; sidebarWidthClassName?: string
+  showSidebar?: boolean; sidebarPosition?: "left" | "right" | "top" | "bottom"; sidebar?: React.ReactNode; sidebarItems?: SidebarItem[]
+  headerStyle?: "minimal" | "full"; variant?: "chrome" | "safari" | "generic"; theme?: "light" | "dark" | "auto"
+  showNavButtons?: boolean; showActions?: boolean; addressBarAlign?: "center" | "right"; showAddressBar?: boolean
+  mobileBreakpoint?: number; dividers?: boolean
 }
 
 const HAIRLINE = "border-foreground/[0.05]"
@@ -292,29 +262,18 @@ function PhoneChrome({
   )
 }
 
-function SidebarContent({
-  items = [
-    { label: "Markets", active: true },
-    { label: "Portfolio" },
-    { label: "Orders", badge: "3" },
-    { label: "API keys" },
-  ],
-  direction = "column",
-  className = "",
-}: SidebarContentProps) {
+const DEFAULT_NAV: SidebarItem[] = [{ label: "Markets", active: true }, { label: "Portfolio" }, { label: "Orders", badge: "3" }, { label: "API keys" }]
+
+/* the passive list: pills, the active one on the thumb fill */
+function SidebarContent({ items = DEFAULT_NAV, direction = "column", className = "" }: SidebarContentProps) {
+  const row = direction === "row"
   return (
-    <div className={cn("flex gap-1 p-2.5", direction === "row" ? "flex-row items-center" : "flex-col", className)}>
-      {items.map((item, index) => (
-        <div
-          key={`${item.label}-${index}`}
-          className={cn(
-            "flex h-8 items-center gap-2 rounded-full px-3 text-[12.5px] transition-colors duration-150",
-            item.active ? cn(THUMB, "text-foreground/90") : "text-foreground/60",
-          )}
-        >
-          {item.icon && <div className="h-4 w-4 flex-shrink-0">{item.icon}</div>}
-          <span className="flex-1 truncate">{item.label}</span>
-          {item.badge != null && <span className="text-[11px] tabular-nums text-foreground/45">{item.badge}</span>}
+    <div className={cn("flex gap-1 p-2.5", row ? "flex-row items-center" : "flex-col", className)}>
+      {items.map(({ label, icon, active, badge }, i) => (
+        <div key={i} className={cn("flex h-8 items-center gap-2 rounded-full px-3 text-[12.5px] transition-colors duration-150", active ? `${THUMB} text-foreground/90` : "text-foreground/60")}>
+          {icon ? <span className="h-4 w-4 shrink-0">{icon}</span> : null}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {badge == null ? null : <span className="text-[11px] tabular-nums text-foreground/45">{badge}</span>}
         </div>
       ))}
     </div>
@@ -324,27 +283,11 @@ function SidebarContent({
 const SIDEBAR_SIZES = { sm: "w-32", md: "w-48", lg: "w-56", xl: "w-64" } as const
 const THEME_SCOPE = { dark: "dark", light: "light", auto: "" } as const
 
-export function BrowserWindow({
-  children,
-  className = "",
-  size = "md",
-  showSidebar = false,
-  sidebarPosition = "left",
-  headerStyle = "minimal",
-  // variant: kept for old installs, every value draws the one frame (see the header comment)
-  theme = "auto",
-  url,
-  showNavButtons = false,
-  showActions = false,
-  sidebar,
-  sidebarWidthClassName,
-  addressBarAlign = "center",
-  pageClassName,
-  sidebarItems,
-  mobileBreakpoint = 480,
-  dividers = true,
-  showAddressBar = true,
-}: BrowserWindowProps) {
+export function BrowserWindow(props: BrowserWindowProps) {
+  /* variant is accepted and ignored: every value draws the one frame (see the header comment) */
+  const { children, className = "", size = "md", showSidebar = false, sidebarPosition = "left", headerStyle = "minimal", theme = "auto", url } = props
+  const { showNavButtons = false, showActions = false, sidebar, sidebarWidthClassName, addressBarAlign = "center", pageClassName, sidebarItems } = props
+  const { mobileBreakpoint = 480, dividers = true, showAddressBar = true } = props
   const frameRef = useRef<HTMLDivElement>(null)
   const width = useContainerWidth(frameRef)
   const state = useBrowserState(url ?? "https://app.tradeboard.io")
