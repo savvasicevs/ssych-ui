@@ -27,8 +27,9 @@ import { cn } from "@/lib/utils"
    chrome face (the SVG gradients and a masked sheen) with the same tilt, light and flip. The
    root's data-renderer says which is live: "gpu" or "fallback".
 
-   Light theme: the chrome is taken down to glossy black (brightness, then contrast) so it
-   stays visible on white; under `.dark` it is the plain chrome. The gradient stops never change.
+   Light theme: the chrome is taken down to dark steel (brightness, then contrast) so it
+   stays visible on white and keeps its gradient (2026-11-06: the old contrast(7.5) crushed it
+   to a flat black shape); under `.dark` it is the plain chrome. The gradient stops never change.
 
    One dependency, the earcut package for triangulation; the renderer is raw WebGPU. */
 
@@ -1387,7 +1388,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
 }
 
 /* the stage CSS, scoped by the mbadge- prefix. On a light page the metal is taken down to
-   glossy black (brightness, then contrast) so it stays visible on white; `.dark` turns that
+   dark steel (brightness, then contrast) so it stays visible on white; `.dark` turns that
    off. The fallback's sheen sweeps on the sway's 8s clock, brightest mid-face, and fades out
    (300ms, smooth-out) while the cursor drives the light. It is painted, not composited (its
    sweep, pulse and fade are a background position and two registered numbers), so the flat
@@ -1395,7 +1396,7 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
 const CSS = `
 @property --mbadge-a{syntax:"<number>";inherits:false;initial-value:0.35}
 @property --mbadge-on{syntax:"<number>";inherits:false;initial-value:1}
-.mbadge-art{filter:brightness(0.44) contrast(7.5)}
+.mbadge-art{filter:brightness(0.58) contrast(1.9)}
 .dark .mbadge-art{filter:none}
 .mbadge-sheen{--mbadge-a:0.35;--mbadge-on:1;background:linear-gradient(100deg,transparent 32%,rgb(255 255 255/calc(0.85*var(--mbadge-a)*var(--mbadge-on))) 50%,transparent 68%) 130% 0/220% 100% no-repeat;transition:--mbadge-on 300ms cubic-bezier(0.22,1,0.36,1);animation:mbadge-light 8s ease-in-out infinite}
 @keyframes mbadge-light{0%,100%{background-position:130% 0;--mbadge-a:0.35}25%,75%{--mbadge-a:0.7}50%{background-position:-30% 0;--mbadge-a:0.35}}

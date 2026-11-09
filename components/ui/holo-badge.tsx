@@ -1340,15 +1340,17 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   }
 }
 
-/* the stage CSS, scoped by the hbadge- prefix. On a light page the metal is taken down to
-   glossy black (brightness, then contrast) so it stays visible on white; `.dark` turns that
-   off. The fallback's sheen sweeps on the sway's 8s clock, brightest mid-face, and fades out
+/* the stage CSS, scoped by the hbadge- prefix. On a light page the foil is taken
+   deeper and more saturated (2026-11-06: it washed out to pale grey on white); `.dark` turns
+   that off. The fallback's sheen sweeps on the sway's 8s clock, brightest mid-face, and fades out
    (300ms, smooth-out) while the cursor drives the light. It is painted, not composited (its
    sweep, pulse and fade are a background position and two registered numbers), so the flat
    face stays one layer. */
 const CSS = `
 @property --hbadge-a{syntax:"<number>";inherits:false;initial-value:0.35}
 @property --hbadge-on{syntax:"<number>";inherits:false;initial-value:1}
+.hbadge-art{filter:saturate(1.6) brightness(0.8) contrast(1.35)}
+.dark .hbadge-art{filter:none}
 .hbadge-sheen{--hbadge-a:0.35;--hbadge-on:1;background:linear-gradient(100deg,transparent 32%,rgb(255 255 255/calc(0.85*var(--hbadge-a)*var(--hbadge-on))) 50%,transparent 68%) 130% 0/220% 100% no-repeat;transition:--hbadge-on 300ms cubic-bezier(0.22,1,0.36,1);animation:hbadge-light 8s ease-in-out infinite}
 @keyframes hbadge-light{0%,100%{background-position:130% 0;--hbadge-a:0.35}25%,75%{--hbadge-a:0.7}50%{background-position:-30% 0;--hbadge-a:0.35}}
 @media (prefers-reduced-motion:reduce){.hbadge-sheen{display:none}}

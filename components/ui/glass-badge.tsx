@@ -1334,15 +1334,17 @@ async function createRenderer(gpu: Gpu, canvas: HTMLCanvasElement, d: string, vi
   }
 }
 
-/* the stage CSS, scoped by the glbadge- prefix. On a light page the metal is taken down to
-   glossy black (brightness, then contrast) so it stays visible on white; `.dark` turns that
-   off. The fallback's sheen sweeps on the sway's 8s clock, brightest mid-face, and fades out
+/* the stage CSS, scoped by the glbadge- prefix. On a light page the glass is read
+   inverted (2026-11-06): its light is white, which vanished on a white page, so there it is a
+   clear piece with a dark cut edge and a soft drop; `.dark` turns that off. The fallback's sheen sweeps on the sway's 8s clock, brightest mid-face, and fades out
    (300ms, smooth-out) while the cursor drives the light. It is painted, not composited (its
    sweep, pulse and fade are a background position and two registered numbers), so the flat
    face stays one layer. */
 const CSS = `
 @property --glbadge-a{syntax:"<number>";inherits:false;initial-value:0.35}
 @property --glbadge-on{syntax:"<number>";inherits:false;initial-value:1}
+.glbadge-art{filter:invert(0.7) hue-rotate(180deg) contrast(1.4) opacity(0.75) drop-shadow(0 10px 18px rgba(0,0,0,0.08))}
+.dark .glbadge-art{filter:none}
 .glbadge-sheen{--glbadge-a:0.35;--glbadge-on:1;background:linear-gradient(100deg,transparent 32%,rgb(255 255 255/calc(0.85*var(--glbadge-a)*var(--glbadge-on))) 50%,transparent 68%) 130% 0/220% 100% no-repeat;transition:--glbadge-on 300ms cubic-bezier(0.22,1,0.36,1);animation:glbadge-light 8s ease-in-out infinite}
 @keyframes glbadge-light{0%,100%{background-position:130% 0;--glbadge-a:0.35}25%,75%{--glbadge-a:0.7}50%{background-position:-30% 0;--glbadge-a:0.35}}
 @media (prefers-reduced-motion:reduce){.glbadge-sheen{display:none}}
