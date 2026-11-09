@@ -1,4 +1,4 @@
-// provenance: original, idea from the 21st.dev Interactive Bento Gallery by Anurag Mishra (MIT); this implementation is original, see THIRD_PARTY_NOTICES.md
+// provenance: original
 "use client"
 
 import { useEffect, useRef, useState } from "react"

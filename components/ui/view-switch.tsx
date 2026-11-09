@@ -18,7 +18,7 @@ import { SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
    THUMB from controls.ts, 32px options (36px with `tall`), the measured fixed width
    (every option as an icon, less one, plus one option at the longest name), the narrow
    fall-back under 640px where no name shows. The device icons are the shell's own
-   strokes (ComponentShowcase.tsx) and Code is the Phosphor glyph it imports, inlined here.
+   strokes (ComponentShowcase.tsx), and Code is drawn here with the same weight.
    Added: arrow keys, and a default set of options so it renders with no props.
    Motion (2026-09-30): the thumb slides on transform, not `left`, 250ms both ways; a choice
    made with the arrow keys lands at once (keys repeat), only a press gets the tween.
@@ -70,11 +70,11 @@ export function MobileIcon() {
   )
 }
 
-/* Phosphor's Code glyph (regular), inlined so the file carries no icon package */
+/* the code glyph: two chevrons and a slash, drawn as 16-unit strokes on a 256 grid */
 function CodeIcon({ className }: { className?: string }) {
   return (
-    <svg width="1em" height="1em" viewBox="0 0 256 256" fill="currentColor" className={className} aria-hidden>
-      <path d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" />
+    <svg width="1em" height="1em" viewBox="0 0 256 256" fill="none" stroke="currentColor" strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M64 88 16 128l48 40M192 88l48 40-48 40M160 40 96 216" />
     </svg>
   )
 }

@@ -32,5 +32,5 @@ component listed above is MIT. One name is used twice: the free `market-watchlis
 Everything in this repo: [MIT](./LICENSE). Paid screens and landing pages are not in
 this repo and are sold under their own licence at https://ssych.com/library.
 
-Third-party portions keep their own licences: see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md),
-which also covers earlier published versions of the files it names.
+Every component here is original work. Icons, the font and npm dependencies keep their
+own licences: see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

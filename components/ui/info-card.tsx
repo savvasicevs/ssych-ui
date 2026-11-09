@@ -21,7 +21,7 @@ const CARD_RADIUS = "rounded-[24px]"
    real link or button, in the tab order even while its row is shut.
    Taken from: src/components/library/SidebarInfoMenu.tsx, boxClass, titleClass,
    bodyClass, actionClass and Reveal, class for class. The corner is controls.ts (24px);
-   the text inset is React Bits' 20px.
+   the text inset is 20px.
    Decided: nothing. The shell's three cards differ only in words and icon, so this is one
    component with those as props.
    2026-10-02 audit: his note said the right padding was wrong, so the inset is now one 20px
@@ -37,7 +37,7 @@ export interface InfoCardProps {
   title?: string
   line?: string
   action?: string
-  /** the action's icon, a Phosphor glyph at 16px */
+  /** the action's icon, a 16px glyph */
   icon?: ReactNode
   href?: string
   onPress?: () => void

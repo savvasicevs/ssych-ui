@@ -22,8 +22,7 @@ SOFTWARE.
 
 ---
 
-Third-party portions: some files contain, or in earlier published versions
-contained, code from other open-source projects. Those portions remain under
-their own licences, listed with their full texts in THIRD_PARTY_NOTICES.md.
-Names and marks of other companies that appear in components belong to their
+Every component in this repository is original work. The icons, the font and
+the npm packages the components use keep their own licences, listed in
+THIRD_PARTY_NOTICES.md. Names and marks of other companies that appear in components belong to their
 owners; the MIT licence above does not cover them.

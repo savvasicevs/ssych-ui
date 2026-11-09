@@ -1,4 +1,4 @@
-// provenance: original, idea from Cult UI (MIT); earlier versions kept its props API and sidebar, see THIRD_PARTY_NOTICES.md
+// provenance: original
 "use client"
 
 import type React from "react"

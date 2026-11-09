@@ -1,4 +1,4 @@
-// provenance: original, idea from Cult UI (MIT); this implementation is original, see THIRD_PARTY_NOTICES.md
+// provenance: original
 "use client"
 
 import { createContext, createElement, useContext, useState, type ComponentProps, type HTMLAttributes, type ImgHTMLAttributes } from "react"

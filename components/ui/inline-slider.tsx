@@ -17,8 +17,8 @@ import { cn } from "@/lib/utils"
    readable; arrow keys move one step, Page Up and Page Down ten, Home and End go to the
    ends. With `range` there are two thumbs and the nearer one takes the press. A filter
    that has been moved shows a small cross that puts it back.
-   Sketch: lab/InlineSlider (idea from beui.dev's inline slider: the label and the value
-   inside the track, the thumb that parts over text). Kept every prop, the ten ticks, the
+   Sketch: lab/InlineSlider (the label and the value inside the track, the thumb that
+   parts over text). Kept every prop, the ten ticks, the
    step grid, the drag and settle, the range and the keys.
    Changed: colours are foreground tokens, the sketch was white on dark only; the track is
    fully round and 28px, the fill is the control material (10% ink since 2026-10-02); `max` and `label`
