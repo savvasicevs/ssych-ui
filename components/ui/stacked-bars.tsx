@@ -244,7 +244,7 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
               onFocus={() => setHot({ row: null, series: label })}
               onBlur={() => setHot(null)}
               className={cn(
-                "-mx-1 flex items-center gap-1.5 rounded-full px-1 text-[11px] text-foreground/60 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
+                "-mx-1 flex items-center gap-1.5 rounded-[6.5px] px-1 text-[11px] text-foreground/60 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
                 hot !== null && !on && "opacity-35",
               )}
             >
@@ -262,7 +262,7 @@ export function StackedBars({ rows = DEFAULT_ROWS, title = "Inference spend", va
         aria-label={`${title} by segment, ${rows.length} bars`}
         onKeyDown={onKey}
         onBlur={() => setHot(null)}
-        className="relative mt-4 rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+        className="relative mt-4 rounded-[3px] outline-none focus-visible:bg-foreground/[0.03]"
       >
         <svg
           width={W}

@@ -115,7 +115,7 @@ function Thumb({ x, part, held, still }: { x: number; part: number; held: boolea
       transition={still || held ? { duration: 0 } : SETTLE}
     >
       <span className="absolute left-0 top-0 h-[2px] w-[2px] rounded-full bg-foreground" style={{ transform: `translateY(${-part * 3}px)` }} />
-      <span className="absolute inset-y-0 left-0 w-[2px] rounded-full bg-foreground" style={{ opacity: 1 - part }} />
+      <span className="absolute inset-y-0 left-0 w-[2px] rounded-[1px] bg-foreground" style={{ opacity: 1 - part }} />
       <span className="absolute bottom-0 left-0 h-[2px] w-[2px] rounded-full bg-foreground" style={{ transform: `translateY(${part * 3}px)` }} />
     </motion.span>
   )
@@ -299,7 +299,7 @@ export function InlineSlider({
       aria-valuenow={v}
       aria-valuetext={format(v)}
       onKeyDown={key(end)}
-      className="absolute inset-y-0 w-4 cursor-[inherit] rounded-full outline-none focus-visible:bg-foreground/[0.1]"
+      className="absolute inset-y-0 w-4 cursor-[inherit] rounded-[6px] outline-none focus-visible:bg-foreground/[0.1]"
       style={{ left: x - (16 - THUMB_W) / 2 }}
     />
   )
@@ -323,7 +323,7 @@ export function InlineSlider({
       onPointerCancel={up}
       onLostPointerCapture={up}
       className={cn(
-        "relative h-7 w-full touch-none select-none overflow-hidden rounded-full bg-foreground/[0.07] tabular-nums dark:bg-foreground/[0.06]",
+        "relative h-7 w-full touch-none select-none overflow-hidden rounded-[10.5px] bg-foreground/[0.07] tabular-nums dark:bg-foreground/[0.06]",
         drag ? "cursor-grabbing" : "cursor-grab",
         !stops && className,
       )}
@@ -332,7 +332,7 @@ export function InlineSlider({
           compositor instead of animating a width; at rest the clip opens to the whole track */}
       <motion.span
         aria-hidden
-        className={cn("absolute inset-0 hidden rounded-full transition-colors duration-150 dark:block", active ? "bg-foreground/[0.13]" : "bg-foreground/[0.10]")}
+        className={cn("absolute inset-0 hidden rounded-[10.5px] transition-colors duration-150 dark:block", active ? "bg-foreground/[0.13]" : "bg-foreground/[0.10]")}
         initial={false}
         animate={{ clipPath: `inset(0px ${Math.max(0, geo.width - fillLeft - fillWidth).toFixed(1)}px 0px ${fillLeft.toFixed(1)}px round 999px)` }}
         transition={still || drag ? { duration: 0 } : { duration: 0.25, ease: EASE }}
@@ -344,7 +344,7 @@ export function InlineSlider({
           sized instead; 2px in from the track's edge so the hairline shows all round */}
       <motion.span
         aria-hidden
-        className="absolute inset-y-[2px] block rounded-full bg-white shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_1px_3px_rgba(0,0,0,0.08)] dark:hidden"
+        className="absolute inset-y-[2px] block rounded-[9px] bg-white shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_1px_3px_rgba(0,0,0,0.08)] dark:hidden"
         initial={false}
         animate={{ left: Math.max(2, fillLeft + (fillLeft > 0 ? 0 : 2)), width: Math.max(0, Math.min(geo.width - 2, fillLeft + fillWidth) - Math.max(2, fillLeft + (fillLeft > 0 ? 0 : 2))) }}
         transition={still || drag ? { duration: 0 } : { duration: 0.25, ease: EASE }}

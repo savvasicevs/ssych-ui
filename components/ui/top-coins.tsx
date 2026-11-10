@@ -44,7 +44,7 @@ const EASE = [0.16, 1, 0.3, 1] as const
 const TAB_EASE = [0.22, 1, 0.36, 1] as const
 /** the small tip the paging arrows carry: the library popover, after a 300ms wait */
 const TIP =
-  "pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-[8px] border border-foreground/[0.08] bg-[var(--tip-fill,color-mix(in_srgb,var(--foreground)_6%,var(--background)))] px-2 py-1 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/tip:opacity-100 group-hover/tip:delay-300 group-has-[:focus-visible]/tip:opacity-100"
+  "pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-[6px] border border-foreground/[0.08] bg-[var(--tip-fill,color-mix(in_srgb,var(--foreground)_6%,var(--background)))] px-2 py-1 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/tip:opacity-100 group-hover/tip:delay-300 group-has-[:focus-visible]/tip:opacity-100"
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 /** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
@@ -328,11 +328,10 @@ export function TopCoins({ title = "Top coins", coins = DEFAULT_COINS, ranges = 
             <path d={dir === -1 ? "m15 6-6 6 6 6" : "m9 6 6 6-6 6"} />
           </svg>
         </button>
-        {!off && (
-          <span role="tooltip" className={TIP}>
-            {name}
-          </span>
-        )}
+        {/* kept mounted so it fades out when the last page turns the arrow off */}
+        <span role="tooltip" aria-hidden={off || undefined} className={cn(TIP, off && "opacity-0!")}>
+          {name}
+        </span>
       </span>
     )
   }

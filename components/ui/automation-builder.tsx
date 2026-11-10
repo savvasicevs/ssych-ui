@@ -216,8 +216,8 @@ function useDismiss(ref: React.RefObject<HTMLElement | null>, active: boolean, o
   }, [ref, active, onClose])
 }
 
-const PILL = "h-6 rounded-full px-2.5 text-[11px] font-medium whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 motion-reduce:transition-none"
-const OPTION = "h-6 rounded-full px-2.5 text-[11px] whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] motion-reduce:transition-none"
+const PILL = "h-6 rounded-[9px] px-2.5 text-[11px] font-medium whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 motion-reduce:transition-none"
+const OPTION = "h-6 rounded-[9px] px-2.5 text-[11px] whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] motion-reduce:transition-none"
 /** a tip over an icon button: up on hover or keyboard focus, after a short wait */
 function Tip({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -226,7 +226,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
       <span
         aria-hidden
         className={cn(
-          "pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 group-hover/tip:delay-300",
+          "pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-[7.5px] px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 group-hover/tip:delay-300",
           RAISED,
         )}
       >
@@ -253,7 +253,7 @@ function Chip({ chip, open, locked, onToggle, onClose, onSelect }: { chip: ChipT
           role="radiogroup"
           aria-label={`Choices for ${chip.value}`}
           /* raised on the card: 12 (the 24px option pill) + 2 padding = 14 */
-          className={cn("inline-flex flex-wrap items-center gap-0.5 rounded-[14px] p-0.5", RAISED)}
+          className={cn("inline-flex flex-wrap items-center gap-0.5 rounded-[10.5px] p-0.5", RAISED)}
           style={{ transformOrigin: "left center" }}
           initial={reduced ? { opacity: 0 } : OPEN_FROM}
           animate={OPEN_TO}
@@ -361,7 +361,7 @@ function ProgramRow({
       }}
       onPointerEnter={() => onHot(row.id)}
       /* the drag ground, raised on the card: 24 (the card) − 12 (its inset) = 12 */
-      className={cn("group relative flex items-start gap-2 rounded-[12px]", dragging && cn("z-10", RAISED))}
+      className={cn("group relative flex items-start gap-2 rounded-[9px] transition-[background-color] duration-150 motion-reduce:transition-none", dragging && cn("z-10", RAISED))}
     >
       {/* the thread: one hairline from number to number; a row set inside a condition hangs off it */}
       {count > 1 && (
@@ -431,7 +431,7 @@ function ProgramRow({
           onMove(row.id, e.key === "ArrowUp" ? -1 : 1)
         }}
         className={cn(
-          "mt-1 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[4px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
+          "mt-1 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[6px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
           dragging ? "cursor-grabbing opacity-100" : "cursor-grab opacity-0 group-hover:opacity-100",
         )}
       >
@@ -452,7 +452,7 @@ function AddAction({ open, locked, onToggle, onClose, onPick }: { open: boolean;
           role="group"
           aria-label="Kinds of step"
           /* raised on the card: 12 (the 24px option pill) + 2 padding = 14 */
-          className={cn("flex flex-wrap items-center gap-0.5 rounded-[14px] p-0.5", RAISED)}
+          className={cn("flex flex-wrap items-center gap-0.5 rounded-[10.5px] p-0.5", RAISED)}
           style={{ transformOrigin: "left center" }}
           initial={reduced ? { opacity: 0 } : OPEN_FROM}
           animate={OPEN_TO}
@@ -616,7 +616,7 @@ export function AutomationBuilder({
 
   return (
     /* the rule sits in one surface card: 24 = 12 (the rows' grounds) + 12 (the p-3 inset) */
-    <div className={cn("w-[400px] max-w-full rounded-[24px] p-3 tabular-nums", SURFACE, className)} role="group" aria-label={`${title}, ${rows.length} steps`}>
+    <div className={cn("w-[400px] max-w-full rounded-[18px] p-3 tabular-nums", SURFACE, className)} role="group" aria-label={`${title}, ${rows.length} steps`}>
       {/* no visible title or description (2026-10-01): the rows read as the rule; the name is in the aria-label */}
       <Reorder.Group
         as="div"
@@ -673,12 +673,12 @@ export function AutomationBuilder({
 
       <div className="mt-2.5 flex items-center gap-1">
         <Tip label="Undo">
-          <button type="button" aria-label="Undo" disabled={!past.length || running} onClick={undo} className={cn(ICON_BUTTON, "h-7 w-7 disabled:pointer-events-none disabled:opacity-35")}>
+          <button type="button" aria-label="Undo" disabled={!past.length || running} onClick={undo} className={cn(ICON_BUTTON, "h-7 w-7 transition-[color,background-color,opacity] disabled:pointer-events-none disabled:opacity-35")}>
             <Undo2 size={14} strokeWidth={1.75} aria-hidden />
           </button>
         </Tip>
         <Tip label="Redo">
-          <button type="button" aria-label="Redo" disabled={!future.length || running} onClick={redo} className={cn(ICON_BUTTON, "h-7 w-7 disabled:pointer-events-none disabled:opacity-35")}>
+          <button type="button" aria-label="Redo" disabled={!future.length || running} onClick={redo} className={cn(ICON_BUTTON, "h-7 w-7 transition-[color,background-color,opacity] disabled:pointer-events-none disabled:opacity-35")}>
             <Redo2 size={14} strokeWidth={1.75} aria-hidden />
           </button>
         </Tip>

@@ -135,7 +135,7 @@ export function DialogStack({ steps = DEFAULT_STEPS, defaultDepth = 0, trigger =
               /* 36 = 24 (the 48px pills) + 12 padding, the Modal's corner; the top card is
                  raised, the ones behind it on the surface, both solid so nothing shows through */
               className={cn(
-                "absolute inset-x-0 bottom-0 origin-top rounded-[36px] p-3 transition-colors duration-200",
+                "absolute inset-x-0 bottom-0 origin-top rounded-[27px] p-3 transition-colors duration-200",
                 back === 0 ? RAISED : cn(SURFACE, "pointer-events-none"),
               )}
               style={{ zIndex: 10 + i }}
@@ -158,7 +158,7 @@ export function DialogStack({ steps = DEFAULT_STEPS, defaultDepth = 0, trigger =
                   {steps.map((s, k) => (
                     <span
                       key={s.title}
-                      className="h-1 rounded-full"
+                      className="h-1 rounded-[1.5px]"
                       style={{ width: k === i ? 14 : 4, background: `color-mix(in srgb, var(--foreground) ${k === i ? 90 : 20}%, transparent)` }}
                     />
                   ))}

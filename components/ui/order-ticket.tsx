@@ -249,6 +249,7 @@ export function OrderTicket({
         state={`${state}-${side}`}
         disabled={!enabled}
         onClick={() => onSubmit?.({ side, type, price, amount, total, fee })}
+        lightHue={buy ? GREEN : RED}
         label={verdict}
       />
     </div>

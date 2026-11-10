@@ -1,8 +1,9 @@
 // provenance: original
 "use client"
 
-import { useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { ArrowUpRight } from "lucide-react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
 import {
   CutoutCard,
@@ -59,17 +60,28 @@ export function ProjectCard({
   emphasis?: "lg" | "sm"
 }) {
   const [hovered, setHovered] = useState(false)
+  const reduced = useReducedMotion()
+  /* an 80ms intent delay, mouse only: a cursor crossing the grid does not light every card, and a tap never sticks it on */
+  const intent = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(intent.current), [])
 
   return (
     <div
       className="relative h-full w-full"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "mouse") return
+        window.clearTimeout(intent.current)
+        intent.current = window.setTimeout(() => setHovered(true), 80)
+      }}
+      onPointerLeave={() => {
+        window.clearTimeout(intent.current)
+        setHovered(false)
+      }}
     >
       <CutoutCard
         style={SURFACE_STYLE}
         className={cn(
-          "group/cutout relative z-10 overflow-hidden rounded-[28px] transition-colors duration-500",
+          "group/cutout relative z-10 overflow-hidden rounded-[21px] transition-colors duration-500",
           variant === "list" ? "flex w-full flex-col items-stretch sm:flex-row" : "h-full w-full"
         )}
       >
@@ -142,22 +154,28 @@ export function ProjectCard({
         )}
       </CutoutCard>
 
-      {/* Liquid-metal stroke — masked ring shown only while hovering. */}
-      {hovered && (
-        <span
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[28px]"
-          style={{
-            padding: "1px",
-            WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-            WebkitMaskComposite: "xor",
-            maskComposite: "exclude",
-          }}
-        >
-          <MetalFx variant="button" preset="silver" theme="dark" normalizeHostStyles={false}>
-            <span className="block h-[760px] w-[1120px]" />
-          </MetalFx>
-        </span>
-      )}
+      {/* Liquid-metal stroke — masked ring shown only while hovering; it fades in and
+          leaves quicker than it came, so the edge never blinks */}
+      <AnimatePresence>
+        {hovered && (
+          <motion.span
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[21px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: reduced ? 0 : 0.25, ease: [0.22, 1, 0.36, 1] } }}
+            exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] } }}
+            style={{
+              padding: "1px",
+              WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+              WebkitMaskComposite: "xor",
+              maskComposite: "exclude",
+            }}
+          >
+            <MetalFx variant="button" preset="silver" theme="dark" normalizeHostStyles={false}>
+              <span className="block h-[760px] w-[1120px]" />
+            </MetalFx>
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

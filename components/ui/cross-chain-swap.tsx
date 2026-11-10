@@ -259,7 +259,7 @@ export function CrossChainSwap({
           seam="bottom"
           foot={usd(payValue)}
           footAside={
-            <span className="truncate" style={state === "short" ? { color: RED } : undefined}>
+            <span className="truncate transition-colors duration-150" style={state === "short" ? { color: RED } : undefined}>
               Balance {upTo(pay.balance, 4)}
             </span>
           }
@@ -303,7 +303,7 @@ export function CrossChainSwap({
         }}
         aria-haspopup="dialog"
         aria-label={`Receive address on ${get.chain}, ${address}, edit`}
-        className="group mt-1.5 flex w-full items-center justify-between gap-2 rounded-full px-1 py-1 text-[12px] outline-none"
+        className="group mt-1.5 flex w-full items-center justify-between gap-2 rounded-[10px] px-1 py-1 text-[12px] outline-none"
       >
         <span className="text-foreground/60">Receive on {get.chain}</span>
         <span className="flex items-center gap-1 text-foreground/90 transition-colors duration-150 group-hover:text-foreground group-focus-visible:text-foreground">

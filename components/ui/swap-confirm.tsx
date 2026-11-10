@@ -249,7 +249,7 @@ export function SwapConfirm({
             placeholder="0"
             inputMode="decimal"
             aria-label={`Amount of ${sell.symbol} to sell`}
-            className={amountText("second", !amountStr)}
+            className={cn(amountText("second", !amountStr), "transition-colors duration-150")}
             /* more than is held is a fail: the typed figure turns red (colour pass, 2026-09-30) */
             style={state === "short" ? { color: "var(--chart-down)" } : undefined}
           />

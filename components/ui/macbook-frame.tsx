@@ -19,18 +19,18 @@ export function MacbookFrame({ children, className }: { children?: ReactNode; cl
     <div className={cn("flex w-[640px] max-w-full flex-col items-center justify-center", className)}>
       {/* lid / screen: 18 = the display's 8 + the 10px bezel */}
       <div
-        className={cn("relative w-full rounded-[18px] p-[10px]", LID)}
+        className={cn("relative w-full rounded-[13.5px] p-[10px]", LID)}
         style={{ boxShadow: "0 24px 60px -24px var(--card-shadow, rgba(0,0,0,0.5))" }}
       >
         {/* camera */}
         <span className="absolute left-1/2 top-[4px] z-10 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-foreground/20" />
         {/* display */}
-        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-[8px] bg-background">{children}</div>
+        <div className="relative aspect-[16/10] w-full overflow-hidden rounded-[6px] bg-background">{children}</div>
       </div>
       {/* base / bottom deck — matches the lid width so it never overflows (no scrollbar) */}
-      <div className={cn("relative h-[12px] w-full rounded-b-[12px] rounded-t-[2px]", BASE)}>
+      <div className={cn("relative h-[12px] w-full rounded-b-[9px] rounded-t-[1.5px]", BASE)}>
         {/* lid-open notch */}
-        <span className={cn("absolute left-1/2 top-0 h-[6px] w-[15%] -translate-x-1/2 rounded-b-[8px]", LID)} />
+        <span className={cn("absolute left-1/2 top-0 h-[6px] w-[15%] -translate-x-1/2 rounded-b-[6px]", LID)} />
       </div>
     </div>
   )

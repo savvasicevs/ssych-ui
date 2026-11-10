@@ -195,7 +195,7 @@ export function UptimeBars({ days = DEFAULT_DAYS, title = "API uptime", classNam
         tabIndex={0}
         role="group"
         aria-label={`${title} by day, arrow keys move between days`}
-        className="relative mt-3 cursor-crosshair touch-none rounded-[3px] outline-none focus-visible:bg-foreground/[0.04]"
+        className="relative mt-3 cursor-crosshair touch-none rounded-[2.5px] outline-none focus-visible:bg-foreground/[0.04]"
         onPointerMove={onMove}
         onPointerLeave={() => setHot(null)}
         onKeyDown={onKey}

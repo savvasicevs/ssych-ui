@@ -281,7 +281,7 @@ export function DateRangePicker({
       role="group"
       aria-label={`Date range, ${rangeText(set.from, set.to)}, ${daysText(set.to - set.from + 1)}`}
     >
-      <div className="inline-flex rounded-full bg-foreground/[0.04] p-0.5">
+      <div className="inline-flex rounded-[12.5px] bg-foreground/[0.04] p-0.5">
         {presets.map((p) => {
           const r = p.range(lo, hi)
           const on = !sweeping && r.from === set.from && r.to === set.to
@@ -298,18 +298,18 @@ export function DateRangePicker({
                 setYm(clamp(ymOf(r.to) - 1, ymMin, ymMax))
               }}
               className={cn(
-                "relative h-7 rounded-full px-3 text-[11px] font-medium outline-none transition-colors duration-150 focus-visible:bg-foreground/[0.06]",
+                "relative h-7 rounded-[10.5px] px-3 text-[11px] font-medium outline-none transition-colors duration-150 focus-visible:bg-foreground/[0.06]",
                 on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/70",
               )}
             >
               {on &&
                 (reduced ? (
-                  <span aria-hidden className="absolute inset-0 rounded-full bg-foreground/[0.08]" />
+                  <span aria-hidden className="absolute inset-0 rounded-[10.5px] bg-foreground/[0.08]" />
                 ) : (
                   <motion.span
                     aria-hidden
                     layoutId={`range-${uid}`}
-                    className="absolute inset-0 rounded-full bg-foreground/[0.08]"
+                    className="absolute inset-0 rounded-[10.5px] bg-foreground/[0.08]"
                     transition={{ duration: 0.25, ease: EASE }}
                   />
                 ))}
@@ -370,7 +370,7 @@ export function DateRangePicker({
                     /* the cell paints the run, so the fill is unbroken from day to day */
                     <span
                       key={i}
-                      className={cn("block h-7 w-7", opens && "rounded-l-[4px]", closes && "rounded-r-[4px]")}
+                      className={cn("block h-7 w-7", opens && "rounded-l-[3px]", closes && "rounded-r-[3px]")}
                       style={{ background: inBand ? fill : undefined, transition: ease }}
                     >
                       <button
@@ -391,7 +391,7 @@ export function DateRangePicker({
                           if (pick !== null) setPeek(d)
                         }}
                         className={cn(
-                          "relative h-7 w-7 rounded-[4px] text-[10.5px] outline-none disabled:pointer-events-none",
+                          "relative h-7 w-7 rounded-[10.5px] text-[10.5px] outline-none disabled:pointer-events-none",
                           edge ? "font-semibold" : "hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.1]",
                         )}
                         style={{

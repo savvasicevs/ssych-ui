@@ -3,7 +3,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { CreditCard } from "lucide-react"
 
 import { BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
@@ -149,17 +149,17 @@ export function PaymentCard({
 
   return (
     <div
-      className={cn("w-[300px] max-w-full rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
+      className={cn("w-[300px] max-w-full rounded-[18px] p-1.5 tabular-nums", SURFACE, className)}
       role="group"
       aria-label={`${BRAND_NAME[key] ?? card.brand} ending ${card.last4}, expires ${card.last4 === last40 ? expires : card.expiresShort}, next payment ${nextPayment}`}
       /* the lift is a hover answer, so only a pointer that hovers gives it */
       onPointerEnter={(e) => e.pointerType !== "touch" && setLifted(true)}
       onPointerLeave={() => setLifted(false)}
     >
-      <div className={cn("flex items-center gap-3 rounded-[18px] p-3", RAISED)}>
+      <div className={cn("flex items-center gap-3 rounded-[13.5px] p-3", RAISED)}>
         <motion.div
           aria-hidden
-          className="relative flex h-[46px] w-[72px] shrink-0 flex-col justify-between rounded-[6px] px-2 py-1.5"
+          className="relative flex h-[46px] w-[72px] shrink-0 flex-col justify-between rounded-[4.5px] px-2 py-1.5"
           style={{
             background: `linear-gradient(135deg, color-mix(in srgb, ${GLYPH} 16%, transparent), transparent 55%), ${face}`,
             boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--foreground) 6%, transparent)",
@@ -169,7 +169,7 @@ export function PaymentCard({
           transition={reduced ? { duration: 0 } : LIFT_SPRING}
         >
           {/* the contact chip */}
-          <span className="block h-[8px] w-[11px] rounded-[2px]" style={{ background: `color-mix(in srgb, ${GLYPH} 45%, transparent)` }} />
+          <span className="block h-[8px] w-[11px] rounded-[1.5px]" style={{ background: `color-mix(in srgb, ${GLYPH} 45%, transparent)` }} />
           <span className="flex items-end justify-between">
             <span className="text-[8px] font-medium leading-none tracking-[0.04em]" style={{ color: `color-mix(in srgb, ${GLYPH} 85%, transparent)` }}>
               •••• {card.last4}
@@ -213,7 +213,21 @@ export function PaymentCard({
               aria-label="Card number"
               className={cn(modalField, "pr-28")}
             />
-            {typedNetwork && <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[12px] text-foreground/60">{typedNetwork}</span>}
+            {/* the network name fades in as the digits name it, and out faster than it came */}
+            <AnimatePresence initial={false}>
+              {typedNetwork && (
+                <motion.span
+                  key={typedNetwork}
+                  className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[12px] text-foreground/60"
+                  initial={reduced ? { opacity: 0 } : { opacity: 0, x: 4, filter: "blur(2px)" }}
+                  animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                  exit={{ opacity: 0, transition: { duration: 0.1 } }}
+                  transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {typedNetwork}
+                </motion.span>
+              )}
+            </AnimatePresence>
           </label>
           <div className="flex gap-2">
             <input

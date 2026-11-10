@@ -265,11 +265,11 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
                     onBlur={() => setHover(null)}
                     onClick={press(y, m)}
                     onKeyDown={clearOnEscape}
-                    className="absolute -inset-0.5 block rounded-[4px] outline-none"
+                    className="absolute -inset-0.5 block rounded-[11.5px] outline-none"
                     whileTap={reduced ? undefined : { scale: 0.92, transition: LIFT_SPRING }}
                   >
                     <motion.span
-                      className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[3px] text-[8px] font-semibold tabular-nums"
+                      className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[10px] text-[8px] font-semibold tabular-nums"
                       style={{
                         background: tint(v, on),
                         color: `color-mix(in srgb, var(--foreground) ${Math.round(85 + Math.min(Math.abs(v) / 8, 1) * 15)}%, transparent)`,
@@ -321,11 +321,11 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
                 onBlur={() => setHover(null)}
                 onClick={press(y, YEAR)}
                 onKeyDown={clearOnEscape}
-                className="absolute -inset-0.5 block rounded-[4px] outline-none"
+                className="absolute -inset-0.5 block rounded-[11.5px] outline-none"
                 whileTap={reduced ? undefined : { scale: 0.96, transition: LIFT_SPRING }}
               >
                 <motion.span
-                  className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[3px] text-[9px] font-semibold tabular-nums"
+                  className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[10px] text-[9px] font-semibold tabular-nums"
                   /* a neutral cell under the colored number: a tint of the same hue ate its contrast */
                   style={{
                     background: same(hot, y, YEAR) ? "var(--card)" : "color-mix(in srgb, var(--foreground) 6%, transparent)",
@@ -360,7 +360,7 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
               <motion.div
                 role="status"
                 className={cn(
-                  "absolute bottom-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-[12px] border border-foreground/[0.08] px-2.5 py-1 text-[10px] tabular-nums",
+                  "absolute bottom-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-foreground/[0.08] px-2.5 py-1 text-[10px] tabular-nums",
                   align === "end" ? "right-0" : "left-0",
                 )}
                 style={{

@@ -93,7 +93,7 @@ export function MorphDisclosure({
         if (e.key === "Escape" && open) set(false)
       }}
       /* 24, the card corner: the fact rows' 16 + the 8px they stand off the edge (spec 13.10) */
-      className={cn("relative w-[380px] max-w-full rounded-[24px] p-4 tabular-nums", SURFACE, className)}
+      className={cn("relative w-[380px] max-w-full rounded-[18px] p-4 tabular-nums", SURFACE, className)}
     >
       <button
         type="button"
@@ -105,7 +105,7 @@ export function MorphDisclosure({
            answers, not only its words */
         className={cn(
           "group flex h-6 w-full items-center justify-between gap-4 text-left outline-none",
-          "after:absolute after:inset-x-0 after:top-0 after:rounded-[24px] after:transition-colors after:duration-200 hover:after:bg-foreground/[0.04] focus-visible:after:bg-foreground/[0.06]",
+          "after:absolute after:inset-x-0 after:top-0 after:rounded-[18px] after:transition-colors after:duration-200 hover:after:bg-foreground/[0.04] focus-visible:after:bg-foreground/[0.06]",
           open ? "after:h-[48px] after:rounded-b-none" : "after:bottom-0",
         )}
       >
@@ -149,7 +149,7 @@ export function MorphDisclosure({
                     key={s.label}
                     role="listitem"
                     onPointerEnter={() => setHot(i)}
-                    className="-mx-2 flex items-baseline justify-between rounded-[16px] px-2 py-[7px] transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04]"
+                    className="-mx-2 flex items-baseline justify-between rounded-[12px] px-2 py-[7px] transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04]"
                     style={{ opacity: hot !== null && hot !== i ? 0.45 : 1 }}
                   >
                     <span className="text-[11px] text-foreground/60">{s.label}</span>

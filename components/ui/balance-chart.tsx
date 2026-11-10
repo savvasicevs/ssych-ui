@@ -215,7 +215,7 @@ export function BalanceChart({
         {hovered && (
           <div
             role="status"
-            className="pointer-events-none absolute z-10 w-[132px] rounded-lg border border-foreground/[0.05] px-2.5 py-2 text-[10px] tabular-nums"
+            className="pointer-events-none absolute z-10 w-[132px] rounded-[6px] border border-foreground/[0.05] px-2.5 py-2 text-[10px] tabular-nums"
             style={{
               left: `${(hovered.x / W) * 100}%`,
               top: `clamp(2px, calc(${(hovered.y / H) * 100}% - 18px), calc(100% - 78px))`,
@@ -253,7 +253,7 @@ export function BalanceChart({
       <div className="relative mx-auto mt-3 flex w-full max-w-[360px] gap-1" role="group" aria-label="Timeframe">
         <span
           aria-hidden
-          className="absolute inset-y-0 left-0 rounded-full bg-foreground/[0.07]"
+          className="absolute inset-y-0 left-0 rounded-[10.5px] bg-foreground/[0.07]"
           style={{
             width: `calc((100% - ${(TIMEFRAMES.length - 1) * 4}px) / ${TIMEFRAMES.length})`,
             transform: `translateX(calc(${TIMEFRAMES.indexOf(tf)} * (100% + 4px)))`,
@@ -269,7 +269,7 @@ export function BalanceChart({
               aria-pressed={on}
               onClick={() => setTf(t)}
               className={cn(
-                "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium tracking-[0.01em] tabular-nums transition-[color,transform] duration-200 active:scale-[0.94]",
+                "relative z-[1] h-7 flex-1 rounded-[10.5px] text-[11.5px] font-medium tracking-[0.01em] tabular-nums transition-[color,transform] duration-200 active:scale-[0.94] motion-reduce:active:scale-100",
                 on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90",
               )}
             >

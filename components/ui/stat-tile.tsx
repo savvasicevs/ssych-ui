@@ -148,7 +148,7 @@ function Tile({
       onKeyDown={onKey}
       /* corner 18: the inner card of the card scale (24 outside = 18 + the 6px gap) */
       className={cn(
-        "w-[152px] shrink-0 touch-none overflow-hidden rounded-[18px] p-3 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/20",
+        "w-[152px] shrink-0 touch-none overflow-hidden rounded-[13.5px] p-3 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/20",
         SURFACE,
         data && "cursor-crosshair",
         !reduced && "transition-opacity duration-200",
@@ -162,7 +162,8 @@ function Tile({
         <LiveFigure intent={hi === null ? null : "scrub"} className="truncate text-[17px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
           {format(value)}
         </LiveFigure>
-        <div className="mt-1.5 h-[14px] truncate text-[11px] leading-[14px]">
+        {/* the line under it swaps with the value, so the change and the point's label never snap */}
+        <LiveFigure intent={hi === null ? null : "scrub"} className="mt-1.5 h-[14px] truncate text-[11px] leading-[14px]">
           {hi !== null ? (
             <span className="text-foreground/45">{labels[hi] ?? ""}</span>
           ) : signed ? (
@@ -170,7 +171,7 @@ function Tile({
               {signed}
             </span>
           ) : null}
-        </div>
+        </LiveFigure>
       </div>
 
       {data && (

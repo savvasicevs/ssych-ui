@@ -244,7 +244,7 @@ export function TradeTape({
                 style={p.block ? { background: `color-mix(in srgb, ${hue} 8%, transparent)` } : undefined}
               >
                 {/* the print's weight: the same hue, stronger for a larger size */}
-                <span aria-hidden className="absolute inset-y-[2px] left-0 w-[2px] rounded-full" style={{ background: hue, opacity: Math.min(1, 0.25 + p.size / (median * 6)) }} />
+                <span aria-hidden className="absolute inset-y-[2px] left-0 w-[2px] rounded-[1px]" style={{ background: hue, opacity: Math.min(1, 0.25 + p.size / (median * 6)) }} />
                 <span className="text-foreground/45">{p.t}</span>
                 <span className="text-right" style={{ color: hue }}>
                   {p.price.toFixed(priceDp)}

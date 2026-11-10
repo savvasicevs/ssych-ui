@@ -229,9 +229,9 @@ export function DonutChart({
             onBlur={() => setHot(null)}
             /* selection is a fill, never an outline, so the column cannot reflow */
             className={cn(
-              "flex items-center gap-2.5 rounded-full px-2 py-[5px] text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 focus-visible:bg-foreground/[0.06]",
+              "flex items-center gap-2.5 rounded-[10px] px-2 py-[5px] text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 focus-visible:bg-foreground/[0.06]",
               !stacked && "-mx-2",
-              onSelect ? "cursor-pointer hover:bg-foreground/[0.03] active:scale-[0.97]" : "cursor-default",
+              onSelect ? "cursor-pointer hover:bg-foreground/[0.03] active:scale-[0.97] motion-reduce:active:scale-100" : "cursor-default",
               on && THUMB,
               focus && focus !== s.name && "opacity-35",
             )}

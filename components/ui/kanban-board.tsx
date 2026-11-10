@@ -114,7 +114,7 @@ function Tip({ label, children, align = "right" }: { label: string; children: Re
       <span
         aria-hidden
         className={cn(
-          "pointer-events-none absolute bottom-full z-20 mb-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 shadow-[0_4px_12px_var(--card-shadow,rgba(0,0,0,0.25))] transition-opacity duration-150 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100",
+          "pointer-events-none absolute bottom-full z-20 mb-1.5 whitespace-nowrap rounded-[7.5px] px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 shadow-[0_4px_12px_var(--card-shadow,rgba(0,0,0,0.25))] transition-opacity duration-150 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100",
           align === "right" ? "right-0" : "left-1/2 -translate-x-1/2",
           RAISED,
         )}
@@ -154,7 +154,7 @@ export function KanbanBoard({ cards = DEFAULT_CARDS, onMove, renderIcon, classNa
       <div className="grid grid-cols-3 gap-2" onPointerLeave={() => setHot(null)}>
         {COLUMNS.map((column, ci) => (
           /* the column is the surface: 18 = 12 (the raised cards) + 6 (the p-1.5 inset) */
-          <div key={column.key} role="group" aria-label={`${column.label}, ${counts[ci]} cards`} className={cn("flex min-h-[280px] flex-col rounded-[18px] p-1.5", SURFACE)}>
+          <div key={column.key} role="group" aria-label={`${column.label}, ${counts[ci]} cards`} className={cn("flex min-h-[280px] flex-col rounded-[13.5px] p-1.5", SURFACE)}>
             <div className="flex items-baseline justify-between px-1.5 pb-2 pt-1">
               <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-foreground/60">
                 <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: STATE[column.key] }} />
@@ -168,6 +168,9 @@ export function KanbanBoard({ cards = DEFAULT_CARDS, onMove, renderIcon, classNa
                 .map((card) => {
                   const done = at(card) === "done"
                   const order = cards.indexOf(card)
+                  const dim = hot !== null && hot !== card.id
+                  /* the entrance waits its turn on mount only; a dim later answers at once */
+                  const delay = mounted.current ? 0 : order * 0.035
                   return (
                     <motion.div
                       key={card.id}
@@ -176,11 +179,12 @@ export function KanbanBoard({ cards = DEFAULT_CARDS, onMove, renderIcon, classNa
                       layoutId={`${ns}-${card.id}`}
                       /* on mount the first 8 cards rise 6px, 35ms apart */
                       initial={mounted.current || order >= 8 ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
+                      /* motion owns the opacity, entrance and hover dim alike, so a CSS transition never lags it */
+                      animate={{ opacity: dim ? 0.45 : 1, y: 0 }}
                       transition={
                         reduced
-                          ? { duration: 0.15, delay: mounted.current ? 0 : order * 0.035 }
-                          : { ...SPRING, opacity: { duration: 0.3, ease: EASE, delay: mounted.current ? 0 : order * 0.035 }, y: { duration: 0.3, ease: EASE, delay: mounted.current ? 0 : order * 0.035 } }
+                          ? { duration: 0.15, delay }
+                          : { ...SPRING, opacity: { duration: mounted.current ? 0.2 : 0.3, ease: EASE, delay }, y: { duration: 0.3, ease: EASE, delay } }
                       }
                       onPointerEnter={() => setHot(card.id)}
                       onFocus={() => setHot(card.id)}
@@ -190,10 +194,9 @@ export function KanbanBoard({ cards = DEFAULT_CARDS, onMove, renderIcon, classNa
                       aria-label={`${card.id} ${card.title}, ${card.tag}, ${card.owner}, in ${NAME[at(card)]}`}
                       /* raised on the column; the hover is a faint 4% laid over the raised fill */
                       className={cn(
-                        "group relative rounded-[12px] p-2.5 text-left transition-[opacity,box-shadow] duration-200 hover:shadow-[inset_0_0_0_100px_color-mix(in_srgb,var(--foreground)_4%,transparent)] motion-reduce:transition-none",
+                        "group relative rounded-[9px] p-2.5 text-left transition-[box-shadow] duration-200 hover:shadow-[inset_0_0_0_100px_color-mix(in_srgb,var(--foreground)_4%,transparent)] motion-reduce:transition-none",
                         RAISED,
                       )}
-                      style={{ opacity: hot !== null && hot !== card.id ? 0.45 : 1 }}
                     >
                       <span className={cn("block pr-6 text-[12px] leading-[1.4]", done ? "text-foreground/45" : "text-foreground/90")}>{card.title}</span>
                       <span className="mt-2 flex items-center gap-1.5">

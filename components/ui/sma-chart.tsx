@@ -199,11 +199,11 @@ export function SmaChart({ symbol = "AMZN", name = "Amazon.com Inc.", prices = D
             onFocus={() => setHot(a.key)}
             onBlur={() => setHot(null)}
             className={cn(
-              "-mx-1 flex cursor-default items-center gap-1.5 rounded-full px-1 text-[11px] text-foreground/60 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
+              "-mx-1 flex cursor-default items-center gap-1.5 rounded-[6.5px] px-1 text-[11px] text-foreground/60 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
               hot !== null && hot !== a.key && "opacity-35",
             )}
           >
-            <span aria-hidden className="h-[2px] w-2.5 shrink-0 rounded-full" style={{ background: a.hue }} />
+            <span aria-hidden className="h-[2px] w-2.5 shrink-0 rounded-[1px]" style={{ background: a.hue }} />
             {a.label}
             <span className="inline-block font-medium text-foreground/90">{avg[a.key][shown].toFixed(2)}</span>
           </button>

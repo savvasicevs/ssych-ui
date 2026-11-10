@@ -149,7 +149,7 @@ export function HistoricalEps({
         aria-label={`${title} by quarter. Arrow keys walk the quarters`}
         onKeyDown={onKey}
         onBlur={() => setHot(null)}
-        className="relative rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+        className="relative rounded-[3px] outline-none focus-visible:bg-foreground/[0.03]"
       >
       <svg
         width={W}

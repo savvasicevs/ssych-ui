@@ -60,7 +60,7 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveIndex((prev) => (prev - 1 + cards.length) % cards.length)}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,calc(0.7*var(--shadow-k,1)))] transition-colors duration-300 hover:text-foreground/85"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,calc(0.7*var(--shadow-k,1)))] transition-[color,scale] duration-200 hover:text-foreground/85 active:scale-[0.96] motion-reduce:active:scale-100"
             style={CIRCLE_STYLE}
             aria-label="Previous project"
           >
@@ -68,7 +68,7 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
           </button>
           <button
             onClick={() => setActiveIndex((prev) => (prev + 1) % cards.length)}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,calc(0.7*var(--shadow-k,1)))] transition-colors duration-300 hover:text-foreground/85"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-[#6b6b6d] shadow-[0_4px_16px_-6px_rgba(0,0,0,calc(0.7*var(--shadow-k,1)))] transition-[color,scale] duration-200 hover:text-foreground/85 active:scale-[0.96] motion-reduce:active:scale-100"
             style={CIRCLE_STYLE}
             aria-label="Next project"
           >
@@ -78,7 +78,7 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
       )}
 
       <LayoutGroup>
-        <motion.div layout className="relative mx-auto aspect-[3/2] w-full">
+        <motion.div layout={!reduced} className="relative mx-auto aspect-[3/2] w-full">
           <AnimatePresence mode="popLayout">
             {displayCards.map((card) => {
               const isTop = card.stackPosition === 0
@@ -95,13 +95,13 @@ export function CardStack({ cards, className }: { cards: CardData[]; className?:
                   dragElastic={0.6}
                   onDragStart={() => setIsDragging(true)}
                   onDragEnd={handleDragEnd}
-                  whileDrag={{ scale: 1.01, cursor: "grabbing" }}
+                  whileDrag={reduced ? { cursor: "grabbing" } : { scale: 1.01, cursor: "grabbing" }}
                   onClick={() => {
                     if (isDragging) return
                     open(card.id)
                   }}
                   className={cn(
-                    "group absolute inset-0 cursor-pointer overflow-hidden rounded-[28px] shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]",
+                    "group absolute inset-0 cursor-pointer overflow-hidden rounded-[21px] shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]",
                     isTop && "cursor-grab active:cursor-grabbing"
                   )}
                 >

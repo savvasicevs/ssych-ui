@@ -159,7 +159,7 @@ export function PositionsTable({
           aria-label={`Sort by ${label.toLowerCase()}`}
           className={cn(
             cls,
-            "w-full rounded-full outline-none transition-colors duration-200",
+            "w-full rounded-[6px] outline-none transition-colors duration-200",
             on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
           )}
         >

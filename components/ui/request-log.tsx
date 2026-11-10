@@ -60,6 +60,7 @@ const HEADS = ["Status", "Method", "Path", "Latency", "Time"]
 
 /** copies the body; the tip says Copy, then Copied for 1.4 s */
 function CopyBody({ text }: { text: string }) {
+  const reduced = useReducedMotion()
   const [done, setDone] = useState(false)
   const timer = useRef<number | undefined>(undefined)
   useEffect(() => () => window.clearTimeout(timer.current), [])
@@ -71,11 +72,20 @@ function CopyBody({ text }: { text: string }) {
   }
   return (
     <button type="button" onClick={copy} aria-label={done ? "Copied" : "Copy response body"} className={cn(ICON_BUTTON, "group/copy relative h-6 w-6")}>
-      {done ? <Check size={12} strokeWidth={2} aria-hidden style={{ color: GREEN }} /> : <Copy size={12} strokeWidth={1.75} aria-hidden />}
+      {/* the glyph swaps through a small scale and blur instead of snapping to the tick */}
+      <motion.span
+        key={done ? "done" : "copy"}
+        className="inline-flex"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.6, filter: "blur(2px)" }}
+        animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+        transition={{ duration: 0.15, ease: EASE }}
+      >
+        {done ? <Check size={12} strokeWidth={2} aria-hidden style={{ color: GREEN }} /> : <Copy size={12} strokeWidth={1.75} aria-hidden />}
+      </motion.span>
       <span
         aria-hidden
         className={cn(
-          "pointer-events-none absolute bottom-full right-0 mb-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100",
+          "pointer-events-none absolute bottom-full right-0 mb-1 whitespace-nowrap rounded-[7.5px] px-2 py-0.5 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100",
           RAISED,
           done && "opacity-100",
         )}
@@ -132,7 +142,7 @@ export function RequestLog({
               transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
             >
             <div
-              className={cn("rounded-[12px] transition-[opacity,background-color] duration-200", on && SURFACE)}
+              className={cn("rounded-[9px] transition-[opacity,background-color,box-shadow] duration-200", on && SURFACE)}
               style={{ opacity: dim ? 0.45 : 1 }}
               onPointerEnter={() => setHot(r.id)}
             >
@@ -144,7 +154,7 @@ export function RequestLog({
                 aria-expanded={on}
                 aria-label={`${r.code} ${r.method} ${r.path}, ${r.ms} ms, ${r.time}`}
                 className={cn(
-                  "grid w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
+                  "grid w-full items-center gap-3 rounded-[14.5px] px-3 py-2.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
                   COLS,
                   on ? "focus-visible:bg-foreground/[0.04]" : "hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]",
                 )}
@@ -176,7 +186,7 @@ export function RequestLog({
                 <div className="min-h-0 overflow-hidden">
                   {/* the body on the raised step inside the open row's surface: 12 = 8 + 4 */}
                   <div className="px-1 pb-1">
-                    <div className={cn("rounded-[8px] px-2.5 pb-2.5 pt-1.5", RAISED)}>
+                    <div className={cn("rounded-[6px] px-2.5 pb-2.5 pt-1.5", RAISED)}>
                       <div className="flex items-center justify-between">
                         <span className="text-[10.5px] text-foreground/45">Response body</span>
                         <CopyBody text={r.body} />

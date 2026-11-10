@@ -2,7 +2,7 @@
 "use client"
 
 import { useRef, useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import { ChartCard } from "@/components/ui/chart-overlay"
@@ -160,25 +160,37 @@ export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", ren
       aria-label={`${title}: ${cols.map((x) => x.name).join(", ")} compared on ${rows.map((x) => x.id).join(", ")}`}
       onPointerLeave={() => setHover(null)}
     >
-      {/* one glide fill for the pointed row and one for its column: they light together */}
-      {box && (
-        <>
+      {/* one glide fill for the pointed row and one for its column: they light together, fade
+          up where the pointer comes in and fade out when it leaves the table */}
+      <AnimatePresence>
+        {box && (
           <motion.span
+            key="row"
             aria-hidden
-            className="pointer-events-none absolute left-0 right-0 rounded-[12px] bg-foreground/[0.04]"
-            initial={false}
-            animate={{ top: box.top, height: box.height }}
-            transition={reduced ? { duration: 0 } : GLIDE}
+            className="pointer-events-none absolute left-0 right-0 bg-foreground/[0.04]"
+            /* the glide is a layout animation (transform), the corner a style so it stays round */
+            layout={!reduced}
+            style={{ top: box.top, height: box.height, borderRadius: 9 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.15, ease: EASE } }}
+            transition={reduced ? { duration: 0 } : { layout: GLIDE, opacity: { duration: 0.15, ease: EASE } }}
           />
+        )}
+        {box && (
           <motion.span
+            key="col"
             aria-hidden
-            className="pointer-events-none absolute top-0 rounded-[12px] bg-foreground/[0.04]"
-            initial={false}
-            animate={{ left: box.left, width: box.width, height: totalH }}
-            transition={reduced ? { duration: 0 } : GLIDE}
+            className="pointer-events-none absolute top-0 bg-foreground/[0.04]"
+            layout={!reduced}
+            style={{ left: box.left, width: box.width, height: totalH, borderRadius: 9 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.15, ease: EASE } }}
+            transition={reduced ? { duration: 0 } : { layout: GLIDE, opacity: { duration: 0.15, ease: EASE } }}
           />
-        </>
-      )}
+        )}
+      </AnimatePresence>
 
       <div role="row" className="relative grid h-8 items-center gap-x-2 border-b border-foreground/[0.04]" style={template}>
         {/* the corner over the measure names stays empty: the column heads already say these are models */}
@@ -230,12 +242,12 @@ export function ModelComparison({ models = DEFAULT_MODELS, title = "Models", ren
                 }}
                 onBlur={() => setHover(null)}
                 onClick={() => setPin((p) => (p && p.row === ri && p.col === c ? null : { row: ri, col: c }))}
-                className="block w-full rounded-[12px] px-2 py-2.5 text-left outline-none transition-[scale] duration-150 focus-visible:bg-foreground/[0.04] active:scale-[0.97] motion-reduce:active:scale-100"
+                className="block w-full rounded-[17.5px] px-2 py-2.5 text-left outline-none transition-[scale] duration-150 focus-visible:bg-foreground/[0.04] active:scale-[0.97] motion-reduce:active:scale-100"
               >
                 <span className={cn("block text-[12.5px]", best ? "font-medium text-foreground/90" : "text-foreground/60")}>{row.show(val)}</span>
-                <span aria-hidden className="mt-1.5 block h-[2px] w-full rounded-full bg-foreground/[0.06]">
+                <span aria-hidden className="mt-1.5 block h-[2px] w-full rounded-[1px] bg-foreground/[0.06]">
                   <motion.span
-                    className="block h-full origin-left rounded-full"
+                    className="block h-full origin-left rounded-[1px]"
                     style={{
                       width: `${Math.max(0.03, Math.min(1, len)) * 100}%`,
                       background: `color-mix(in srgb, var(--foreground) ${on || best ? 90 : 25}%, transparent)`,

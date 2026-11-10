@@ -133,13 +133,17 @@ export function ViewSwitch<T extends string = PreviewView>({
   /** the option whose name shows in the hover tip */
   const [tipAt, setTipAt] = useState<number | null>(null)
   const tipTimer = useRef<number | undefined>(undefined)
+  /* once a tip has shown, the next option's tip within 300ms skips the wait */
+  const warmUntil = useRef(0)
   useEffect(() => () => window.clearTimeout(tipTimer.current), [])
   const armTip = (i: number) => {
     window.clearTimeout(tipTimer.current)
-    tipTimer.current = window.setTimeout(() => setTipAt(i), TIP_DELAY)
+    if (performance.now() < warmUntil.current) setTipAt(i)
+    else tipTimer.current = window.setTimeout(() => setTipAt(i), TIP_DELAY)
   }
   const dropTip = () => {
     window.clearTimeout(tipTimer.current)
+    if (tipAt !== null) warmUntil.current = performance.now() + 300
     setTipAt(null)
   }
 
@@ -193,7 +197,7 @@ export function ViewSwitch<T extends string = PreviewView>({
   }
 
   return (
-    <div role="group" aria-label={label} className={cn("relative inline-flex items-center gap-0.5", TRACK, className)}>
+    <div role="group" aria-label={label} className={cn("relative inline-flex items-center gap-0.5", TRACK, tall ? "rounded-[16.5px]" : "rounded-[15px]", className)}>
       {/* every option as it looks when it is on, out of sight, to find the longest */}
       <div ref={measureRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 flex h-0 overflow-hidden whitespace-nowrap">
         {options.map((o) => (
@@ -208,7 +212,7 @@ export function ViewSwitch<T extends string = PreviewView>({
       {widthOn != null && (
         <span
           aria-hidden
-          className={cn("pointer-events-none absolute rounded-full", THUMB)}
+          className={cn("pointer-events-none absolute", tall ? "rounded-[13.5px]" : "rounded-[12px]", THUMB)}
           style={{ top: PAD, bottom: PAD, left: PAD + lead, width: widthOn, transform: `translateX(${index * (off + GAP)}px)`, transition: slide }}
         />
       )}
@@ -242,8 +246,9 @@ export function ViewSwitch<T extends string = PreviewView>({
             aria-pressed={active}
             aria-label={o.label}
             className={cn(
-              "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full text-[13px] transition-colors duration-200",
-              tall ? "h-9" : "h-8",
+              "relative flex shrink-0 items-center justify-center overflow-hidden text-[13px] transition-colors duration-200",
+              /* the corner is 37.5% of the height (75% roundness): 13.5 at 36px, 12 at 32px */
+              tall ? "h-9 rounded-[13.5px]" : "h-8 rounded-[12px]",
               active ? "text-foreground" : SEGMENT_OFF,
             )}
             style={{
@@ -272,15 +277,17 @@ export function ViewSwitch<T extends string = PreviewView>({
               {o.short}
             </span>
           </button>
-          {/* the library's hover tip: the popover material (spec 14.6), above the option */}
-          {tip && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max -translate-x-1/2 rounded-[12px] border border-foreground/[0.08] bg-[var(--tip-fill,color-mix(in_srgb,var(--foreground)_6%,var(--background)))] px-2.5 py-1.5 text-[11px] text-foreground/90 shadow-[0_8px_24px_-12px_color-mix(in_srgb,var(--foreground)_25%,transparent)]"
-            >
-              {o.label}
-            </span>
-          )}
+          {/* the library's hover tip: the popover material (spec 14.6), above the option. It
+              stays mounted so it can fade: up 2px in 150ms, out in 100ms; reduced motion keeps the fade */}
+          <span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max -translate-x-1/2 rounded-[9px] border border-foreground/[0.08] bg-[var(--tip-fill,color-mix(in_srgb,var(--foreground)_6%,var(--background)))] px-2.5 py-1.5 text-[11px] text-foreground/90 shadow-[0_8px_24px_-12px_color-mix(in_srgb,var(--foreground)_25%,transparent)] transition-[opacity,translate] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:translate-y-0",
+              tip ? "translate-y-0 opacity-100 duration-150" : "translate-y-0.5 opacity-0 duration-100",
+            )}
+          >
+            {o.label}
+          </span>
           </span>
         )
       })}

@@ -192,12 +192,12 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
               /* 12 (the 24px coin mark) + 12 padding = 24. The hover grows the tile on its
                  transform only (rule 6): scale 1.03, 220ms ease-out, no layout change */
               className={cn(
-                "relative flex min-w-0 flex-col gap-2 rounded-[24px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
+                "relative flex min-w-0 flex-col gap-2 rounded-[18px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
                 on && "z-[1] bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
                 hot !== null && !on && "opacity-50",
               )}
               style={{
-                transform: `scale(${pressed === r.symbol ? 0.98 : on && !reduced ? 1.03 : 1})`,
+                transform: `scale(${reduced ? 1 : pressed === r.symbol ? 0.98 : on ? 1.03 : 1})`,
                 transition: "transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms cubic-bezier(0.16, 1, 0.3, 1)",
               }}
               onPointerDown={() => setPressed(r.symbol)}
@@ -270,7 +270,7 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
                 setAll(false)
               }}
               /* a 48px row, corner 24: the popup's 36 is this + its 12px padding */
-              className="grid h-12 w-full grid-cols-[24px_minmax(0,1fr)_auto_52px] items-center gap-3 rounded-[24px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06]"
+              className="grid h-12 w-full grid-cols-[24px_minmax(0,1fr)_auto_52px] items-center gap-3 rounded-[18px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06]"
             >
               <Mark symbol={r.symbol} size={24} renderIcon={renderIcon} />
               <span className="flex min-w-0 flex-col">

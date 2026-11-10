@@ -163,7 +163,7 @@ export function EventFeed({ days = DEFAULT_DAYS, title = "Market events", render
                     onBlur={() => setHover(null)}
                     onClick={() => setPin((p) => (p === id ? null : id))}
                     className={cn(
-                      "flex w-full items-start gap-3 rounded-[12px] px-3 py-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
+                      "flex w-full items-start gap-3 rounded-[9px] px-3 py-3 text-left outline-none transition-[color,background-color,box-shadow] duration-150 hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none",
                       pin === id && cn(SURFACE, "hover:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))]"),
                     )}
                     initial={reduced ? false : { opacity: 0, y: 4 }}

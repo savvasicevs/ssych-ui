@@ -177,7 +177,7 @@ export function AllocationTreemap({ holdings = DEFAULT_HOLDINGS, book = DEFAULT_
                 transition={{ layout: { duration: 0.32, ease: EASE } }}
                 className="absolute inset-[1px] flex flex-col justify-end p-2 text-left"
                 style={{
-                  borderRadius: 6,
+                  borderRadius: 4.5,
                   background: on ? ACCENT : inkAt(t.rank),
                   opacity: dim ? 0.4 : 1,
                   transition: reduced ? "none" : "background-color 160ms, opacity 160ms",

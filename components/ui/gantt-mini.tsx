@@ -170,7 +170,7 @@ export function GanttMini({ tasks = DEFAULT_TASKS, title = "Model release, check
               <span className="relative block h-full flex-1">
                 <motion.span
                   aria-hidden
-                  className="absolute top-1/2 block origin-left -translate-y-1/2 rounded-full"
+                  className="absolute top-1/2 block origin-left -translate-y-1/2 rounded-[6px]"
                   style={{ height: BAR_H, left: left(t.start), width: left(t.span), background: ink(on ? 90 : STRENGTH[state]), transition: reduced ? "none" : "background 150ms" }}
                   initial={reduced ? false : { scaleX: 0 }}
                   animate={{ scaleX: play ? 1 : 0 }}

@@ -240,7 +240,7 @@ export function PerformanceChart({
         <div className="flex min-w-0 items-center gap-3 text-[11px]">
           <span className="flex items-center gap-1.5 text-foreground/60">
             {/* your line is green while it leads and red while it trails, so its mark carries both */}
-            <span aria-hidden className="h-[2px] w-2.5 shrink-0 rounded-full" style={{ background: `linear-gradient(90deg, ${GREEN} 50%, ${RED} 50%)` }} />
+            <span aria-hidden className="h-[2px] w-2.5 shrink-0 rounded-[1px]" style={{ background: `linear-gradient(90deg, ${GREEN} 50%, ${RED} 50%)` }} />
             You
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -258,7 +258,7 @@ export function PerformanceChart({
                 setBench(Math.max(0, benchmarks.findIndex((m) => m.key === k)))
                 setHi(null)
               }}
-              triggerClassName="-mx-1.5 h-7 rounded-full px-1.5 text-foreground/60 transition-colors duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06]"
+              triggerClassName="-mx-1.5 h-7 rounded-[10.5px] px-1.5 text-foreground/60 transition-colors duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06]"
             >
               <span className="truncate">{b.label}</span>
             </ChartMenu>

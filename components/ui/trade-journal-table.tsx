@@ -1,9 +1,9 @@
 // provenance: original
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "motion/react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import { ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { SegmentedControl } from "@/components/ui/segmented-control"
@@ -159,6 +159,10 @@ export function TradeJournalTable({
   const total = shown.reduce((s, r) => s + net(r), 0)
   const count = `${shown.length} ${shown.length === 1 ? "trade" : "trades"}`
   const pointed = shown.find((r) => r.id === hot)
+  /* the formula line keeps the last pointed row while it fades out, so it never blinks away */
+  const lastPointed = useRef(pointed)
+  if (pointed) lastPointed.current = pointed
+  const said = pointed ?? lastPointed.current
 
   const head = (key: SortKey, label: string, right = false) => {
     const on = sort.key === key
@@ -169,13 +173,13 @@ export function TradeJournalTable({
           onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}
           aria-label={`Sort by ${label.toLowerCase()}`}
           className={cn(
-            "flex w-full items-center gap-0.5 whitespace-nowrap rounded-full text-[10.5px] outline-none transition-colors duration-200",
+            "flex w-full items-center gap-0.5 whitespace-nowrap rounded-[6px] text-[10.5px] outline-none transition-colors duration-200",
             right && "justify-end",
             on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
           )}
         >
           {label}
-          {on && (sort.dir === -1 ? <ChevronDown size={10} strokeWidth={1.8} aria-hidden /> : <ChevronUp size={10} strokeWidth={1.8} aria-hidden />)}
+          {on && <ChevronDown size={10} strokeWidth={1.8} aria-hidden className={cn("transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", sort.dir !== -1 && "rotate-180")} />}
         </button>
       </span>
     )
@@ -198,20 +202,24 @@ export function TradeJournalTable({
         {head("status", "Status", true)}
       </div>
 
-      <div role="rowgroup" onPointerLeave={() => setHot(null)}>
+      <div role="rowgroup" className="relative" onPointerLeave={() => setHot(null)}>
+        {/* a sort glides the rows to their new places; a row the range drops fades out */}
+        <AnimatePresence initial={false} mode="popLayout">
         {shown.map((r, i) => {
           const open = r.status === "Open"
           const n = net(r)
           const dim = hot !== null && hot !== r.id
           return (
             <motion.div
+              layout={reduced ? false : "position"}
               initial={reduced ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: dim ? 0.45 : 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.15, ease: EASE } }}
               transition={
                 reduced
                   ? { duration: 0.2 }
                   : landed
-                    ? { duration: 0.2, ease: EASE }
+                    ? { duration: 0.2, ease: EASE, layout: { type: "spring", stiffness: 400, damping: 32 } }
                     : { duration: 0.3, ease: EASE, delay: Math.min(i, 7) * 0.04 }
               }
               role="row"
@@ -258,29 +266,32 @@ export function TradeJournalTable({
             </motion.div>
           )
         })}
+        </AnimatePresence>
       </div>
 
       {/* the pointed row's formula only; two lines tall so a long one wraps and is never
           cut, and empty at rest (2026-10-02 audit). It swaps in place when the row changes */}
       <div role="status" className="h-[38px] px-3 pt-2 text-[10.5px] leading-[15px] text-foreground/60">
-        {pointed ? (
-          <motion.span
-            key={pointed.id}
-            className="block"
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.15, ease: EASE }}
-          >
-            {pointed.status === "Open" ? (
-              <>
-                <span className="font-medium text-foreground/90">open</span> {formula(pointed)}
-              </>
-            ) : (
-              <>
-                <span className="font-medium text-foreground/90">net {signed(net(pointed))}</span> = {formula(pointed)}
-              </>
-            )}
-          </motion.span>
+        {said ? (
+          <motion.div aria-hidden={!pointed || undefined} initial={false} animate={{ opacity: pointed ? 1 : 0 }} transition={{ duration: pointed ? 0.15 : 0.12, ease: EASE }}>
+            <motion.span
+              key={said.id}
+              className="block"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ duration: 0.15, ease: EASE }}
+            >
+              {said.status === "Open" ? (
+                <>
+                  <span className="font-medium text-foreground/90">open</span> {formula(said)}
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground/90">net {signed(net(said))}</span> = {formula(said)}
+                </>
+              )}
+            </motion.span>
+          </motion.div>
         ) : (
           <span aria-hidden>&nbsp;</span>
         )}

@@ -363,7 +363,7 @@ export function WatchlistStack({
           {!picking && (
             <span
               role="tooltip"
-              className="pointer-events-none absolute bottom-full right-0 mb-1.5 whitespace-nowrap rounded-[8px] border border-foreground/[0.08] px-2 py-1 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/tip:opacity-100 group-hover/tip:delay-300 group-has-[:focus-visible]/tip:opacity-100"
+              className="pointer-events-none absolute bottom-full right-0 mb-1.5 whitespace-nowrap rounded-[6px] border border-foreground/[0.08] px-2 py-1 text-[10.5px] text-foreground/90 opacity-0 transition-opacity duration-150 group-hover/tip:opacity-100 group-hover/tip:delay-300 group-has-[:focus-visible]/tip:opacity-100"
               style={{ background: "var(--tip-fill, color-mix(in srgb, var(--foreground) 6%, var(--background)))" }}
             >
               Add stock

@@ -139,11 +139,14 @@ export function FileTree({
   /* the long-rest reveal of a cut-off name: the row's path and its top inside the tree */
   const [reveal, setReveal] = useState<{ path: string; top: number } | null>(null)
   const revealTimer = useRef<number | undefined>(undefined)
+  /* once a tip has shown, the next one within 300ms skips the wait (moving down a list of cut-off names) */
+  const warmUntil = useRef(0)
   useEffect(() => () => window.clearTimeout(revealTimer.current), [])
   const uid = useId()
   const tipId = `${uid}-tip`
   const hideReveal = () => {
     window.clearTimeout(revealTimer.current)
+    if (reveal) warmUntil.current = performance.now() + 300
     setReveal(null)
   }
   /** wait, then show the full path if the row's name is cut off */
@@ -152,7 +155,9 @@ export function FileTree({
     const name = button.querySelector<HTMLElement>("[data-name]")
     const row = button.parentElement
     if (!name || !row || name.scrollWidth <= name.clientWidth) return
-    revealTimer.current = window.setTimeout(() => setReveal({ path, top: row.offsetTop }), REVEAL_MS)
+    const show = () => setReveal({ path, top: row.offsetTop })
+    if (performance.now() < warmUntil.current) show()
+    else revealTimer.current = window.setTimeout(show, REVEAL_MS)
   }
   const current = selected === undefined ? ownSelected : selected
   const openList = expanded ?? ownExpanded
@@ -233,9 +238,9 @@ export function FileTree({
             >
               {/* hover affordance: one soft highlight that glides between rows (6px corner, see the header) */}
               {lit && (reduced ? (
-                <span className="absolute inset-0 rounded-md bg-foreground/[0.04]" />
+                <span className="absolute inset-0 rounded-[4.5px] bg-foreground/[0.04]" />
               ) : (
-                <motion.span layoutId={`file-tree-hot-${uid}`} transition={SPRING} className="absolute inset-0 rounded-md bg-foreground/[0.04]" />
+                <motion.span layoutId={`file-tree-hot-${uid}`} transition={SPRING} className="absolute inset-0 rounded-[4.5px] bg-foreground/[0.04]" />
               ))}
               {/* branch lines: one per ancestor, so nesting is read from the
                   lines rather than counted from the indent */}
@@ -250,9 +255,12 @@ export function FileTree({
                   style={{ left: 15 + k * indent }}
                 />
               ))}
-              {isSelected && (
-                <span aria-hidden className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full" style={{ background: accentMix(90) }} />
-              )}
+              {/* the spine fades with the row's tint instead of popping in */}
+              <span
+                aria-hidden
+                className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-[1px] transition-opacity duration-150 motion-reduce:transition-none"
+                style={{ background: accentMix(90), opacity: isSelected ? 1 : 0 }}
+              />
               <button
                 type="button"
                 role="treeitem"
@@ -271,7 +279,7 @@ export function FileTree({
                 onKeyDown={(e) => { hideReveal(); onKey(e, row) }}
                 onClick={() => { hideReveal(); choose(row) }}
                 className={cn(
-                  "relative flex h-8 w-full items-center gap-1.5 rounded-md pr-2.5 text-left transition-colors duration-150",
+                  "relative flex h-8 w-full items-center gap-1.5 rounded-[12px] pr-2.5 text-left transition-colors duration-150",
                   isSelected ? "text-foreground/90" : "hover:text-foreground/90",
                 )}
                 style={{ paddingLeft: 8 + depth * indent, background: isSelected ? accentMix(4.5) : undefined }}
@@ -296,21 +304,28 @@ export function FileTree({
       </AnimatePresence>
       {/* the full path of a cut-off name: the library popover (radius 12, the 8% hairline, a
           6% fill, the popover shadow), above its row, or under it for the first row */}
-      {reveal && (
-        <span
-          id={tipId}
-          role="tooltip"
-          className="pointer-events-none absolute left-2 z-50 w-max max-w-[calc(100%-16px)] break-all rounded-[12px] border border-foreground/[0.08] px-2.5 py-1.5 text-[11px] leading-[1.4] text-foreground/90"
-          style={{
-            top: reveal.top === 0 ? ROW + 6 : reveal.top - 6,
-            transform: reveal.top === 0 ? undefined : "translateY(-100%)",
-            background: "var(--tip-fill, color-mix(in srgb, var(--foreground) 6%, var(--background)))",
-            boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))",
-          }}
-        >
-          {reveal.path}
-        </span>
-      )}
+      {/* one tip node, unkeyed: moving to the next cut-off name moves it and swaps its text in place */}
+      <AnimatePresence>
+        {reveal && (
+          <motion.span
+            initial={{ opacity: 0, filter: reduced ? "none" : "blur(2px)" }}
+            animate={{ opacity: 1, filter: reduced ? "none" : "blur(0px)" }}
+            exit={{ opacity: 0, transition: { duration: 0.1 } }}
+            transition={{ duration: 0.15, ease: EASE }}
+            id={tipId}
+            role="tooltip"
+            className="pointer-events-none absolute left-2 z-50 w-max max-w-[calc(100%-16px)] break-all rounded-[9px] border border-foreground/[0.08] px-2.5 py-1.5 text-[11px] leading-[1.4] text-foreground/90"
+            style={{
+              top: reveal.top === 0 ? ROW + 6 : reveal.top - 6,
+              transform: reveal.top === 0 ? undefined : "translateY(-100%)",
+              background: "var(--tip-fill, color-mix(in srgb, var(--foreground) 6%, var(--background)))",
+              boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))",
+            }}
+          >
+            {reveal.path}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

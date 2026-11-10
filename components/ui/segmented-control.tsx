@@ -5,7 +5,7 @@ import { useId, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
-import { SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
+import { GLIDE, SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
 
 /* Segmented Control, rebuilt through the ssych-component skill (2026-09-29).
    What changed against the version before it (in git history), and why:
@@ -40,7 +40,7 @@ export function SegmentedControl({ options, value, onChange, className, label }:
   const current = value ?? inner
 
   return (
-    <div role="group" aria-label={label} className={cn("inline-flex items-center gap-0.5 tabular-nums", TRACK, className)}>
+    <div role="group" aria-label={label} className={cn("isolate inline-flex items-center gap-0.5 tabular-nums", TRACK, className)}>
       {options.map((o) => {
         const on = o === current
         return (
@@ -53,16 +53,16 @@ export function SegmentedControl({ options, value, onChange, className, label }:
               onChange?.(o)
             }}
             className={cn(
-              "group relative inline-flex h-7 items-center rounded-full px-3 text-[11.5px] outline-none transition-colors duration-200 focus-visible:text-foreground/90",
+              "group relative inline-flex h-7 items-center rounded-[10.5px] px-3 text-[11.5px] outline-none transition-colors duration-200 focus-visible:text-foreground/90",
               on ? "text-foreground/90" : SEGMENT_OFF,
             )}
           >
             {on && (
-              /* transitions.dev sliding-tabs feel: a clean 250ms smooth-out tween */
+              /* the shared pill glide (GLIDE, spring 440/34), the same as every other switch */
               <motion.span
                 layoutId={`${uid}-thumb`}
-                className={cn("absolute inset-0 rounded-full", THUMB)}
-                transition={reduced ? { duration: 0 } : { duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className={cn("absolute inset-0 -z-10 rounded-[10.5px]", THUMB)}
+                transition={reduced ? { duration: 0 } : GLIDE}
               />
             )}
             {/* the press answers on the label, so the thumb's layout glide measures an unscaled button */}

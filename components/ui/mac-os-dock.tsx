@@ -166,7 +166,7 @@ const DEFAULT_ITEMS: DockApp[] = [
 ]
 
 const MENU_ITEM =
-  "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[12px] text-foreground/80 outline-none transition-colors duration-150 hover:bg-foreground/[0.05] hover:text-foreground focus-visible:bg-foreground/[0.05]"
+  "flex w-full items-center justify-between rounded-[6px] px-2.5 py-1.5 text-left text-[12px] text-foreground/80 outline-none transition-colors duration-150 hover:bg-foreground/[0.05] hover:text-foreground focus-visible:bg-foreground/[0.05]"
 
 /** the popover fill (spec 14.6): 6% foreground over the page */
 const POPOVER_BG = "var(--tip-fill, color-mix(in srgb, var(--foreground) 6%, var(--background)))"
@@ -222,26 +222,33 @@ function DockItem({
       <motion.span
         animate={bounce}
         style={{ width: reduce ? REST : size, height: reduce ? REST : size, filter: ICON_SHADOW }}
-        className="relative z-10 block overflow-hidden rounded-[10px]"
+        className="relative z-10 block overflow-hidden rounded-[7.5px]"
       >
         {children}
       </motion.span>
       {/* running-app dot — macOS marks the active tool under its icon */}
-      {active && (
-        <span
-          aria-hidden
-          className="absolute -bottom-[1px] left-1/2 z-10 h-[3px] w-[3px] -translate-x-1/2 rounded-full bg-foreground/80 shadow-[0_0_4px_var(--card-shadow,rgba(0,0,0,calc(0.3*var(--shadow-k,1))))]"
-        />
-      )}
+      {/* the dot fades and grows in when the tool starts, and goes quicker when it stops */}
+      <AnimatePresence initial={false}>
+        {active && (
+          <motion.span
+            aria-hidden
+            initial={reduce ? { opacity: 0, x: "-50%" } : { opacity: 0, scale: 0.5, x: "-50%" }}
+            animate={{ opacity: 1, scale: 1, x: "-50%" }}
+            exit={reduce ? { opacity: 0, x: "-50%", transition: { duration: 0.15 } } : { opacity: 0, scale: 0.5, x: "-50%", transition: { duration: 0.15, ease: EASE } }}
+            transition={{ duration: reduce ? 0.15 : 0.25, ease: EASE }}
+            className="absolute -bottom-[1px] left-1/2 z-10 h-[3px] w-[3px] rounded-full bg-foreground/80 shadow-[0_0_4px_var(--card-shadow,rgba(0,0,0,calc(0.3*var(--shadow-k,1))))]"
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {hovered && (
           <motion.span
-            initial={{ opacity: 0, y: 10, scaleY: 0.5, x: "-50%" }}
+            initial={reduce ? { opacity: 0, x: "-50%" } : { opacity: 0, y: 10, scaleY: 0.5, x: "-50%" }}
             animate={{ opacity: 1, y: 0, scaleY: 1, x: "-50%" }}
-            exit={{ opacity: 0, y: 10, scaleY: 0.5, x: "-50%" }}
-            transition={{ duration: 0.22, ease: EASE }}
+            exit={reduce ? { opacity: 0, x: "-50%", transition: { duration: 0.15 } } : { opacity: 0, y: 10, scaleY: 0.5, x: "-50%", transition: { duration: 0.15, ease: EASE } }}
+            transition={{ duration: reduce ? 0.15 : 0.22, ease: EASE }}
             style={{ transformOrigin: "bottom center", background: POPOVER_BG }}
-            className="pointer-events-none absolute -top-9 left-1/2 z-20 whitespace-nowrap rounded-full border border-foreground/[0.08] px-2.5 py-1 text-[11px] text-foreground/90"
+            className="pointer-events-none absolute -top-9 left-1/2 z-20 whitespace-nowrap rounded-[9px] border border-foreground/[0.08] px-2.5 py-1 text-[11px] text-foreground/90"
           >
             {label}
           </motion.span>
@@ -333,7 +340,7 @@ export function MacOsDock({
         setHovered(null)
       }}
       /* 22 = the icons' 10px corner + the 12px pad (spec 13.10) */
-      className={cn("relative flex items-end gap-2 rounded-[22px] p-3", className)}
+      className={cn("relative flex items-end gap-2 rounded-[16.5px] p-3", className)}
       style={{
         /* flat (his call, 2026-10-02): one 7% fill, a hairline, and a light short shadow; the
            gradient, the lit top edge and the specular streak are gone */
@@ -394,7 +401,7 @@ export function MacOsDock({
             aria-label="Commands"
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97, transition: { duration: 0.15, ease: EASE } }}
             transition={{ duration: reduce ? 0 : 0.22, ease: EASE }}
             style={{
               transformOrigin: "bottom right",
@@ -402,7 +409,7 @@ export function MacOsDock({
               boxShadow: "0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))",
             }}
             /* the popover: 12 = the items' 8 + the 4px pad */
-            className="absolute bottom-full right-0 z-30 mb-3 w-[190px] rounded-[12px] border border-foreground/[0.08] p-1"
+            className="absolute bottom-full right-0 z-30 mb-3 w-[190px] rounded-[9px] border border-foreground/[0.08] p-1"
           >
             {items.map((it, i) => (
               <button

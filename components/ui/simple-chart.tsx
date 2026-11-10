@@ -177,7 +177,7 @@ export function SimpleChart({
     <div
       role="group"
       aria-label={`${name} (${symbol}) price, ${move >= 0 ? "up" : "down"} ${Math.abs(pct).toFixed(1)} percent over the ${w.label}`}
-      className={cn("w-[340px] max-w-full overflow-hidden rounded-[24px] p-[10px] tabular-nums", SURFACE, className)}
+      className={cn("w-[340px] max-w-full overflow-hidden rounded-[18px] p-[10px] tabular-nums", SURFACE, className)}
     >
       {/* the label row: the name and its symbol, the window switch on the right */}
       <div className="flex items-center justify-between gap-3">
@@ -188,7 +188,7 @@ export function SimpleChart({
         <div className={cn("relative flex shrink-0 gap-0.5", TRACK)} role="group" aria-label="Window">
           <span
             aria-hidden
-            className={cn("absolute inset-y-0.5 left-0.5 w-9 rounded-full", THUMB)}
+            className={cn("absolute inset-y-0.5 left-0.5 w-9 rounded-[10.5px]", THUMB)}
             style={{
               transform: `translateX(${winIndex * 38}px)`,
               transition: reduced ? "none" : `transform 250ms cubic-bezier(0.22, 1, 0.36, 1)`,
@@ -207,7 +207,7 @@ export function SimpleChart({
                   setHover(null)
                 }}
                 className={cn(
-                  "relative z-[1] h-7 w-9 rounded-full text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] focus-visible:text-foreground/90 motion-reduce:active:scale-100",
+                  "relative z-[1] h-7 w-9 rounded-[10.5px] text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] focus-visible:text-foreground/90 motion-reduce:active:scale-100",
                   on ? "text-foreground/90" : SEGMENT_OFF,
                 )}
               >

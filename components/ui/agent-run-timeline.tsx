@@ -126,7 +126,7 @@ function Code({ label, children }: { label: string; children: string }) {
   return (
     <div>
       <div className="text-[10.5px] text-foreground/45">{label}</div>
-      <pre className={cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[12px] px-3 py-2.5 font-mono text-[11px] leading-[1.5] text-foreground/80", RAISED)}>
+      <pre className={cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[9px] px-3 py-2.5 font-mono text-[11px] leading-[1.5] text-foreground/80", RAISED)}>
         {children}
       </pre>
     </div>
@@ -174,7 +174,7 @@ export function AgentRunTimeline({
     <div
       ref={ref}
       {...bind}
-      className={cn("w-[440px] max-w-full rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
+      className={cn("w-[440px] max-w-full rounded-[18px] p-1.5 tabular-nums", SURFACE, className)}
       role="group"
       aria-label={`${runId}, ${task}. ${done} of ${steps.length} steps done, ${took(soFar)} so far${running ? `, running: ${running.step}` : ""}`}
     >
@@ -216,7 +216,7 @@ export function AgentRunTimeline({
                 onFocus={() => setHot(s.id)}
                 onBlur={() => setHot(null)}
                 className={cn(
-                  "grid h-9 w-full items-center gap-x-2.5 rounded-[18px] px-3 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.99] motion-reduce:active:scale-100",
+                  "grid h-9 w-full items-center gap-x-2.5 rounded-[13.5px] px-3 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.99] motion-reduce:active:scale-100",
                   COLS,
                 )}
               >

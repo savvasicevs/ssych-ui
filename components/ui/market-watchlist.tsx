@@ -2,12 +2,14 @@
 "use client"
 
 import { useId, useMemo, useState } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 
 const EASE = [0.16, 1, 0.3, 1] as const
+/* a re-sort moves every row at once on the house layout spring, with no entrance stagger */
+const REORDER = { type: "spring", stiffness: 400, damping: 32 } as const
 const ACCENT: [number, number, number] = [72, 159, 250]
 const CHART = { blue: 'var(--chart-1, #489ffa)', green: 'var(--chart-2, #4dbe95)' } as const
 const HAIRLINE = 'color-mix(in srgb, var(--foreground) 5.5%, transparent)'
@@ -84,6 +86,11 @@ function Sparkline({ data, color, width = 72, reduced }: { data: number[]; color
   )
 }
 
+/** one chevron that turns over when the order flips, instead of swapping glyphs */
+function SortChevron({ up }: { up: boolean }) {
+  return <ChevronDown size={10} className={cn("transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", up && "rotate-180")} />
+}
+
 export interface MarketWatchlistProps {
   title?: string
   assets?: WatchAsset[]
@@ -117,9 +124,9 @@ export function MarketWatchlist({ title = "Market watchlist", assets = DEFAULT_A
     <div className={cn("w-full max-w-[540px] overflow-hidden rounded-lg border", className)} style={{ background: SURFACE, borderColor: HAIRLINE, fontFamily: SANS }} onMouseLeave={() => setHover(null)}>
       <div className="flex items-center justify-between border-b px-5 py-3.5" style={{ borderColor: HAIRLINE }}><h3 className="text-[13px] font-semibold" style={{ color: TEXT }}>{title}</h3><span className="text-[10px]" style={{ color: TEXT_MUTED }}>{assets.length} assets</span></div>
       <div className="grid grid-cols-[minmax(0,1fr)_80px_92px] items-center border-b px-5 py-2 text-[10px] font-normal tracking-[0.07em]" style={{ borderColor: HAIRLINE, color: TEXT_MUTED }}>
-        <button type="button" onClick={() => changeSort('symbol')} className="flex items-center gap-1 text-left">Asset {sort === 'symbol' && (descending ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}</button>
+        <button type="button" onClick={() => changeSort('symbol')} className="flex items-center gap-1 text-left">Asset {sort === 'symbol' && <SortChevron up={!descending} />}</button>
         <span className="text-center">Trend</span>
-        <button type="button" onClick={() => changeSort('change')} className="flex items-center justify-end gap-1">Change {sort === 'change' && (descending ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}</button>
+        <button type="button" onClick={() => changeSort('change')} className="flex items-center justify-end gap-1">Change {sort === 'change' && <SortChevron up={!descending} />}</button>
       </div>
       {rows.map((asset, i) => {
         const selected = active === asset.symbol
@@ -137,7 +144,7 @@ export function MarketWatchlist({ title = "Market watchlist", assets = DEFAULT_A
             style={{ borderColor: HAIRLINE, background: selected ? accentRgba(0.045) : undefined }}
             initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: i * 0.05 }}
+            transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: i * 0.05, layout: REORDER }}
           >
             {/* hover affordance — one soft highlight that glides between rows */}
             {hovered && (reduced ? (
@@ -145,7 +152,7 @@ export function MarketWatchlist({ title = "Market watchlist", assets = DEFAULT_A
             ) : (
               <motion.span aria-hidden layoutId={glideId} className="pointer-events-none absolute inset-0 bg-foreground/[0.05]" transition={{ duration: 0.2, ease: EASE }} />
             ))}
-            <span className="relative z-10 flex min-w-0 items-center gap-3"><span className="h-4 w-[2px] shrink-0 rounded-full" style={{ background: selected ? CHART.blue : 'color-mix(in srgb, var(--foreground) 12%, transparent)' }} /><span className="min-w-0"><span className="block text-[12px] font-semibold" style={{ color: TEXT }}>{asset.symbol}</span><span className="block truncate text-[10px]" style={{ color: TEXT_MUTED }}>{asset.name}</span></span></span>
+            <span className="relative z-10 flex min-w-0 items-center gap-3"><span className="h-4 w-[2px] shrink-0 rounded-full transition-colors duration-200 motion-reduce:transition-none" style={{ background: selected ? CHART.blue : 'color-mix(in srgb, var(--foreground) 12%, transparent)' }} /><span className="min-w-0"><span className="block text-[12px] font-semibold" style={{ color: TEXT }}>{asset.symbol}</span><span className="block truncate text-[10px]" style={{ color: TEXT_MUTED }}>{asset.name}</span></span></span>
             <span className="relative z-10 flex justify-center"><Sparkline data={asset.points} color={positive ? CHART.green : 'var(--chart-down, #e06a6a)'} width={72} reduced={reduced} /></span>
             <span className="relative z-10 text-right tabular-nums"><span className="block text-[12px] font-semibold" style={{ color: TEXT }}>${asset.price.toFixed(2)}</span><span className="text-[10px] font-semibold" style={{ color: positive ? CHART.green : 'var(--chart-down, #e06a6a)' }}>{positive ? '+' : ''}{asset.change.toFixed(2)}%</span></span>
           </motion.button>

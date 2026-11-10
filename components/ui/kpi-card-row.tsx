@@ -124,7 +124,7 @@ function Kpi({ item, labels, index }: { item: KpiItem; labels: string[]; index: 
 
   return (
     /* corner 18: the inner card of the card scale (24 outside = 18 + the 6px gap) */
-    <div ref={rootRef} className={cn("w-[152px] shrink-0 overflow-hidden rounded-[18px] p-3", SURFACE)}>
+    <div ref={rootRef} className={cn("w-[152px] shrink-0 overflow-hidden rounded-[13.5px] p-3", SURFACE)}>
       <div className="text-[12px] text-foreground/45">{item.label}</div>
       <div role="status" className="mt-2">
         {/* the figure swaps once as the line is taken and once as it is let go (4px, 2px
@@ -132,7 +132,8 @@ function Kpi({ item, labels, index }: { item: KpiItem; labels: string[]; index: 
         <LiveFigure intent={hi === null ? null : "scrub"} className="text-[22px] font-semibold leading-none tracking-[-0.02em] text-foreground/90">
           {format(data[shown])}
         </LiveFigure>
-        <div className="mt-2 flex h-[15px] items-baseline gap-1.5 truncate text-[12px] leading-[15px]">
+        {/* the sub line swaps with the figure, so the change and the point's date never snap */}
+        <LiveFigure intent={hi === null ? null : "scrub"} className="mt-2 flex h-[15px] items-baseline gap-1.5 truncate text-[12px] leading-[15px]">
           {hi === null ? (
             <>
               <span className="font-medium" style={{ color: hue }}>
@@ -143,7 +144,7 @@ function Kpi({ item, labels, index }: { item: KpiItem; labels: string[]; index: 
           ) : (
             <span className="text-foreground/45">{labels[hi] ?? ""}</span>
           )}
-        </div>
+        </LiveFigure>
       </div>
 
       <div ref={boxRef} className="relative -mx-3 -mb-3 mt-3" onPointerMove={onMove} onPointerLeave={() => setHi(null)}>

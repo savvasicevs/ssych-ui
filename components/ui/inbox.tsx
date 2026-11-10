@@ -88,7 +88,7 @@ export function Inbox({
           type="button"
           onClick={() => setRead(new Set(items.map((i) => i.id)))}
           disabled={unread === 0}
-          className="-mr-2 rounded-full px-2 py-1 text-[11px] font-medium text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:text-foreground/90 focus-visible:bg-foreground/[0.06] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
+          className="-mr-2 rounded-[9.5px] px-2 py-1 text-[11px] font-medium text-foreground/45 outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 hover:text-foreground/90 focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-35"
         >
           Mark all read
         </button>
@@ -115,7 +115,7 @@ export function Inbox({
               onFocus={() => setHot(it.id)}
               onBlur={() => setHot(null)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 hover:bg-foreground/[0.04] active:scale-[0.98] focus-visible:bg-foreground/[0.06]",
+                "flex w-full items-center gap-3 rounded-[16.5px] px-3 py-2.5 text-left outline-none transition-[opacity,background-color,transform,translate,scale,rotate] duration-200 hover:bg-foreground/[0.04] active:scale-[0.98] motion-reduce:active:scale-100 focus-visible:bg-foreground/[0.06]",
                 hot !== null && hot !== it.id && "opacity-50",
               )}
             >
@@ -146,7 +146,7 @@ export function Inbox({
                   isRead ? "text-foreground/45" : "text-foreground/70",
                 )}
               >
-                <span className={isRead ? "" : "font-medium text-foreground/90"}>{first}</span> {it.text}
+                <span className={cn("transition-colors duration-200", !isRead && "font-medium text-foreground/90")}>{first}</span> {it.text}
               </span>
               <span className="shrink-0 text-[10px] text-foreground/35">{it.time}</span>
             </button>

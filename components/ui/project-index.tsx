@@ -126,6 +126,13 @@ export function ProjectIndex({
   const wrap = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [pos, setPos] = useState({ x: 0, y: 0 })
+  /* the cover appears where the pointer is and only fades in; it glides only between rows,
+     so it never sweeps in from wherever it was last hidden */
+  const coverShown = useRef(false)
+  const arriving = hover !== null && !coverShown.current
+  useEffect(() => {
+    coverShown.current = hover !== null
+  }, [hover])
   /* the rows rise in once, 40ms apart and capped at eight; after that the dim is quick */
   const [landed, setLanded] = useState(false)
   useEffect(() => {
@@ -208,7 +215,7 @@ export function ProjectIndex({
       {/* floating cover, only alive while a row is pointed at */}
       <motion.div
         aria-hidden
-        className="pointer-events-none absolute left-0 top-0 z-10 aspect-[4/3] overflow-hidden rounded-[16px] bg-background shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_12px_28px_-12px_rgba(0,0,0,0.18)] dark:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--background))] dark:shadow-none"
+        className="pointer-events-none absolute left-0 top-0 z-10 aspect-[4/3] overflow-hidden rounded-[12px] bg-background shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_8%,transparent),0_12px_28px_-12px_rgba(0,0,0,0.18)] dark:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--background))] dark:shadow-none"
         style={{ width: COVER_W }}
         initial={false}
         animate={{
@@ -217,7 +224,11 @@ export function ProjectIndex({
           opacity: hover !== null ? 1 : 0,
           scale: hover !== null ? 1 : 0.96,
         }}
-        transition={reduced ? { duration: 0 } : { ...LAYOUT_SPRING, opacity: { duration: 0.2, ease: EASE } }}
+        transition={
+          reduced
+            ? { duration: 0 }
+            : { ...LAYOUT_SPRING, ...(arriving ? { x: { duration: 0 }, y: { duration: 0 } } : {}), opacity: { duration: 0.2, ease: EASE } }
+        }
       >
         {items.map((r, i) => (
           /* moving between rows cross-fades the covers, 150ms */
@@ -236,7 +247,7 @@ export function ProjectIndex({
                 {/* skeleton chrome so the gradient reads as a product cover */}
                 <span className="absolute left-[8%] top-[10%] h-[6%] w-[34%] rounded-full bg-foreground/[0.16]" />
                 <span className="absolute left-[8%] top-[24%] h-[5%] w-[52%] rounded-full bg-foreground/[0.08]" />
-                <span className="absolute inset-x-[8%] bottom-[10%] top-[42%] rounded-[4px] bg-background/25" />
+                <span className="absolute inset-x-[8%] bottom-[10%] top-[42%] rounded-[3px] bg-background/25" />
               </>
             )}
           </div>

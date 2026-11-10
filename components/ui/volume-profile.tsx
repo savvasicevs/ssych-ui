@@ -1,7 +1,7 @@
 // provenance: original
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
@@ -227,6 +227,12 @@ export function VolumeProfile({
   const shownHue = shownDelta == null ? INK : textHue(shownDelta >= 0 ? UP : DOWN)
   /* the wash keeps its last row while it fades out, so it never slides home on the way out */
   const lastHot = useRef(0)
+  /* coming in from nothing, the wash appears on its row; it glides only from row to row */
+  const wasHot = useRef<number | null>(null)
+  const entering = hot !== null && wasHot.current === null
+  useEffect(() => {
+    wasHot.current = hot
+  }, [hot])
   if (hot !== null) lastHot.current = hot
 
   return (
@@ -277,7 +283,7 @@ export function VolumeProfile({
             style={{
               opacity: hot !== null ? 1 : 0,
               transform: `translateY(${y(hot ?? lastHot.current)}px)`,
-              transition: reduced ? "opacity 150ms" : `opacity 150ms, transform 180ms ${CSS_EASE}`,
+              transition: reduced || entering ? "opacity 150ms" : `opacity 150ms, transform 180ms ${CSS_EASE}`,
             }}
           />
 

@@ -3,7 +3,7 @@
 
 import { useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -128,13 +128,21 @@ export function HoldingsTable({
           onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : -1 }))}
           aria-label={`Sort by ${label.toLowerCase()}`}
           className={cn(
-            "flex w-full items-center gap-0.5 whitespace-nowrap rounded-full text-[10.5px] outline-none transition-colors duration-200",
+            "flex w-full items-center gap-0.5 whitespace-nowrap rounded-[6px] text-[10.5px] outline-none transition-colors duration-200",
             !first && "justify-end",
             on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90 focus-visible:text-foreground/90",
           )}
         >
           {label}
-          {on && (sort.dir === -1 ? <ChevronDown size={10} strokeWidth={1.8} aria-hidden /> : <ChevronUp size={10} strokeWidth={1.8} aria-hidden />)}
+          {/* one chevron that turns over when the order flips, instead of swapping glyphs */}
+          {on && (
+            <ChevronDown
+              size={10}
+              strokeWidth={1.8}
+              aria-hidden
+              className={cn("transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", sort.dir === 1 && "rotate-180")}
+            />
+          )}
         </button>
       </span>
     )
@@ -156,9 +164,12 @@ export function HoldingsTable({
           const on = hot === h.symbol
           const dim = hot !== null && !on
           return (
-            /* the outer row owns the dim so it never fights the entrance inside */
-            <div
+            /* the outer row owns the dim so it never fights the entrance inside; a new sort
+               glides each row to its new place instead of jumping */
+            <motion.div
               key={h.symbol}
+              layout={reduced ? false : "position"}
+              transition={{ layout: { type: "spring", stiffness: 400, damping: 32 } }}
               role="row"
               tabIndex={0}
               onPointerEnter={() => setHot(h.symbol)}
@@ -203,7 +214,7 @@ export function HoldingsTable({
                     {Array.from({ length: COMB_TICKS }, (_, t) => (
                       <span
                         key={t}
-                        className="w-px rounded-full"
+                        className="w-px rounded-[0.5px]"
                         style={{
                           height: t < cursor ? 9 : 5,
                           background: t < cursor ? (on ? ACCENT : ink(55)) : ink(12),
@@ -214,7 +225,7 @@ export function HoldingsTable({
                   </span>
                 </span>
               </motion.div>
-            </div>
+            </motion.div>
           )
         })}
       </div>

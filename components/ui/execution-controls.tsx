@@ -105,7 +105,7 @@ export function ExecutionControls({
   const fire = useCallback(() => {
     sweep.current?.stop()
     sweep.current = null
-    progress.set(0)
+    /* the full sweep stays and fades out under the working label; it is emptied once out of sight */
     setHolding(false)
     setPhase("working")
     onConfirm?.()
@@ -211,8 +211,19 @@ export function ExecutionControls({
           touchAction: "none",
         }}
       >
-        {!reduced && phase === "idle" && (
-          <motion.span aria-hidden className="absolute inset-0" style={{ scaleX: progress, transformOrigin: "left", background: mix(hue, 24) }} />
+        {!reduced && (
+          <motion.span
+            aria-hidden
+            className="absolute inset-0"
+            style={{ scaleX: progress, transformOrigin: "left", background: mix(hue, 24) }}
+            initial={false}
+            animate={{ opacity: phase === "idle" ? 1 : 0 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            /* empty the sweep once it has faded out, so it never fades back in full */
+            onAnimationComplete={(def) => {
+              if ((def as { opacity?: number }).opacity === 0) progress.set(0)
+            }}
+          />
         )}
         <AnimatePresence mode="wait" initial={false}>
           {/* the label is the state: it swaps in place (text swap: 4px, 2px blur, 150ms); reduced

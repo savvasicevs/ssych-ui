@@ -93,7 +93,7 @@ function NavSection({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="group/sec flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-foreground/[0.03]"
+        className="group/sec flex w-full items-center gap-2.5 rounded-[13.5px] px-2 py-2 text-left transition-colors duration-150 hover:bg-foreground/[0.03]"
       >
         <Icon className="h-[18px] w-[18px] shrink-0 text-foreground/55 transition-colors duration-150 group-hover/sec:text-foreground/80" />
         <span className="flex-1 text-[13px] font-medium tracking-tight text-foreground/85">{section.label}</span>
@@ -125,7 +125,7 @@ function NavSection({
                     aria-hidden
                     layoutId={reduced ? undefined : railId}
                     transition={{ duration: 0.25, ease: SMOOTH }}
-                    className="absolute bottom-1.5 left-[-1px] top-1.5 w-[2px] rounded-full bg-foreground"
+                    className="absolute bottom-1.5 left-[-1px] top-1.5 w-[2px] rounded-[1px] bg-foreground"
                   />
                 ) : null
                 return (
@@ -231,7 +231,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
   // Mobile: a hamburger button that reveals the nav as a slide-in drawer.
   if (isMobile) {
     return (
-      <div className="relative flex h-[560px] w-full flex-col overflow-hidden rounded-lg border border-foreground/[0.06] bg-[var(--surface-soft)]">
+      <div className="relative flex h-[560px] w-full flex-col overflow-hidden rounded-[6px] border border-foreground/[0.06] bg-[var(--surface-soft)]">
         <div className="flex items-center gap-3 border-b border-foreground/[0.05] px-3 py-3">
           <button
             type="button"
@@ -285,7 +285,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
   return (
     <aside
       style={{ width: collapsed ? 68 : 264 }}
-      className="h-[560px] shrink-0 overflow-hidden rounded-lg border border-foreground/[0.06] bg-[var(--surface-soft)]"
+      className="h-[560px] shrink-0 overflow-hidden rounded-[6px] border border-foreground/[0.06] bg-[var(--surface-soft)]"
     >
       {/* the width snaps and the content cross-fades in over 250ms (no width animation) */}
       <motion.div
@@ -297,7 +297,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
       >
       {collapsed ? (
         <div className="flex h-full w-[68px] flex-col items-center px-3 py-5">
-          <div className="h-6 w-6 rounded-md bg-gradient-to-br from-[#5aaaff] to-[#2e7cd4]" />
+          <div className="h-6 w-6 rounded-[4.5px] bg-gradient-to-br from-[#5aaaff] to-[#2e7cd4]" />
           <button
             type="button"
             onClick={() => setCollapsed(false)}

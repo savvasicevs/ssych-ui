@@ -328,10 +328,15 @@ export function AsciiTurntable({
     })
     ro.observe(host)
 
+    /* the follow is timed, not per frame, so it eases the same on a 60 and a 120 Hz screen
+       (5/s is the old 0.08 a frame at 60 Hz); dt is capped so a paused loop never jumps */
+    let lastTick = 0
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick)
+      const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 1 / 60
+      lastTick = now
       if (!engaged) current = Math.sin(((performance.now() - t0) / 1000) * 0.35) * SWEEP * 0.55
-      else current += (target - current) * 0.08
+      else current += (target - current) * (1 - Math.exp(-5 * dt))
       group.rotation.y = current
       group.rotation.x = -current * 0.06
       renderer.render(scene, camera)

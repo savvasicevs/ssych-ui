@@ -85,7 +85,7 @@ const WORD_INK: Record<ToolCallState, string> = { running: ink(60), done: GREEN,
 const SWAP = { initial: { opacity: 0, y: 4, filter: "blur(2px)" }, animate: { opacity: 1, y: 0, filter: "blur(0px)" } } as const
 
 /* raised on the card; 12 here + the 12px inset (6 card + 6 body) = the card's 24 */
-const CODE = cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[12px] px-3 py-2.5 font-mono text-[11px] leading-[1.5]", RAISED)
+const CODE = cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[9px] px-3 py-2.5 font-mono text-[11px] leading-[1.5]", RAISED)
 
 /**
  * One tool call as a record: tool, state and time on the head line, the literal arguments
@@ -112,7 +112,7 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
   return (
     <div
       /* the library card corner: 24 = 18 (the head pill) + 6 (the p-1.5 inset) = 12 (the code blocks) + 12 */
-      className={cn("w-[440px] max-w-full rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
+      className={cn("w-[440px] max-w-full rounded-[18px] p-1.5 tabular-nums", SURFACE, className)}
       role="group"
       aria-label={`Tool call ${call.tool}, ${WORD[state].toLowerCase()}${live ? "" : `, ${took(call.durationMs)}`}`}
     >
@@ -120,7 +120,7 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-full items-center gap-2.5 rounded-[18px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
+        className="flex h-9 w-full items-center gap-2.5 rounded-[13.5px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
       >
         <span className="truncate text-[12px] font-medium text-foreground/90">{call.tool}</span>
         <span role="status" className="flex items-center gap-1.5 text-[11px]" style={{ color: WORD_INK[state] }}>

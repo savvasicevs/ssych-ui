@@ -147,7 +147,7 @@ export function AccountDropdown({
         onClick={() => setOpen((o) => !o)}
         /* a 48px control is fully round; the 24px mark and the 24px chevron slot both sit 12px in */
         className={cn(
-          "relative flex h-12 w-full items-center gap-2.5 rounded-full px-3 text-left outline-none transition-[scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
+          "relative flex h-12 w-full items-center gap-2.5 rounded-[18px] px-3 text-left outline-none transition-[scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
           SURFACE,
           "after:pointer-events-none after:absolute after:inset-0 after:rounded-full after:transition-colors after:duration-150 hover:after:bg-foreground/[0.04] focus-visible:after:bg-foreground/[0.06]",
         )}
@@ -186,7 +186,7 @@ export function AccountDropdown({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: reduced ? 0 : -4, transition: { duration: 0.12 } }}
             transition={{ duration: 0.2, ease: EASE }}
-            className={cn("absolute inset-x-0 top-full z-50 mt-1.5 rounded-[24px] p-1.5", SURFACE)}
+            className={cn("absolute inset-x-0 top-full z-50 mt-1.5 rounded-[18px] p-1.5", SURFACE)}
           >
             <div role="listbox" aria-label="Accounts" className="flex flex-col gap-0.5" onPointerLeave={() => setHot(null)}>
               {accounts.map((a, i) => {
@@ -209,7 +209,7 @@ export function AccountDropdown({
                     onFocus={() => setHot(i)}
                     onBlur={() => setHot(null)}
                     className={cn(
-                      "flex h-12 items-center gap-2.5 rounded-[18px] px-3 text-left outline-none transition-[opacity,background-color,scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
+                      "flex h-12 items-center gap-2.5 rounded-[13.5px] px-3 text-left outline-none transition-[opacity,background-color,scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
                       on ? THUMB : "hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]",
                       hot !== null && hot !== i && "opacity-45",
                     )}

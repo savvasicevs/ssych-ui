@@ -59,6 +59,7 @@ export function MouseTrailCta({
     let onScreen = true
     let lastSpawn = 0
     let charge = 0 // 0..1 — particles arriving at the pill feed this
+    let last = 0
     const particles: Particle[] = []
     /* the ink: the stage's own text colour (text-foreground), read when a run starts so a
        theme change between runs is picked up; canvas takes any CSS colour, alpha goes on globalAlpha */
@@ -89,6 +90,10 @@ export function MouseTrailCta({
 
     const tick = (now: number) => {
       raf = 0
+      /* the physics is tuned per 60Hz frame; k scales each step to the real frame time so a
+         120Hz screen runs the trail at the same pace, not twice as fast */
+      const k = last ? Math.min(3, (now - last) / (1000 / 60)) : 1
+      last = now
       const w = canvas.width / dpr
       const h = canvas.height / dpr
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -107,7 +112,7 @@ export function MouseTrailCta({
         const dy = c.y - p.y
         const d = Math.hypot(dx, dy)
         if (d < GRAVITY_R && d > 1) {
-          const pull = (1 - d / GRAVITY_R) * 0.9
+          const pull = (1 - d / GRAVITY_R) * 0.9 * k
           p.vx += (dx / d) * pull
           p.vy += (dy / d) * pull
         }
@@ -116,10 +121,11 @@ export function MouseTrailCta({
           particles.splice(i, 1)
           continue
         }
-        p.vx *= 0.92
-        p.vy *= 0.92
-        p.x += p.vx
-        p.y += p.vy
+        const drag = 0.92 ** k
+        p.vx *= drag
+        p.vy *= drag
+        p.x += p.vx * k
+        p.y += p.vy * k
         const fade = 1 - age
         // a soft halo + a crisp core, both ink
         ctx.beginPath()
@@ -133,7 +139,7 @@ export function MouseTrailCta({
       }
       ctx.globalAlpha = 1
 
-      charge = Math.max(0, charge - 0.012)
+      charge = Math.max(0, charge - 0.012 * k)
       applyCharge()
 
       if (onScreen && (particles.length > 0 || charge > 0.01)) raf = requestAnimationFrame(tick)
@@ -143,6 +149,7 @@ export function MouseTrailCta({
     const ensureLoop = () => {
       if (!running && onScreen) {
         running = true
+        last = 0
         ink = getComputedStyle(root).color
         raf = requestAnimationFrame(tick)
       }

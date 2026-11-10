@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
-import { SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
+import { GLIDE, SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
 
 /* Release Feed, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: a changelog, newest first, where every line says whether it was added,
@@ -41,8 +41,6 @@ import { SEGMENT_OFF, THUMB, TRACK } from "@/components/ui/control-classes"
    counts hold at 2 added, 2 changed, 1 fixed over 5 notes. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
-/** the segmented control's tween: 250ms, smooth-out */
-const TAB_EASE = [0.22, 1, 0.36, 1] as const
 
 
 export type ReleaseKind = "added" | "changed" | "fixed"
@@ -139,7 +137,7 @@ export function ReleaseFeed({ releases = DEFAULT_RELEASES, title = "API changelo
     <div className={cn("w-[440px] max-w-full tabular-nums", className)} role="group" aria-label={`${title}, ${releases.length} releases, ${notes.length} notes`}>
       <div className="flex justify-end pb-4">
         {/* the segmented control's material: one track, the thumb on the held kind (All when none) */}
-        <div role="group" aria-label="Show notes of one kind" className={cn("inline-flex items-center gap-0.5", TRACK)} onPointerLeave={() => setPeek(null)}>
+        <div role="group" aria-label="Show notes of one kind" className={cn("isolate inline-flex items-center gap-0.5", TRACK)} onPointerLeave={() => setPeek(null)}>
           {([null, ...KINDS] as (ReleaseKind | null)[]).map((k) => {
             const on = held === k
             return (
@@ -153,7 +151,7 @@ export function ReleaseFeed({ releases = DEFAULT_RELEASES, title = "API changelo
                 onBlur={() => setPeek(null)}
                 onClick={() => setHeld(k)}
                 className={cn(
-                  "group relative h-7 rounded-full px-3 text-[11.5px] outline-none transition-colors duration-200 focus-visible:text-foreground/90",
+                  "group relative h-7 rounded-[10.5px] px-3 text-[11.5px] outline-none transition-colors duration-200 focus-visible:text-foreground/90",
                   on ? "text-foreground/90" : SEGMENT_OFF,
                 )}
               >
@@ -161,8 +159,8 @@ export function ReleaseFeed({ releases = DEFAULT_RELEASES, title = "API changelo
                   <motion.span
                     aria-hidden
                     layoutId={`${uid}-kind`}
-                    className={cn("absolute inset-0 rounded-full", THUMB)}
-                    transition={reduced ? { duration: 0 } : { duration: 0.25, ease: TAB_EASE }}
+                    className={cn("absolute inset-0 -z-10 rounded-[10.5px]", THUMB)}
+                    transition={reduced ? { duration: 0 } : GLIDE}
                   />
                 )}
                 <span className="relative flex items-center gap-1.5 transition-transform duration-150 group-active:scale-[0.97] motion-reduce:transition-none motion-reduce:group-active:scale-100">
@@ -204,7 +202,7 @@ export function ReleaseFeed({ releases = DEFAULT_RELEASES, title = "API changelo
                   onFocus={() => setHot(r.version)}
                   onBlur={() => setHot(null)}
                   aria-label={`Copy v${r.version}, released ${r.date}`}
-                  className="group/version -mx-1.5 flex items-baseline gap-2.5 rounded-[8px] px-1.5 py-0.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100"
+                  className="group/version -mx-1.5 flex items-baseline gap-2.5 rounded-[9px] px-1.5 py-0.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100"
                 >
                   <span className="text-[13px] font-medium text-foreground/90">v{r.version}</span>
                   <span className="text-[10.5px] text-foreground/45">{r.date}</span>

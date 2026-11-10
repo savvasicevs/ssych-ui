@@ -1,8 +1,8 @@
 // provenance: original
 "use client"
 
-import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useState } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { Check, Clock } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -101,6 +101,9 @@ export function ApprovalQuorum({
   const [hot, setHot] = useState<number | null>(null)
   /* once pressed, the button washes green with a tick and Released, and the rows lock */
   const [done, setDone] = useState(false)
+  /* the word swap plays on a change only, not on the first paint, where the rows already rise in */
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   const isDefault = title === DEFAULT_TITLE
   const shownLabel = label ?? (isDefault ? "Release to settlement" : title)
@@ -162,7 +165,7 @@ export function ApprovalQuorum({
         {Array.from({ length: quorum }, (_, i) => (
           <span
             key={i}
-            className="h-1 flex-1 rounded-full transition-colors duration-200 motion-reduce:transition-none"
+            className="h-1 flex-1 rounded-[1.5px] transition-colors duration-200 motion-reduce:transition-none"
             style={{ background: i < filled ? (met ? GREEN : "color-mix(in srgb, var(--foreground) 90%, transparent)") : "color-mix(in srgb, var(--foreground) 10%, transparent)" }}
           />
         ))}
@@ -194,7 +197,7 @@ export function ApprovalQuorum({
                 whileTap={reduced ? undefined : "lift"}
                 /* a 36px row: 18 = half its height, a full pill */
                 className={cn(
-                  "flex h-9 w-full items-center gap-2.5 rounded-[18px] px-3 text-left outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] disabled:pointer-events-none motion-reduce:transition-none",
+                  "flex h-9 w-full items-center gap-2.5 rounded-[13.5px] px-3 text-left outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] disabled:pointer-events-none motion-reduce:transition-none",
                   hot !== null && hot !== i && "opacity-50",
                 )}
               >
@@ -204,14 +207,35 @@ export function ApprovalQuorum({
                   transition={reduced ? { duration: 0 } : LIFT_SPRING}
                   className={cn("grid h-3.5 w-3.5 shrink-0 place-items-center transition-colors duration-200", on ? "text-foreground/90" : "text-foreground/45")}
                 >
-                  {on ? <Check size={14} strokeWidth={2} /> : <Clock size={14} strokeWidth={1.75} />}
+                  {/* the clock and the tick trade places out of a 2px blur, 150ms, instead of a hard swap */}
+                  <AnimatePresence initial={false}>
+                    <motion.span
+                      key={on ? "on" : "off"}
+                      className="col-start-1 row-start-1 grid place-items-center"
+                      initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.8, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                      exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.8, filter: "blur(2px)" }}
+                      transition={{ duration: 0.15, ease: EASE }}
+                    >
+                      {on ? <Check size={14} strokeWidth={2} /> : <Clock size={14} strokeWidth={1.75} />}
+                    </motion.span>
+                  </AnimatePresence>
                 </motion.span>
                 <span className={cn("flex-1 text-[12px] transition-colors duration-200", on ? "font-medium text-foreground/90" : "text-foreground/70")}>{a.name}</span>
                 <span
                   className={cn("text-[11px] transition-colors duration-200 motion-reduce:transition-none", !on && "text-foreground/45")}
                   style={on ? { color: GREEN } : undefined}
                 >
-                  {on ? (a.at ? `Approved ${a.at}` : "Approved") : "Pending"}
+                  {/* the word swaps in place (4px, 2px blur, 150ms), the house text swap */}
+                  <motion.span
+                    key={on ? "approved" : "pending"}
+                    className="inline-block"
+                    initial={!mounted ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    transition={{ duration: 0.15, ease: EASE }}
+                  >
+                    {on ? (a.at ? `Approved ${a.at}` : "Approved") : "Pending"}
+                  </motion.span>
                 </span>
               </motion.button>
             </motion.div>

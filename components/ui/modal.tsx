@@ -155,7 +155,7 @@ export function Modal({
       exit={{ opacity: 0, y: reduced ? 0 : 6, scale: reduced ? 1 : 0.98, transition: { duration: 0.15 } }}
       transition={reduced ? { duration: 0.15 } : { duration: 0.25, ease: EASE }}
       /* 36 = 24 (the 48px pills) + 12 (p-3) */
-      className={cn("relative w-full overflow-hidden rounded-[36px] p-3 text-foreground", RAISED, className)}
+      className={cn("relative w-full overflow-hidden rounded-[27px] p-3 text-foreground", RAISED, className)}
       style={{ maxWidth: width }}
     >
       <div className="mb-3 flex items-center gap-2.5 pl-3 pt-1">

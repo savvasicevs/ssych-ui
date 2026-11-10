@@ -40,7 +40,7 @@ export function Accordion({
         const on = active === i
         const Icon = it.icon
         return (
-          <div key={i} className="border-t border-foreground/[0.08] first:border-t-0">
+          <div key={i} className="border-t border-foreground/[0.08] pb-2 first:border-t-0">
             <h3>
               <button
                 type="button"
@@ -48,10 +48,8 @@ export function Accordion({
                 aria-expanded={on}
                 aria-controls={`acc-panel-${i}`}
                 onClick={() => setActive(on ? -1 : i)}
-                className={cn(
-                  "flex w-full cursor-pointer items-center justify-between gap-4 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-foreground/40",
-                  on ? "pb-2" : "pb-4"
-                )}
+                /* the 8px a closed row adds lives in the panel's own padding, so the one height tween carries it */
+                className="flex w-full cursor-pointer items-center justify-between gap-4 pb-2 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-foreground/40"
               >
                 <span className="flex items-center gap-3">
                   {Icon && (
@@ -64,7 +62,7 @@ export function Accordion({
                   )}
                   <span
                     className={cn(
-                      "text-[22px] font-bold leading-[1.1] transition-colors duration-300",
+                      "text-[22px] font-bold leading-[1.1] transition-colors duration-200",
                       on ? "text-foreground" : "text-foreground/40 hover:text-foreground/60"
                     )}
                   >
@@ -78,7 +76,7 @@ export function Accordion({
                   animate={{ scaleY: on ? -1 : 1 }}
                   transition={reduced ? { duration: 0 } : { duration: 0.25, ease: EASE }}
                 >
-                  <ChevronDown className={cn("h-5 w-5", on ? "text-foreground" : "text-foreground/40")} />
+                  <ChevronDown className={cn("h-5 w-5 transition-colors duration-200", on ? "text-foreground" : "text-foreground/40")} />
                 </motion.span>
               </button>
             </h3>
@@ -100,9 +98,9 @@ export function Accordion({
                   <motion.div
                     initial={{ opacity: 0, filter: reduced ? "none" : "blur(2px)" }}
                     animate={{ opacity: 1, filter: reduced ? "none" : "blur(0px)" }}
-                    exit={{ opacity: 0, filter: reduced ? "none" : "blur(2px)" }}
+                    exit={{ opacity: 0, filter: reduced ? "none" : "blur(2px)", transition: reduced ? { duration: 0 } : { duration: 0.15, ease: EASE } }}
                     transition={reduced ? { duration: 0 } : { duration: 0.28, ease: EASE }}
-                    className="grid grid-cols-1 gap-6 pb-6 lg:grid-cols-2 lg:items-center lg:gap-10"
+                    className="grid grid-cols-1 gap-6 pb-4 lg:grid-cols-2 lg:items-center lg:gap-10"
                   >
                     {/* left — body + deliverables */}
                     <div>
@@ -111,7 +109,7 @@ export function Accordion({
                         <ul className="mt-5 flex flex-col gap-2.5">
                           {it.deliverables.map((d) => (
                             <li key={d} className="flex items-start gap-2.5 text-[13px] leading-snug text-foreground/55">
-                              <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none">
+                              <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-[4.5px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none">
                                 <Check className="h-4 w-4 text-foreground opacity-70" />
                               </span>
                               <span>{d}</span>

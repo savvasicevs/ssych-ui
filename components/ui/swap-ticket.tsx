@@ -59,7 +59,8 @@ import { cn } from "@/lib/utils"
    (#0b8650); the theme's #0e9f61 only reaches 3.4:1 under white. Dark: the bright green
    with the near-black ink, 8.5:1, as before */
 const GO =
-  "bg-[#0a7a49] text-white hover:bg-[#0b8650] focus-visible:bg-[#0b8650] dark:bg-[var(--chart-up)] dark:text-[#0e0e0e] dark:hover:bg-[var(--chart-up)] dark:focus-visible:bg-[var(--chart-up)] dark:hover:brightness-[1.06]"
+  /* the hover brightness eases with the fill rather than snapping */
+  "transition-[background-color,color,filter,scale,opacity] bg-[#0a7a49] text-white hover:bg-[#0b8650] focus-visible:bg-[#0b8650] dark:bg-[var(--chart-up)] dark:text-[#0e0e0e] dark:hover:bg-[var(--chart-up)] dark:focus-visible:bg-[var(--chart-up)] dark:hover:brightness-[1.06]"
 
 const usd = (n: number, dp = 2) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp })}`

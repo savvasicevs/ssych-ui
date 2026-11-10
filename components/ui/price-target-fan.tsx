@@ -467,7 +467,7 @@ export function PriceTargetFan({
                 onKeyDown={(e) => {
                   if (e.key === "Escape") e.currentTarget.blur()
                 }}
-                className="block -translate-y-1/2 whitespace-nowrap rounded-full px-1 py-0.5 text-[9px] leading-none outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
+                className="block -translate-y-1/2 whitespace-nowrap rounded-[5px] px-1 py-0.5 text-[9px] leading-none outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
                 style={{ opacity: dim ? 0.35 : 1 }}
               >
                 <span className="font-medium text-foreground/90">{axisUsd(p.price)}</span>

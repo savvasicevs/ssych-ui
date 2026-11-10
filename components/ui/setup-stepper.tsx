@@ -129,7 +129,7 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
                 onPointerEnter={() => setHot(i)}
                 onFocus={() => setHot(i)}
                 onBlur={() => setHot(null)}
-                className="group relative flex w-full items-start gap-3.5 rounded-lg pb-5 text-left outline-none"
+                className="group relative flex w-full items-start gap-3.5 rounded-[22px] pb-5 text-left outline-none"
               >
                 <span
                   aria-hidden
@@ -165,16 +165,17 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
                   >
                     {s.title}
                   </span>
-                  {on && (
-                    <motion.span
-                      className="mt-0.5 block text-[11px] text-foreground/60"
-                      initial={reduced ? false : { opacity: 0, y: 3 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}
-                    >
-                      {s.body}
-                    </motion.span>
-                  )}
+                  {/* the detail folds on grid rows, 0fr to 1fr in 250ms, so the step closing and
+                      the one opening trade height together instead of jumping */}
+                  <span
+                    aria-hidden={!on}
+                    className="grid transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                    style={{ gridTemplateRows: on ? "1fr" : "0fr", opacity: on ? 1 : 0 }}
+                  >
+                    <span className="min-h-0 overflow-hidden">
+                      <span className="mt-0.5 block text-[11px] text-foreground/60">{s.body}</span>
+                    </span>
+                  </span>
                 </span>
               </button>
             </li>

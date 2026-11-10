@@ -280,7 +280,12 @@ export function MarketSnapshot({
       <div
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-[30px] z-[1] -ml-[30px] -mt-[30px] grid h-[60px] w-[60px] place-items-center"
-        style={{ opacity: progress, scale: 0.82 + progress * 0.18 }}
+        style={{
+          opacity: progress,
+          scale: reduced ? 1 : 0.82 + progress * 0.18,
+          /* it follows the finger while pulled; otherwise it eases in and out with the block */
+          transition: phase === "pull" ? "none" : reduced ? "opacity 150ms" : `opacity ${SETTLE_MS}ms ${EASE_CSS}, scale ${SETTLE_MS}ms ${EASE_CSS}`,
+        }}
       >
         <svg viewBox={MARK_VB} className="h-[26px] w-[22px] overflow-visible">
           <path d={MARK_D} fill="none" stroke="var(--foreground)" strokeOpacity={0.12} strokeWidth={26} strokeLinejoin="round" />
@@ -310,7 +315,7 @@ export function MarketSnapshot({
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onKeyDown={onKey}
-        className="relative z-[2] select-none rounded-lg px-2 pb-2 pt-3 outline-none touch-pan-x focus-visible:bg-foreground/[0.03]"
+        className="relative z-[2] select-none rounded-[6px] px-2 pb-2 pt-3 outline-none touch-pan-x focus-visible:bg-foreground/[0.03]"
         style={{
           transform: `translateY(${pull.toFixed(1)}px)`,
           transition: phase === "pull" || reduced ? "none" : `transform ${SETTLE_MS}ms ${EASE_CSS}`,
@@ -403,7 +408,7 @@ export function MarketSnapshot({
         <div className={cn("relative mt-4 flex gap-1", TRACK)} role="group" aria-label="Period">
           <span
             aria-hidden
-            className={cn("absolute inset-y-0.5 left-0.5 rounded-full", THUMB)}
+            className={cn("absolute inset-y-0.5 left-0.5 rounded-[10.5px]", THUMB)}
             style={{
               width: `calc((100% - 4px - ${(PERIODS.length - 1) * 4}px) / ${PERIODS.length})`,
               transform: `translateX(calc(${periodIndex} * (100% + 4px)))`,
@@ -423,7 +428,7 @@ export function MarketSnapshot({
                   setHover(null)
                 }}
                 className={cn(
-                  "relative z-[1] h-7 flex-1 rounded-full text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] focus-visible:text-foreground/90",
+                  "relative z-[1] h-7 flex-1 rounded-[10.5px] text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:text-foreground/90",
                   on ? "text-foreground/90" : SEGMENT_OFF,
                 )}
               >

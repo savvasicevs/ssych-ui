@@ -90,7 +90,7 @@ export type CutoutCardImageProps = ImgHTMLAttributes<HTMLImageElement>
 export function CutoutCardImage({ className, alt = "", ...rest }: CutoutCardImageProps) {
   return (
     <img {...rest} alt={alt} data-slot="cutout-card-image"
-      className={cn("absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/cutout:scale-105", className)} />
+      className={cn("absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] motion-safe:group-hover/cutout:scale-105", className)} />
   )
 }
 
@@ -121,8 +121,9 @@ export function CutoutCardAction({ className, revealOnHover = true, ...rest }: C
     <m.div
       className={cn("absolute", !shown && "pointer-events-none", className)}
       data-slot="cutout-card-action" data-reveal={revealOnHover ? "hover" : "always"}
-      animate={{ opacity: shown ? 1 : 0, transform: `translateY(${shown ? 0 : 8}px)` }}
-      transition={{ duration: reduced ? 0.15 : 0.24, ease: SMOOTH }}
+      animate={{ opacity: shown ? 1 : 0, transform: `translateY(${shown || reduced ? 0 : 8}px)` }}
+      /* it rises in 240ms and leaves quicker, 150ms; reduced motion only fades */
+      transition={{ duration: reduced || !shown ? 0.15 : 0.24, ease: SMOOTH }}
       {...rest}
     />
   )

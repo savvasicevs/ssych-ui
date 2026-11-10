@@ -2,7 +2,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { BUTTON } from "@/components/ui/control-classes"
 import { Line, PILL_32, PrimaryButton, RowField, Segments, TICKET_WIDTH, ink } from "@/components/ui/swap-ticket-field"
@@ -151,29 +151,41 @@ export function QuickTicket({
       <div className="flex h-8 items-center gap-2 px-1">
         <span className="text-[13px] font-medium text-foreground/90">{symbol}</span>
         <span className="text-[12px] text-foreground/60">Last {usd(last)}</span>
-        <span className="ml-auto flex items-center gap-1">
-          {open ? (
-            <button type="button" onClick={() => setOpen(false)} className={cn("h-7 px-3 text-[11.5px]", BUTTON)}>
-              Close
-            </button>
-          ) : (
-            (["buy", "sell"] as const).map((s) => {
-              const hue = s === "buy" ? GREEN : RED
-              return (
-                /* the side's own hue on the pill: a 14% fill and the word in the hue, a touch more under the pointer */
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => unfold(s)}
-                  aria-label={`${s === "buy" ? "Buy" : "Sell"} ${symbol}`}
-                  className="inline-flex h-7 items-center rounded-full bg-[color-mix(in_srgb,var(--side)_14%,transparent)] px-3 text-[11.5px] font-medium outline-none transition-[background-color,scale] duration-150 hover:bg-[color-mix(in_srgb,var(--side)_22%,transparent)] focus-visible:bg-[color-mix(in_srgb,var(--side)_22%,transparent)] active:scale-[0.97] motion-reduce:active:scale-100"
-                  style={{ ["--side" as string]: hue, color: ink(hue) }}
-                >
-                  {s === "buy" ? "Buy" : "Sell"}
-                </button>
-              )
-            })
-          )}
+        {/* Close and the Buy and Sell pills cross over in one grid cell (150ms, 2px blur), so
+            opening the ticket neither swaps the header in one frame nor waits for the old one */}
+        <span className="ml-auto grid justify-items-end [&>*]:[grid-area:1/1]">
+        <AnimatePresence initial={false}>
+          <motion.span
+            key={open ? "close" : "sides"}
+            className="flex items-center gap-1"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(2px)" }}
+            animate={{ opacity: 1, filter: "blur(0px)", transition: { duration: 0.15, ease: EASE } }}
+            exit={reduced ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, filter: "blur(2px)", transition: { duration: 0.15, ease: EASE } }}
+          >
+            {open ? (
+              <button type="button" onClick={() => setOpen(false)} className={cn("h-7 px-3 text-[11.5px]", BUTTON)}>
+                Close
+              </button>
+            ) : (
+              (["buy", "sell"] as const).map((s) => {
+                const hue = s === "buy" ? GREEN : RED
+                return (
+                  /* the side's own hue on the pill: light (2026-11-09, his pick A) the solid hue, lightness capped at OKLCH 0.52, white text at AA; dark a 14% fill and the word in the hue */
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => unfold(s)}
+                    aria-label={`${s === "buy" ? "Buy" : "Sell"} ${symbol}`}
+                    className="inline-flex h-7 items-center rounded-[10.5px] bg-[oklch(from_var(--side)_min(l,0.52)_c_h)] px-3 text-[11.5px] font-medium text-white outline-none transition-[background-color,scale,filter] duration-150 hover:brightness-[1.06] active:scale-[0.97] dark:bg-[color-mix(in_srgb,var(--side)_14%,transparent)] dark:text-[var(--side-ink)] dark:hover:brightness-100 dark:hover:bg-[color-mix(in_srgb,var(--side)_20%,transparent)] focus-visible:brightness-[1.06] dark:focus-visible:bg-[color-mix(in_srgb,var(--side)_22%,transparent)] motion-reduce:active:scale-100"
+                    style={{ ["--side" as string]: hue, ["--side-ink" as string]: ink(hue) }}
+                  >
+                    {s === "buy" ? "Buy" : "Sell"}
+                  </button>
+                )
+              })
+            )}
+          </motion.span>
+        </AnimatePresence>
         </span>
       </div>
 
@@ -253,6 +265,7 @@ export function QuickTicket({
               state={`${state}-${side}`}
               disabled={state !== "ready"}
               onClick={submit}
+              lightHue={buy ? GREEN : RED}
               label={
                 <>
                   {placed ? (

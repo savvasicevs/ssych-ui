@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 /* the ground is the surface step (spec 14.8): a solid 7% foreground over the page, no outline */
 /** the library's one card corner, copied from src/components/library/controls.ts (CARD_RADIUS) */
-const CARD_RADIUS = "rounded-[24px]"
+const CARD_RADIUS = "rounded-[18px]"
 
 /* Info Card, the rail's small card (shell primitives brief, 2026-09-30).
    What it is for: one statement with one way to act on it: "Need help?", "Request a free
@@ -44,10 +44,11 @@ export interface InfoCardProps {
   className?: string
 }
 
-/** The action row: shut until the card is pointed at or focused into, open on touch. */
+/** The action row: shut until the card is pointed at or focused into, open on touch.
+ *  An 80ms intent delay on hover so a passing cursor does not flash it; it opens in 250ms and closes in 150ms. */
 function Reveal({ children }: { children: ReactNode }) {
   return (
-    <div className="grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-focus-within/box:grid-rows-[1fr] group-focus-within/box:opacity-100 group-hover/box:grid-rows-[1fr] group-hover/box:opacity-100 motion-reduce:transition-[opacity] [@media(hover:none)]:grid-rows-[1fr] [@media(hover:none)]:opacity-100">
+    <div className="grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-focus-within/box:grid-rows-[1fr] group-focus-within/box:opacity-100 group-focus-within/box:duration-[250ms] group-hover/box:grid-rows-[1fr] group-hover/box:opacity-100 group-hover/box:delay-[80ms] group-hover/box:duration-[250ms] motion-reduce:transition-[opacity] [@media(hover:none)]:grid-rows-[1fr] [@media(hover:none)]:opacity-100">
       <div className="flex min-h-0 flex-col overflow-hidden">{children}</div>
     </div>
   )

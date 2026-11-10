@@ -119,7 +119,13 @@ export function AlertStack({
           Restore alerts
         </motion.button>
       ) : (
-        <div className="relative" style={{ height: open ? rows.length * 52 - 8 : 44 + (rows.length - 1) * 7 }}>
+        /* the pile's box grows and folds on the rows' own spring, so the page under it never jumps */
+        <motion.div
+          className="relative"
+          initial={false}
+          animate={{ height: open ? rows.length * 52 - 8 : 44 + (rows.length - 1) * 7 }}
+          transition={reduced ? { duration: 0 } : SETTLE}
+        >
           <AnimatePresence initial={false}>
             {rows.map(({ label, tone }, i) => {
               const done = leaving === label
@@ -129,7 +135,7 @@ export function AlertStack({
                   /* rounded-full: 22 = the 24px dismiss's 12 + its 10px inset (spec 13.10) */
                   /* light (his call, 2026-10-02): white cards on top of each other, a hairline
                      and a light shadow each; dark keeps the 7% ground */
-                  className="absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-full bg-background pl-4 pr-2.5 shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_2px_6px_rgba(0,0,0,0.06)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
+                  className="absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-[16.5px] bg-background pl-4 pr-2.5 shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_2px_6px_rgba(0,0,0,0.06)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
                   style={{ zIndex: rows.length - i }}
                   onPointerEnter={() => setHot(label)}
                   initial={false}
@@ -144,16 +150,22 @@ export function AlertStack({
                   {/* the hold's wash sits under the text, in the row's own corner */}
                   <span
                     aria-hidden
-                    className="pointer-events-none absolute inset-0 rounded-full transition-opacity duration-150"
+                    className="pointer-events-none absolute inset-0 rounded-[16.5px] transition-opacity duration-150"
                     style={{ background: rowWash("var(--foreground)"), opacity: done ? 1 : 0 }}
                   />
                   {tone && <span aria-hidden className="relative h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: TONE[tone] }} />}
                   <span className="relative flex-1 truncate text-[12.5px] text-foreground/90">{label}</span>
                   {done ? (
-                    <span className="relative inline-flex h-6 items-center gap-1 pr-1.5 text-[11px] font-medium text-foreground/90" role="status">
+                    <motion.span
+                      className="relative inline-flex h-6 items-center gap-1 pr-1.5 text-[11px] font-medium text-foreground/90"
+                      role="status"
+                      initial={reduced ? { opacity: 0 } : { opacity: 0, x: 4, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                      transition={{ duration: 0.15, ease: EASE }}
+                    >
                       <Check className="h-3 w-3" strokeWidth={2.2} aria-hidden />
                       Dismissed
-                    </span>
+                    </motion.span>
                   ) : (
                     <Tip tip="Dismiss" side="left" className="relative">
                       <button
@@ -162,7 +174,7 @@ export function AlertStack({
                         disabled={leaving !== null}
                         onFocus={() => setHot(label)}
                         onClick={() => dismiss(label)}
-                        className={cn(ICON_BUTTON, "h-6 w-6 text-foreground/45 active:scale-[0.97] motion-reduce:active:scale-100")}
+                        className={cn(ICON_BUTTON, "h-6 w-6 text-foreground/45 transition-[color,background-color,scale] active:scale-[0.97] motion-reduce:active:scale-100")}
                       >
                         <X className="h-3 w-3" strokeWidth={2} aria-hidden />
                       </button>
@@ -172,7 +184,7 @@ export function AlertStack({
               )
             })}
           </AnimatePresence>
-        </div>
+        </motion.div>
       )}
     </div>
   )

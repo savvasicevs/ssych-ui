@@ -132,7 +132,7 @@ export function CombRows({
               onPointerEnter={() => setHot(r.label)}
               onFocus={() => setHot(r.label)}
               onBlur={() => setHot(null)}
-              className="-mx-2 rounded-[4px] outline-none transition-[opacity,background-color] duration-200 focus-visible:bg-foreground/[0.06]"
+              className="-mx-2 rounded-[3px] outline-none transition-[opacity,background-color] duration-200 focus-visible:bg-foreground/[0.06]"
               style={{ opacity: dim ? 0.45 : 1 }}
             >
               <motion.div
@@ -153,7 +153,7 @@ export function CombRows({
                     return (
                       <span
                         key={t}
-                        className="w-px rounded-full"
+                        className="w-px rounded-[0.5px]"
                         style={{
                           height: TALL,
                           transform: `scaleY(${shown ? h / TALL : 0})`,

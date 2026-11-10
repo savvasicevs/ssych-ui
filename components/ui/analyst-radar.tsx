@@ -117,7 +117,8 @@ export function AnalystRadar({
       transition: reduced
         ? { duration: 0 }
         : {
-            opacity: { duration: 0.4, ease: EASE, delay },
+            /* hiding a series leaves faster than it came, with no entrance delay */
+            opacity: on ? { duration: 0.4, ease: EASE, delay } : { duration: 0.2, ease: EASE },
             scale: { duration: 0.6, ease: EASE, delay },
             d: { duration: 0.35, ease: EASE },
           },
@@ -143,7 +144,7 @@ export function AnalystRadar({
               aria-pressed={active}
               aria-label={`${active ? "Hide" : "Show"} ${s.label}`}
               onClick={() => setShow((v) => ({ ...v, [s.key]: !v[s.key] }))}
-              className="-mx-1.5 flex items-center gap-1.5 rounded-full px-1.5 outline-none transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
+              className="-mx-1.5 flex items-center gap-1.5 rounded-[6.5px] px-1.5 outline-none transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
               style={{ opacity: active ? 1 : 0.4 }}
             >
               {s.dashed ? (
@@ -246,7 +247,7 @@ export function AnalystRadar({
               onBlur={() => setHot(null)}
               onClick={() => setHot(i)}
               className={cn(
-                "absolute whitespace-nowrap rounded-full text-[11px] outline-none transition-colors duration-150 focus-visible:bg-foreground/[0.06]",
+                "absolute whitespace-nowrap rounded-[6.5px] text-[11px] outline-none transition-colors duration-150 focus-visible:bg-foreground/[0.06]",
                 hot === i ? "text-foreground/90" : "text-foreground/60",
               )}
               style={{ left: x, top: y, transform: `translate(${shift}, -50%)` }}

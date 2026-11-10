@@ -259,7 +259,7 @@ const Level = memo(function Level({
     >
       <span
         aria-hidden
-        className="absolute inset-y-px right-0 w-full origin-right rounded-[2px]"
+        className="absolute inset-y-px right-0 w-full origin-right rounded-[8px]"
         style={{
           transform: `scaleX(${scale})`,
           background: `color-mix(in srgb, ${hue} ${lit ? 30 : 15}%, transparent)`,
@@ -269,7 +269,7 @@ const Level = memo(function Level({
       {/* the flash: one wash in the side's hue each time this level's size changes */}
       <span
         aria-hidden
-        className="absolute inset-y-px inset-x-0 rounded-[2px]"
+        className="absolute inset-y-px inset-x-0 rounded-[8px]"
         style={{ opacity: 0, background: `color-mix(in srgb, ${hue} 22%, transparent)` }}
       />
       <span className="relative font-medium" style={{ color: ink(hue) }}>
@@ -525,15 +525,15 @@ export function OrderBook({
         onPointerLeave={() => setBalanceOn(false)}
         onFocus={() => setBalanceOn(true)}
         onBlur={() => setBalanceOn(false)}
-        className="mt-1 rounded-full px-2 py-2.5 outline-none focus-visible:bg-foreground/[0.04]"
+        className="mt-1 rounded-[8.5px] px-2 py-2.5 outline-none focus-visible:bg-foreground/[0.04]"
       >
         <div aria-hidden className="relative h-[3px]">
           <span
-            className="absolute inset-0 rounded-full transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+            className="absolute inset-0 rounded-[1px] transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             style={{ background: `color-mix(in srgb, ${GREEN} 70%, transparent)`, clipPath: `inset(0 ${(100 - bidShare).toFixed(2)}% 0 0 round 999px)` }}
           />
           <span
-            className="absolute inset-0 rounded-full transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+            className="absolute inset-0 rounded-[1px] transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             style={{ background: `color-mix(in srgb, ${RED} 70%, transparent)`, clipPath: `inset(0 0 0 calc(${bidShare.toFixed(2)}% + 2px) round 999px)` }}
           />
         </div>

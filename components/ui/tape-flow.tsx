@@ -233,7 +233,7 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
         role="group"
         aria-label="Prints, arrow keys step through them"
         onKeyDown={onKey}
-        className="rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+        className="rounded-[3px] outline-none focus-visible:bg-foreground/[0.03]"
       >
         <svg
           ref={box}
@@ -295,7 +295,7 @@ export function TapeFlow({ symbol = "BTC-USD", base = 64280.5, seed = 42, initia
             <span className="flex shrink-0 items-center gap-2">
               <span style={{ color: GREEN }}>{buy}% buy</span>
               <span style={{ color: RED }}>{100 - buy}% sell</span>
-              <span aria-hidden className="flex h-[3px] w-16 overflow-hidden rounded-full">
+              <span aria-hidden className="flex h-[3px] w-16 overflow-hidden rounded-[1px]">
                 <span style={{ width: `${hot.buyRatio * 100}%`, background: GREEN, transition: reduced ? undefined : "width 300ms cubic-bezier(0.16, 1, 0.3, 1)" }} />
                 <span className="flex-1" style={{ background: RED }} />
               </span>

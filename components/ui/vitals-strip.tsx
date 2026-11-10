@@ -109,7 +109,7 @@ export function VitalsStrip({ vitals = DEFAULT_VITALS, counter = "Trades", count
               onFocus={() => setHot(i)}
               onBlur={() => setHot(null)}
               /* no side padding and no rules: cells part by the 24px gap; focus bleeds 8px past the text */
-              className="-mx-2 flex min-w-0 flex-col gap-1 rounded-[8px] px-2 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
+              className="-mx-2 flex min-w-0 flex-col gap-1 rounded-[6px] px-2 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
               style={{ opacity: hot !== null && hot !== i ? 0.45 : 1 }}
             >
               <span className="flex items-center gap-1.5 whitespace-nowrap text-[10px] text-foreground/45">

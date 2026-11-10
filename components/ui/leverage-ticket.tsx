@@ -241,9 +241,9 @@ export function LeverageTicket({
         />
         {/* entry sits at one end; the fill is the room left before liquidation. It follows
             the slider at once (keys and drags repeat), on transform only */}
-        <div aria-hidden className="flex h-[3px] rounded-full bg-foreground/[0.1]">
+        <div aria-hidden className="flex h-[3px] rounded-[1px] bg-foreground/[0.1]">
           <span
-            className="w-full rounded-full"
+            className="w-full rounded-[15px]"
             style={{
               transform: `scaleX(${room / 100})`,
               transformOrigin: long ? "right" : "left",
@@ -259,6 +259,7 @@ export function LeverageTicket({
         state={`${state}-${side}`}
         disabled={!enabled}
         onClick={() => onSubmit?.({ side, margin, leverage: lev, notional, contracts, liquidation })}
+        lightHue={long ? GREEN : RED}
         label={verdict}
       />
 

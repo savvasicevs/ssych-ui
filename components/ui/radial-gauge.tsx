@@ -204,7 +204,7 @@ export function RadialGauge({
           onFocus={() => setHot("dial")}
           onBlur={() => setHot(null)}
           onClick={() => setHot("dial")}
-          className="absolute rounded-full outline-none"
+          className="absolute rounded-[6px] outline-none"
           style={{ left: MID - R_IN, top: MID - R_IN, width: R_IN * 2, height: R_IN * 2 }}
         />
         <div className="pointer-events-none absolute inset-x-0 flex flex-col items-center" style={{ top: MID - 13 }}>
@@ -222,13 +222,13 @@ export function RadialGauge({
             onFocus={() => setHot(i)}
             onBlur={() => setHot(null)}
             className={cn(
-              "-mx-1.5 flex h-6 items-center gap-1.5 rounded-full px-1.5 text-[11px] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.08]",
+              "-mx-1.5 flex h-6 items-center gap-1.5 rounded-[9px] px-1.5 text-[11px] outline-none transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.08]",
               typeof hot === "number" && hot !== i && "opacity-40",
             )}
           >
             <span
               aria-hidden
-              className="h-[2px] w-2.5 rounded-full"
+              className="h-[2px] w-2.5 rounded-[1px]"
               style={{ background: markOf(b.tone, hot === i ? 100 : i === mine ? 70 : 35), transition: reduced ? "none" : "background-color 160ms" }}
             />
             {/* the key is the band names only (2026-10-01): the ranges wrapped at this width; they stay in the

@@ -206,7 +206,7 @@ export function AssetsBalanceCard({
             onPointerDown={(e) => scrubTo(e.clientX)}
             onPointerLeave={() => setHi(null)}
             onPointerCancel={() => setHi(null)}
-            className="relative cursor-crosshair touch-pan-y rounded-[4px] outline-none focus-visible:bg-foreground/[0.03]"
+            className="relative cursor-crosshair touch-pan-y rounded-[3px] outline-none focus-visible:bg-foreground/[0.03]"
             style={{ height: BAND, color: signal }}
           >
             <motion.div

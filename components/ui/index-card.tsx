@@ -219,7 +219,7 @@ export function IndexCard({
 
   return (
     <div
-      className={cn("w-[340px] max-w-full overflow-hidden rounded-[24px] p-1.5 tabular-nums", SURFACE, className)}
+      className={cn("w-[340px] max-w-full overflow-hidden rounded-[18px] p-1.5 tabular-nums", SURFACE, className)}
       role="group"
       aria-label={`${eyebrow}: ${idx.name ?? idx.label}, ${idx.price} points, ${delta} today`}
     >
@@ -345,18 +345,18 @@ export function IndexCard({
               onSelect?.(ix, i)
             }}
             className={cn(
-              "relative h-[30px] flex-1 whitespace-nowrap rounded-full px-2 text-center text-[11.5px] font-medium outline-none transition-colors duration-150 focus-visible:text-foreground/90",
+              "relative h-[30px] flex-1 whitespace-nowrap rounded-[11.5px] px-2 text-center text-[11.5px] font-medium outline-none transition-colors duration-150 focus-visible:text-foreground/90",
               active === i ? "text-foreground/90" : SEGMENT_OFF,
             )}
           >
             {active === i &&
               (reduced ? (
-                <span aria-hidden className={cn("absolute inset-0 rounded-full", THUMB)} />
+                <span aria-hidden className={cn("absolute inset-0 rounded-[12px]", THUMB)} />
               ) : (
                 <motion.span
                   aria-hidden
                   layoutId={`${uid}-pill`}
-                  className={cn("absolute inset-0 rounded-full", THUMB)}
+                  className={cn("absolute inset-0 rounded-[12px]", THUMB)}
                   transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
                 />
               ))}

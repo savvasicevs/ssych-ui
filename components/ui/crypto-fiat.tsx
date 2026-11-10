@@ -163,7 +163,7 @@ export function CryptoFiat({
       aria-label={`${name ?? NAMES[symbol.toUpperCase()] ?? symbol} amount, 1 ${symbol} = ${rate}, ${move >= 0 ? "up" : "down"} ${Math.abs(move).toFixed(2)}% in ${span}`}
       className={cn(
         /* the focus line is drawn on a layer over the sparkline, so it holds along the bottom edge too */
-        "relative flex h-[200px] w-[320px] max-w-full flex-col overflow-hidden rounded-[24px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1] after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-[inherit] after:transition-shadow after:duration-150 has-[input:focus]:after:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_20%,transparent)]",
+        "relative flex h-[200px] w-[320px] max-w-full flex-col overflow-hidden rounded-[18px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1] after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-[inherit] after:transition-shadow after:duration-150 has-[input:focus]:after:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_20%,transparent)]",
         SURFACE,
         className,
       )}

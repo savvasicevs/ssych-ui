@@ -92,10 +92,10 @@ export function OnboardingChecklist({
         aria-valuemin={0}
         aria-valuemax={steps.length}
         aria-valuenow={done.size}
-        className="mt-2 h-[2px] w-full overflow-hidden rounded-full bg-foreground/[0.06]"
+        className="mt-2 h-[2px] w-full overflow-hidden rounded-[1px] bg-foreground/[0.06]"
       >
         <motion.div
-          className="h-full origin-left rounded-full"
+          className="h-full origin-left rounded-[1px]"
           style={{ background: GREEN }}
           animate={{ scaleX: share }}
           initial={false}
@@ -107,17 +107,20 @@ export function OnboardingChecklist({
         {steps.map((s, i) => {
           const on = done.has(s.id)
           return (
-            /* steps rise in once, 35ms apart, the stagger capped at the first eight */
+            /* steps rise in once, 35ms apart, the stagger capped at the first eight; the
+               wrapper owns the entrance so its inline opacity never overrides the row's dim */
             <motion.div
               key={s.id}
-              className={cn(
-                "group -mx-2 flex items-center gap-2 rounded-[12px] px-2 transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] has-[:focus-visible]:bg-foreground/[0.06]",
-                hot !== null && hot !== s.id && "opacity-50",
-              )}
-              onPointerEnter={() => setHot(s.id)}
               initial={reduced ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
+            >
+            <div
+              className={cn(
+                "group -mx-2 flex items-center gap-2 rounded-[9px] px-2 transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.04] has-[:focus-visible]:bg-foreground/[0.06]",
+                hot !== null && hot !== s.id && "opacity-50",
+              )}
+              onPointerEnter={() => setHot(s.id)}
             >
               <button
                 type="button"
@@ -173,6 +176,7 @@ export function OnboardingChecklist({
                   />
                 )}
               </span>
+            </div>
             </motion.div>
           )
         })}

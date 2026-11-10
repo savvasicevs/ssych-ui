@@ -140,6 +140,8 @@ export function NewItemsPill({
   const before = useRef(0)
   /** ids seeded on mount: they stagger in once with the mount, later arrivals rise alone */
   const seeded = useRef(new Set(fills.map((f) => f.id)))
+  /** arrivals that landed while parked at the top: they drop in from above as they come in */
+  const opening = useRef(new Set<number>())
 
   const [tape, setTape] = useState(fills)
   const [pending, setPending] = useState(0)
@@ -158,7 +160,12 @@ export function NewItemsPill({
       const el = scroller.current
       before.current = el ? el.scrollHeight : 0
       const parked = !el || el.scrollTop < TOP
-      setTape((prev) => [makeFill(next.current++), ...prev].slice(0, CAP))
+      const fill = makeFill(next.current++)
+      if (parked) {
+        opening.current.add(fill.id)
+        if (opening.current.size > CAP) opening.current.delete(opening.current.values().next().value as number)
+      }
+      setTape((prev) => [fill, ...prev].slice(0, CAP))
       if (!parked) setPending((n) => n + 1)
     }, intervalMs)
     return () => window.clearInterval(t)
@@ -225,7 +232,7 @@ export function NewItemsPill({
                 animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: reduced ? 0.15 : 0.25, ease: EASE } }}
                 exit={reduced ? { opacity: 0, transition: { duration: 0.15 } } : { opacity: 0, y: -4, transition: { duration: 0.15, ease: EASE } }}
                 whileTap={reduced ? undefined : { scale: 0.97, transition: { type: "spring", stiffness: 500, damping: 30 } }}
-                className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--foreground)_14%,var(--background))] px-2.5 py-1 text-[11px] outline-none transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] focus-visible:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] motion-reduce:transition-none"
+                className="pointer-events-auto flex items-center gap-1.5 rounded-[9px] bg-[color-mix(in_srgb,var(--foreground)_14%,var(--background))] px-2.5 py-1 text-[11px] outline-none transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] focus-visible:bg-[color-mix(in_srgb,var(--foreground)_20%,var(--background))] motion-reduce:transition-none"
               >
                 <ArrowUp className="h-3 w-3 text-foreground/45" strokeWidth={1.8} aria-hidden />
                 {/* the count changes in place with each arrival: a live tick, so no re-entry (spec 13.4) */}
@@ -260,25 +267,30 @@ export function NewItemsPill({
             // on mount the first 8 seeded rows rise in 35ms apart; a later arrival rises in
             // on its own. Rows past 8 are simply there. Reduced motion keeps the fade only.
             const enters = fresh || i < 8
+            // every arrival lands at full height (the pin above needs it); parked at the top it
+            // drops in from above and the rows under it slide down by transform (a FLIP)
+            const opens = !reduced && opening.current.has(f.id)
             return (
               <motion.div
                 key={f.id}
-                initial={enters ? (reduced ? { opacity: 0 } : { opacity: 0, y: 6 }) : false}
+                layout={reduced ? false : "position"}
+                layoutDependency={tape[0]?.id}
+                initial={enters ? (reduced ? { opacity: 0 } : opens ? { opacity: 0, y: -6 } : { opacity: 0, y: 6 }) : false}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: fresh ? 0.25 : 0.3, ease: EASE, delay: fresh ? 0 : i * 0.035 }}
+                transition={{ duration: fresh ? 0.25 : 0.3, ease: EASE, delay: fresh ? 0 : i * 0.035, layout: { duration: 0.25, ease: EASE } }}
               >
                 {/* the dim is plain CSS on the inner row: rows move under a still pointer when
                     a fill lands, and the browser keeps hover honest where state would go stale */}
                 <div
                   className={cn(
                     COLS,
-                    "rounded-[8px] py-2.5 transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] group-hover/tape:[&:not(:hover)]:opacity-50 motion-reduce:transition-none",
+                    "rounded-[6px] py-2.5 transition-[opacity,background-color] duration-150 hover:bg-foreground/[0.04] group-hover/tape:[&:not(:hover)]:opacity-50 motion-reduce:transition-none",
                   )}
                 >
                   <span className="text-[10.5px] text-foreground/45">{f.time}</span>
                   <span className="flex min-w-0 items-center gap-2">
                     {/* the side tick is the one mark of direction; the word is for a screen reader */}
-                    <span aria-hidden className="h-3 w-[2px] rounded-full" style={{ background: up ? GREEN : RED }} />
+                    <span aria-hidden className="h-3 w-[2px] rounded-[1px]" style={{ background: up ? GREEN : RED }} />
                     <span className="sr-only">{up ? "Buy" : "Sell"}</span>
                     <span className="truncate text-[12.5px] text-foreground/90">{f.symbol}</span>
                     {f.venue && <span className="shrink-0 text-[10.5px] text-foreground/45">{f.venue}</span>}

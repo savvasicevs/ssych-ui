@@ -103,7 +103,7 @@ export function ScreenShuffle({
         return (
           <motion.div
             key={screen.id}
-            className="absolute left-1/2 top-1/2 w-[360px] overflow-hidden rounded-[18px] shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_10%,transparent)),0_14px_32px_-14px_rgba(0,0,0,0.2)] dark:shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_12%,transparent)]"
+            className="absolute left-1/2 top-1/2 w-[360px] overflow-hidden rounded-[13.5px] shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_10%,transparent)),0_14px_32px_-14px_rgba(0,0,0,0.2)] dark:shadow-[0_0_0_1px_color-mix(in_srgb,var(--foreground)_12%,transparent)]"
             style={{ aspectRatio: "1495 / 1024", transformOrigin: "50% 60%" }}
             animate={{
               x: `calc(-50% + ${slot * SX}px)`,
@@ -139,7 +139,7 @@ export function ScreenShuffle({
                     <span className="h-[9%] w-3/5 rounded-full bg-foreground/[0.07]" />
                     <span className="h-[9%] w-4/6 rounded-full bg-foreground/[0.05]" />
                   </div>
-                  <div className="flex-1 rounded-[10px] bg-foreground/[0.06]" />
+                  <div className="flex-1 rounded-[7.5px] bg-foreground/[0.06]" />
                 </div>
               </div>
             )}

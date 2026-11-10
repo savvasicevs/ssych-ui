@@ -76,6 +76,8 @@ export function SectorsDonut({
 }) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<number | null>(null)
+  /* the arrival stagger belongs to the mount only; afterwards an un-dim answers at once */
+  const [arrived, setArrived] = useState(false)
 
   const total = sectors.reduce((s, x) => s + x.pct, 0) || 1
   // strength follows size, so the largest weight is the strongest arc wherever it sits
@@ -105,6 +107,7 @@ export function SectorsDonut({
             initial={reduced ? false : { rotate: -24 }}
             animate={{ rotate: 0 }}
             transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }}
+            onAnimationComplete={() => setArrived(true)}
           >
           {arcs.map((a, i) => (
             <motion.path
@@ -114,7 +117,7 @@ export function SectorsDonut({
               style={{ transition: reduced ? "none" : "fill 160ms" }}
               initial={{ opacity: reduced ? 1 : 0 }}
               animate={{ opacity: hot === null || hot === i ? 1 : 0.35 }}
-              transition={reduced ? { duration: 0 } : { duration: hot === null ? 0.35 : 0.16, ease: EASE, delay: hot === null ? Math.min(0.03, 0.24 / arcs.length) * i : 0 }}
+              transition={reduced ? { duration: 0 } : arrived ? { duration: 0.16, ease: EASE } : { duration: 0.35, ease: EASE, delay: Math.min(0.03, 0.24 / arcs.length) * i }}
               onPointerEnter={() => setHot(i)}
             />
           ))}
@@ -149,11 +152,11 @@ export function SectorsDonut({
             onFocus={() => setHot(i)}
             onBlur={() => setHot(null)}
             className={cn(
-              "-mx-2 flex items-center gap-2.5 rounded-[4px] px-2 py-[5px] text-left outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]",
+              "-mx-2 flex items-center gap-2.5 rounded-[10px] px-2 py-[5px] text-left outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]",
               hot !== null && hot !== i && "opacity-35",
             )}
           >
-            <span aria-hidden className="h-2 w-2 shrink-0 rounded-[2px]" style={{ background: fillOf(i), transition: reduced ? "none" : "background 160ms" }} />
+            <span aria-hidden className="h-2 w-2 shrink-0 rounded-[1.5px]" style={{ background: fillOf(i), transition: reduced ? "none" : "background 160ms" }} />
             <span className="w-[120px] truncate text-[11.5px] text-foreground/90">{a.label}</span>
             <span className="w-[38px] text-right text-[11px] text-foreground/45">{a.pct.toFixed(1)}%</span>
           </button>

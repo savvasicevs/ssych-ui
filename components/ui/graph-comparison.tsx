@@ -303,12 +303,15 @@ export function GraphComparison({
 
       {/* one row at the top: the series on the plot and the add menu */}
       <div className="flex items-center gap-1.5">
-        <div
-          className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        <motion.div
+          layoutScroll
+          className="relative -my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="group"
           aria-label="On the plot"
           onPointerLeave={() => setHot(null)}
         >
+          {/* a chip taken off fades out while the rest close the gap; a new order glides */}
+          <AnimatePresence initial={false} mode="popLayout">
           {order.map((k) => {
             const s = cut[k]
             const last = on.length <= 1
@@ -317,10 +320,12 @@ export function GraphComparison({
                 key={s.symbol}
                 type="button"
                 disabled={last}
+                layout={!reduced}
                 initial={reduced ? false : { opacity: 0, scale: 0.97 }}
                 animate={{ opacity: hot !== null && hot !== s.symbol ? 0.4 : 1, scale: 1 }}
+                exit={reduced ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97, transition: { duration: 0.15, ease: EASE } }}
                 whileTap={reduced ? undefined : { scale: 0.97 }}
-                transition={{ duration: 0.2, ease: EASE, scale: reduced ? { duration: 0 } : PRESS }}
+                transition={{ duration: 0.2, ease: EASE, scale: reduced ? { duration: 0 } : PRESS, layout: { duration: 0.25, ease: EASE } }}
                 aria-label={`${s.symbol}, ${s.label.toLowerCase()}${last ? "" : ". Press to take it off the plot"}`}
                 onPointerEnter={() => setHot(s.symbol)}
                 onFocus={() => setHot(s.symbol)}
@@ -342,7 +347,8 @@ export function GraphComparison({
               </motion.button>
             )
           })}
-        </div>
+          </AnimatePresence>
+        </motion.div>
         {waiting.length > 0 && (
           <ChartMenu
             label={full ? `Add a series, take one off first (${room} at most)` : "Add a series"}

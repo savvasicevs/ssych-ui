@@ -1,7 +1,7 @@
 // provenance: original
 "use client"
 
-import { useId, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
@@ -20,6 +20,9 @@ import { usePointed } from "@/components/ui/use-pointed"
    keeps that symbol full and dims the rest; each symbol is a real button now, so the
    keyboard can reach and hold it. Each symbol carries its mark through a renderIcon slot
    (the preview passes the real token and company marks). The preview stage is 160px.
+   2026-11-09 motion pass: the drift eases up to speed and coasts to a stop (RAMP). The loop
+   itself is a Web Animation on the compositor; only its playback rate is stepped per frame,
+   and only for the ramp.
    Formulas: none; every figure is the caller's (price, and the signed 24h move in percent). */
 
 const GREEN = "var(--chart-up)"
@@ -27,6 +30,9 @@ const RED = "var(--chart-down)"
 
 /** one full loop of the tape, seconds */
 const LOOP = 30
+/** the tape eases up to speed and coasts to a stop on this time constant, seconds (settles
+    in about 0.35s), so pointing at it or pressing a symbol never jolts it */
+const RAMP = 0.12
 /** both ends fade out over 40px */
 const FADE = "linear-gradient(90deg, transparent, black 40px, black calc(100% - 40px), transparent)"
 
@@ -82,7 +88,7 @@ function Pass({
             onFocus={() => onHot(r.symbol)}
             onBlur={() => onHot(null)}
             className={cn(
-              "flex items-center gap-2 rounded-full px-5 py-1 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]",
+              "flex items-center gap-2 rounded-[10px] px-5 py-1 outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]",
               hot !== null && hot !== r.symbol && "opacity-45",
             )}
           >
@@ -117,8 +123,49 @@ export function TickerTape({ rows = DEFAULT_ROWS, renderIcon, className }: Ticke
   const reduced = useReducedMotion()
   const pointed = usePointed()
   const [hot, setHot] = useState<string | null>(null)
-  const anim = `tape-${useId().replace(/:/g, "")}`
   const running = pointed.live && hot === null
+  const track = useRef<HTMLDivElement>(null)
+  /* the loop, and its speed 0..1 of full; both outlive a re-render */
+  const loop = useRef<Animation | null>(null)
+  const speed = useRef(0)
+
+  useEffect(() => {
+    const el = track.current
+    if (reduced || !el) return
+    const a = el.animate([{ transform: "translateX(0)" }, { transform: "translateX(-50%)" }], {
+      duration: LOOP * 1000,
+      iterations: Infinity,
+    })
+    a.pause()
+    a.playbackRate = 0
+    speed.current = 0
+    loop.current = a
+    return () => {
+      a.cancel()
+      loop.current = null
+    }
+  }, [reduced])
+
+  /* ramp the playback rate toward full (or zero), then leave the loop to the compositor */
+  useEffect(() => {
+    const a = loop.current
+    if (reduced || !a) return
+    const target = running ? 1 : 0
+    if (running && a.playState !== "running") a.play()
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      speed.current += (target - speed.current) * (1 - Math.exp(-dt / RAMP))
+      if (Math.abs(target - speed.current) < 0.002) speed.current = target
+      a.playbackRate = speed.current
+      if (speed.current !== target) raf = requestAnimationFrame(tick)
+      else if (target === 0) a.pause()
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [running, reduced])
 
   return (
     <div
@@ -136,13 +183,10 @@ export function TickerTape({ rows = DEFAULT_ROWS, renderIcon, className }: Ticke
       {reduced ? (
         <Pass rows={rows} hot={hot} onHot={setHot} renderIcon={renderIcon} />
       ) : (
-        <>
-          <style>{`@keyframes ${anim} { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
-          <div className="flex w-max" style={{ animation: `${anim} ${LOOP}s linear infinite`, animationPlayState: running ? "running" : "paused" }}>
-            <Pass rows={rows} hot={hot} onHot={setHot} renderIcon={renderIcon} />
-            <Pass rows={rows} hot={hot} onHot={setHot} renderIcon={renderIcon} hidden />
-          </div>
-        </>
+        <div ref={track} className="flex w-max">
+          <Pass rows={rows} hot={hot} onHot={setHot} renderIcon={renderIcon} />
+          <Pass rows={rows} hot={hot} onHot={setHot} renderIcon={renderIcon} hidden />
+        </div>
       )}
     </div>
   )

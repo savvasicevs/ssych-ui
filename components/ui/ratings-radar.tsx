@@ -221,7 +221,7 @@ export function RatingsRadar({
               onFocus={() => setHot(i)}
               onBlur={() => setHot(null)}
               onClick={() => setHot(i)}
-              className="absolute whitespace-nowrap rounded-full text-[11px] outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
+              className="absolute whitespace-nowrap rounded-[6.5px] text-[11px] outline-none transition-opacity duration-200 focus-visible:bg-foreground/[0.06]"
               style={{
                 left: x,
                 top: y,
@@ -229,7 +229,7 @@ export function RatingsRadar({
                 opacity: hot === null || hot === i ? 1 : 0.4,
               }}
             >
-              <span className={hot === i ? "text-foreground/90" : "text-foreground/60"}>{r.label} </span>
+              <span className={cn("transition-colors duration-150", hot === i ? "text-foreground/90" : "text-foreground/60")}>{r.label} </span>
               {r.count > 0 && <span className="font-medium text-foreground/90">{r.count}</span>}
             </button>
           )

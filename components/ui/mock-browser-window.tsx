@@ -3,7 +3,7 @@
 
 import type React from "react"
 import { useEffect, useRef, useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { Check, ChevronLeft, ChevronRight, Link2, Lock, RotateCw, Star } from "lucide-react"
 
 import { cn } from "../../lib/utils"
@@ -91,7 +91,7 @@ function AddressBar({ url = "https://app.tradeboard.io", align = "center" }: Add
   return (
     <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 justify-center ${posClass}`}>
       {/* the field material (control-classes FIELD), drawn as a div: it shows the address, nothing is typed */}
-      <div className="flex h-7 min-w-[140px] max-w-[78vw] items-center justify-center gap-1.5 rounded-full border border-foreground/[0.04] bg-[var(--field-fill,color-mix(in_oklab,var(--foreground)_5%,transparent))] px-3.5 text-[12px] text-foreground/60 sm:min-w-[240px] sm:max-w-md">
+      <div className="flex h-7 min-w-[140px] max-w-[78vw] items-center justify-center gap-1.5 rounded-[10.5px] border border-foreground/[0.04] bg-[var(--field-fill,color-mix(in_oklab,var(--foreground)_5%,transparent))] px-3.5 text-[12px] text-foreground/60 sm:min-w-[240px] sm:max-w-md">
         <Lock className="h-3 w-3 shrink-0 text-foreground/45" aria-hidden />
         <span className="truncate">{hostOf(url)}</span>
       </div>
@@ -180,13 +180,28 @@ function NavButtons({ state, side }: { state: BrowserState; side?: "top" | "bott
 }
 
 function ActionButtons({ state, side }: { state: BrowserState; side?: "top" | "bottom" }) {
+  const reduced = useReducedMotion()
   return (
     <div className="flex items-center gap-0.5">
       <IconControl label={state.starred ? "Bookmarked" : "Bookmark"} pressed={state.starred} onClick={state.toggleStar} side={side}>
         <Star className={cn("h-3.5 w-3.5", state.starred && "fill-current text-foreground/90")} />
       </IconControl>
       <IconControl label={state.copied ? "Copied" : "Copy link"} onClick={state.copy} side={side}>
-        {state.copied ? <Check className="h-3.5 w-3.5 text-foreground/90" strokeWidth={2.2} /> : <Link2 className="h-3.5 w-3.5" />}
+        {/* the link and the tick cross over in place (150ms) instead of swapping in one frame */}
+        <span className="grid place-items-center [&>*]:[grid-area:1/1]">
+          <AnimatePresence initial={false}>
+            <motion.span
+              key={state.copied ? "copied" : "link"}
+              className="grid place-items-center"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.6, filter: "blur(2px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+              exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.6, filter: "blur(2px)" }}
+              transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {state.copied ? <Check className="h-3.5 w-3.5 text-foreground/90" strokeWidth={2.2} /> : <Link2 className="h-3.5 w-3.5" />}
+            </motion.span>
+          </AnimatePresence>
+        </span>
       </IconControl>
     </div>
   )
@@ -235,14 +250,14 @@ function PhoneChrome({
             <span className="h-2.5 w-[3px] rounded-[1px] bg-foreground/70" />
             <span className="h-3 w-[3px] rounded-[1px] bg-foreground/25" />
           </span>
-          <span className="ml-1 flex h-[11px] w-[22px] items-center rounded-[3px] bg-foreground/[0.12] p-[2px]">
+          <span className="ml-1 flex h-[11px] w-[22px] items-center rounded-[2.5px] bg-foreground/[0.12] p-[2px]">
             <span className="h-full w-[70%] rounded-[1px] bg-foreground/70" />
           </span>
         </span>
       </div>
       {showAddressBar && (
         <div className={cn("flex items-center gap-2 px-3 pb-2", SURFACE)}>
-          <div className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-foreground/[0.04] bg-[var(--field-fill,color-mix(in_oklab,var(--foreground)_5%,transparent))] px-3 text-[12px] text-foreground/60">
+          <div className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[13.5px] border border-foreground/[0.04] bg-[var(--field-fill,color-mix(in_oklab,var(--foreground)_5%,transparent))] px-3 text-[12px] text-foreground/60">
             <Lock className="h-3 w-3 text-foreground/45" aria-hidden />
             <span className="truncate">{host}</span>
           </div>
@@ -270,7 +285,7 @@ function SidebarContent({ items = DEFAULT_NAV, direction = "column", className =
   return (
     <div className={cn("flex gap-1 p-2.5", row ? "flex-row items-center" : "flex-col", className)}>
       {items.map(({ label, icon, active, badge }, i) => (
-        <div key={i} className={cn("flex h-8 items-center gap-2 rounded-full px-3 text-[12.5px] transition-colors duration-150", active ? `${THUMB} text-foreground/90` : "text-foreground/60")}>
+        <div key={i} className={cn("flex h-8 items-center gap-2 rounded-[12px] px-3 text-[12.5px] transition-colors duration-150", active ? `${THUMB} text-foreground/90` : "text-foreground/60")}>
           {icon ? <span className="h-4 w-4 shrink-0">{icon}</span> : null}
           <span className="min-w-0 flex-1 truncate">{label}</span>
           {badge == null ? null : <span className="text-[11px] tabular-nums text-foreground/45">{badge}</span>}
@@ -301,7 +316,7 @@ export function BrowserWindow(props: BrowserWindowProps) {
      shuffle should have some outlines around those screens") and a lighter soft shadow */
   const frameClass = cn(
     THEME_SCOPE[theme],
-    "relative flex h-full w-full flex-col overflow-hidden rounded-[24px] bg-background text-foreground",
+    "relative flex h-full w-full flex-col overflow-hidden rounded-[18px] bg-background text-foreground",
     className,
   )
   const frameStyle = {
