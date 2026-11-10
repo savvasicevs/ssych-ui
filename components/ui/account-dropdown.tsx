@@ -147,7 +147,7 @@ export function AccountDropdown({
         onClick={() => setOpen((o) => !o)}
         /* a 48px control is fully round; the 24px mark and the 24px chevron slot both sit 12px in */
         className={cn(
-          "relative flex h-12 w-full items-center gap-2.5 rounded-[18px] px-3 text-left outline-none transition-[scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
+          "relative flex h-12 w-full items-center gap-2.5 rounded-[14px] px-3 text-left outline-none transition-[scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
           SURFACE,
           "after:pointer-events-none after:absolute after:inset-0 after:rounded-full after:transition-colors after:duration-150 hover:after:bg-foreground/[0.04] focus-visible:after:bg-foreground/[0.06]",
         )}

@@ -265,11 +265,11 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
                     onBlur={() => setHover(null)}
                     onClick={press(y, m)}
                     onKeyDown={clearOnEscape}
-                    className="absolute -inset-0.5 block rounded-[11.5px] outline-none"
+                    className="absolute -inset-0.5 block rounded-[3px] outline-none"
                     whileTap={reduced ? undefined : { scale: 0.92, transition: LIFT_SPRING }}
                   >
                     <motion.span
-                      className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[10px] text-[8px] font-semibold tabular-nums"
+                      className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[2.5px] text-[8px] font-semibold tabular-nums"
                       style={{
                         background: tint(v, on),
                         color: `color-mix(in srgb, var(--foreground) ${Math.round(85 + Math.min(Math.abs(v) / 8, 1) * 15)}%, transparent)`,
@@ -321,11 +321,11 @@ export function ReturnsCalendar({ years = DEFAULT_YEARS, returns = DEFAULT_RETUR
                 onBlur={() => setHover(null)}
                 onClick={press(y, YEAR)}
                 onKeyDown={clearOnEscape}
-                className="absolute -inset-0.5 block rounded-[11.5px] outline-none"
+                className="absolute -inset-0.5 block rounded-[3px] outline-none"
                 whileTap={reduced ? undefined : { scale: 0.96, transition: LIFT_SPRING }}
               >
                 <motion.span
-                  className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[10px] text-[9px] font-semibold tabular-nums"
+                  className="pointer-events-none absolute inset-0.5 grid place-items-center rounded-[3px] text-[9px] font-semibold tabular-nums"
                   /* a neutral cell under the colored number: a tint of the same hue ate its contrast */
                   style={{
                     background: same(hot, y, YEAR) ? "var(--card)" : "color-mix(in srgb, var(--foreground) 6%, transparent)",

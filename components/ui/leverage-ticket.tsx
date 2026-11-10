@@ -243,7 +243,7 @@ export function LeverageTicket({
             the slider at once (keys and drags repeat), on transform only */}
         <div aria-hidden className="flex h-[3px] rounded-[1px] bg-foreground/[0.1]">
           <span
-            className="w-full rounded-[15px]"
+            className="w-full rounded-[14px]"
             style={{
               transform: `scaleX(${room / 100})`,
               transformOrigin: long ? "right" : "left",

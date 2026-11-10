@@ -470,7 +470,7 @@ export function SankeyFlow({
           onPointerLeave={() => setHover(null)}
           onFocus={() => enter("mid")}
           onBlur={() => setHover(null)}
-          className="absolute cursor-pointer rounded-[23px] outline-none focus-visible:bg-foreground/[0.06]"
+          className="absolute cursor-pointer rounded-[14px] outline-none focus-visible:bg-foreground/[0.06]"
           style={{
             left: `${((midX - 8) / W) * 100}%`,
             width: `${((NODE_W + 16) / W) * 100}%`,
@@ -489,7 +489,7 @@ export function SankeyFlow({
             onPointerLeave={() => setHover(null)}
             onFocus={() => enter(n.id)}
             onBlur={() => setHover(null)}
-            className="absolute cursor-pointer rounded-[23px] outline-none focus-visible:bg-foreground/[0.06]"
+            className="absolute cursor-pointer rounded-[14px] outline-none focus-visible:bg-foreground/[0.06]"
             style={{
               left: `${((side === "l" ? PAD.x : rightX - 4) / W) * 100}%`,
               width: `${((LABEL_W + NODE_W + 4) / W) * 100}%`,

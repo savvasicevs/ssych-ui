@@ -88,7 +88,7 @@ export function PreferencesCard({
           onPointerEnter={() => setHot(i)}
           onFocus={() => setHot(i)}
           onBlur={() => setHot(null)}
-          className="group flex items-center gap-3 rounded-[21.5px] px-2.5 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none"
+          className="group flex items-center gap-3 rounded-[14px] px-2.5 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] motion-reduce:transition-none"
           initial={reduced ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: hot === null || hot === i ? 1 : 0.5, y: 0 }}
           whileTap={reduced ? undefined : { scale: 0.97, transition: { type: "spring", stiffness: 500, damping: 30 } }}

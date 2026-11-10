@@ -614,7 +614,7 @@ export function WalletDrawer({
           <div className="flex flex-col">
             {apps.length === 0 && <p className="px-2 py-3 text-[12px] text-foreground/60">No apps are connected.</p>}
             {apps.map((app) => (
-              <div key={app} className="flex items-center gap-2.5 rounded-[20.5px] px-2 py-2">
+              <div key={app} className="flex items-center gap-2.5 rounded-[14px] px-2 py-2">
                 <Mark text={APP_MARK[app] ?? app} renderIcon={renderIcon} />
                 <span className="text-[12.5px] font-medium text-foreground/90">{app}</span>
                 <button type="button" onClick={() => setApps((list) => list.filter((a) => a !== app))} className={cn("ml-auto h-7 px-3 text-[12px]", BUTTON)}>

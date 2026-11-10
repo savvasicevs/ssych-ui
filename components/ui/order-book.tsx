@@ -530,11 +530,11 @@ export function OrderBook({
         <div aria-hidden className="relative h-[3px]">
           <span
             className="absolute inset-0 rounded-[1px] transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-            style={{ background: `color-mix(in srgb, ${GREEN} 70%, transparent)`, clipPath: `inset(0 ${(100 - bidShare).toFixed(2)}% 0 0 round 999px)` }}
+            style={{ background: `color-mix(in srgb, ${GREEN} 70%, transparent)`, clipPath: `inset(0 ${(100 - bidShare).toFixed(2)}% 0 0 round 7px)` }}
           />
           <span
             className="absolute inset-0 rounded-[1px] transition-[clip-path] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-            style={{ background: `color-mix(in srgb, ${RED} 70%, transparent)`, clipPath: `inset(0 0 0 calc(${bidShare.toFixed(2)}% + 2px) round 999px)` }}
+            style={{ background: `color-mix(in srgb, ${RED} 70%, transparent)`, clipPath: `inset(0 0 0 calc(${bidShare.toFixed(2)}% + 2px) round 7px)` }}
           />
         </div>
       </div>

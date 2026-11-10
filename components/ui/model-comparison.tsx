@@ -332,7 +332,7 @@ export function ModelComparison({
                 }}
                 onBlur={() => setHover(null)}
                 onClick={() => setPin((p) => (p && p.row === ri && p.col === c ? null : { row: ri, col: c }))}
-                className="block w-full rounded-[17.5px] px-2 py-2.5 text-left outline-none transition-[scale] duration-150 focus-visible:bg-foreground/[0.04] active:scale-[0.97] motion-reduce:active:scale-100"
+                className="block w-full rounded-[14px] px-2 py-2.5 text-left outline-none transition-[scale] duration-150 focus-visible:bg-foreground/[0.04] active:scale-[0.97] motion-reduce:active:scale-100"
               >
                 <span className="flex items-baseline justify-between gap-1.5">
                   <span className={cn("block text-[12.5px]", best ? "font-medium text-foreground/90" : "text-foreground/60")}>{row.show(val)}</span>

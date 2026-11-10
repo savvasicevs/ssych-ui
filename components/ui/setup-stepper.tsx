@@ -129,7 +129,7 @@ export function SetupStepper({ steps = DEFAULT_STEPS, initialActive = 1, onChang
                 onPointerEnter={() => setHot(i)}
                 onFocus={() => setHot(i)}
                 onBlur={() => setHot(null)}
-                className="group relative flex w-full items-start gap-3.5 rounded-[22px] pb-5 text-left outline-none"
+                className="group relative flex w-full items-start gap-3.5 rounded-[14px] pb-5 text-left outline-none"
               >
                 <span
                   aria-hidden

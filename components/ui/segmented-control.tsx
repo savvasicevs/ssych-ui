@@ -61,7 +61,7 @@ export function SegmentedControl({ options, value, onChange, className, label }:
               /* the shared pill glide (GLIDE, spring 440/34), the same as every other switch */
               <motion.span
                 layoutId={`${uid}-thumb`}
-                className={cn("absolute inset-0 -z-10 rounded-[10.5px]", THUMB)}
+                className={cn("absolute inset-0 -z-10 rounded-full", THUMB)}
                 transition={reduced ? { duration: 0 } : GLIDE}
               />
             )}

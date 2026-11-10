@@ -431,7 +431,7 @@ function ProgramRow({
           onMove(row.id, e.key === "ArrowUp" ? -1 : 1)
         }}
         className={cn(
-          "mt-1 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[6px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
+          "mt-1 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[3px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
           dragging ? "cursor-grabbing opacity-100" : "cursor-grab opacity-0 group-hover:opacity-100",
         )}
       >

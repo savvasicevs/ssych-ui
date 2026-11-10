@@ -391,7 +391,7 @@ export function DateRangePicker({
                           if (pick !== null) setPeek(d)
                         }}
                         className={cn(
-                          "relative h-7 w-7 rounded-[10.5px] text-[10.5px] outline-none disabled:pointer-events-none",
+                          "relative h-7 w-7 rounded-full text-[10.5px] outline-none disabled:pointer-events-none",
                           edge ? "font-semibold" : "hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.1]",
                         )}
                         style={{

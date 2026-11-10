@@ -154,7 +154,7 @@ export function RequestLog({
                 aria-expanded={on}
                 aria-label={`${r.code} ${r.method} ${r.path}, ${r.ms} ms, ${r.time}`}
                 className={cn(
-                  "grid w-full items-center gap-3 rounded-[14.5px] px-3 py-2.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
+                  "grid w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.98] motion-reduce:active:scale-100",
                   COLS,
                   on ? "focus-visible:bg-foreground/[0.04]" : "hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]",
                 )}
