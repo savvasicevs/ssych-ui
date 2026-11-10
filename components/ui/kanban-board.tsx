@@ -1,8 +1,8 @@
 // provenance: original
 "use client"
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react"
-import { motion, useReducedMotion } from "motion/react"
+import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { animate, motion, motionValue, useReducedMotion, type MotionValue } from "motion/react"
 import { ArrowRight, RotateCcw } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -44,10 +44,35 @@ import { ICON_BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
    library team's own tickets: list TAO-PERP, backfill March fills, reconcile treasury
    wallets, rotate exchange API keys, rerun evals on the new checkpoint, raise BTC-PERP
    position limits, onboard a second market maker, fix gaps in book snapshots. The counts
-   hold at 3, 3 and 2. */
+   hold at 3, 3 and 2.
+   2026-11-10: a card can be dragged by its body to any column. The arrow only ever moved a
+   card one step on, so sending one back to Backlog or straight to Done took several presses.
+   · press and travel 4px: the card lifts (1.02 on the lift spring, a soft shadow) and from
+     then on it is the pointer: its place is written straight to its transform from the
+     pointer's position on every move, with the pointer captured, so it keeps following
+     outside the board and no render runs per move
+   · the column under the pointer takes the 4% hover fill over 150ms, unless it is the
+     card's own, where letting go changes nothing
+   · let go over another column and the card is that column's: the counts change at once
+     and the card settles from where it was let go into its slot on the layout spring
+   · let go anywhere else, or press Escape, and it goes back to its slot on the same spring
+   The slot (which rides the layout spring between columns) and the face (which follows the
+   pointer) are two elements, and a card's offset lives on the board, so it outlives the
+   card changing column and a card caught mid-flight is simply picked up from where it is.
+   A horizontal touch drags a card, a vertical one still scrolls the page (touch-action
+   pan-y: the columns sit side by side). The arrow stays for one press and for the keyboard,
+   and a keyboard press now keeps the focus on the card's arrow in its new column (it used
+   to be dropped with the old element). Reduced motion: no lift scale and no spring, the
+   card still follows the pointer and is placed over the board's short 150ms move. */
 
 /** the house layout spring, for a card that changes column */
 const SPRING = { type: "spring", stiffness: 400, damping: 32 } as const
+/** the lift: a card coming up under the pointer */
+const LIFT = { type: "spring", stiffness: 500, damping: 30 } as const
+/** px a press travels before it is a drag */
+const SLOP = 4
+/** a lifted card: the 4% hover over the raised fill, and the popover's shadow under it */
+const LIFTED = "inset 0 0 0 100px color-mix(in srgb, var(--foreground) 4%, transparent), 0 8px 24px var(--card-shadow, rgba(0,0,0,0.35))"
 const EASE = [0.16, 1, 0.3, 1] as const
 /** the state each column stands for: waiting is ink, pending amber, done green */
 const STATE: Record<KanbanColumn, string> = {
@@ -106,6 +131,13 @@ const lettersOf = (owner: string) =>
     .slice(0, 2)
     .toUpperCase()
 
+/** where a card sits against its slot: the board keeps these, so they outlive a change of column */
+interface Held {
+  x: MotionValue<number>
+  y: MotionValue<number>
+  scale: MotionValue<number>
+}
+
 /** a tip over a control: up on hover or keyboard focus */
 function Tip({ label, children, align = "right" }: { label: string; children: ReactNode; align?: "right" | "center" }) {
   return (
@@ -125,104 +157,377 @@ function Tip({ label, children, align = "right" }: { label: string; children: Re
   )
 }
 
+/** one card: the slot keeps its place in the column, the face is what the pointer carries */
+function Card({
+  card,
+  at,
+  order,
+  dim,
+  first,
+  reduced,
+  layoutId,
+  held,
+  lifted,
+  top,
+  refocus,
+  renderIcon,
+  onHot,
+  onPress,
+  onLift,
+  onOver,
+  onDrop,
+  onFly,
+}: {
+  card: KanbanCard
+  /** the column the card is in now */
+  at: KanbanColumn
+  order: number
+  dim: boolean
+  /** the board is mounting: the card rises in */
+  first: boolean
+  reduced: boolean
+  layoutId: string
+  held: Held
+  /** in the hand */
+  lifted: boolean
+  /** in the hand or still landing: drawn over the other cards */
+  top: boolean
+  /** a keyboard press moved this card here: its arrow takes the focus back */
+  refocus: boolean
+  renderIcon?: (owner: string, size: number) => ReactNode
+  onHot: (on: boolean) => void
+  onPress: (keyboard: boolean) => void
+  /** the press became a drag; false when another card is already in the hand */
+  onLift: (cancel: () => void) => boolean
+  onOver: (x: number, y: number) => void
+  onDrop: (commit: boolean) => void
+  /** the slot has started its move to another column */
+  onFly: () => void
+}) {
+  const done = at === "done"
+  const slot = useRef<HTMLDivElement>(null)
+  const face = useRef<HTMLDivElement>(null)
+  const arrow = useRef<HTMLButtonElement>(null)
+  /** the press in progress: where it began, where on the card it holds, the scale the board is drawn at */
+  const grip = useRef<{ id: number; x: number; y: number; dx: number; dy: number; k: number; up: boolean; off?: () => void } | null>(null)
+  /* the entrance waits its turn on mount only; a dim later answers at once */
+  const delay = first ? order * 0.035 : 0
+
+  useEffect(() => {
+    if (refocus) arrow.current?.focus()
+    // on mount only: the card is a new element in its new column
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => () => grip.current?.off?.(), [])
+
+  const end = (commit: boolean) => {
+    const g = grip.current
+    if (!g) return
+    grip.current = null
+    g.off?.()
+    const el = face.current
+    if (el?.hasPointerCapture(g.id)) el.releasePointerCapture(g.id)
+    if (g.up) onDrop(commit)
+  }
+
+  const down = (e: ReactPointerEvent<HTMLDivElement>) => {
+    /* one pointer, the main button, and never from the arrow: that is a press of its own */
+    if (grip.current || !e.isPrimary || e.button !== 0 || (e.target as Element).closest("button")) return
+    const el = slot.current
+    if (!el) return
+    const r = e.currentTarget.getBoundingClientRect()
+    grip.current = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      /* the point held, measured from the face's centre (a scale about the centre keeps it) */
+      dx: e.clientX - (r.left + r.width / 2),
+      dy: e.clientY - (r.top + r.height / 2),
+      /* a board drawn scaled (a fitted preview) moves 1px of transform by k px of screen */
+      k: el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1,
+      up: false,
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const move = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const g = grip.current
+    const el = slot.current
+    if (!g || !el || e.pointerId !== g.id) return
+    if (!g.up) {
+      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) < SLOP) return
+      if (!onLift(() => end(false))) {
+        end(false)
+        return
+      }
+      g.up = true
+      /* a card still landing is caught where it is */
+      held.x.stop()
+      held.y.stop()
+      if (!reduced) animate(held.scale, 1.02, LIFT)
+      const doc = el.ownerDocument
+      const key = (k: KeyboardEvent) => {
+        if (k.key === "Escape") end(false)
+      }
+      doc.addEventListener("keydown", key)
+      g.off = () => doc.removeEventListener("keydown", key)
+    }
+    /* 1:1: the held point stays under the pointer, measured against the slot as it is now */
+    const r = el.getBoundingClientRect()
+    held.x.set((e.clientX - g.dx - (r.left + r.width / 2)) / g.k)
+    held.y.set((e.clientY - g.dy - (r.top + r.height / 2)) / g.k)
+    onOver(e.clientX, e.clientY)
+  }
+
+  return (
+    <motion.div
+      ref={slot}
+      role="group"
+      layout={!reduced}
+      layoutId={layoutId}
+      /* on mount the first 8 cards rise 6px, 35ms apart */
+      initial={!first || order >= 8 ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
+      /* motion owns the opacity, entrance and hover dim alike, so a CSS transition never lags it */
+      animate={{ opacity: dim ? 0.45 : 1, y: 0 }}
+      transition={
+        reduced
+          ? { duration: 0.15, delay }
+          : { ...SPRING, opacity: { duration: first ? 0.3 : 0.2, ease: EASE, delay }, y: { duration: 0.3, ease: EASE, delay } }
+      }
+      onLayoutAnimationStart={onFly}
+      onPointerEnter={() => onHot(true)}
+      onFocus={() => onHot(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onHot(false)
+      }}
+      aria-label={`${card.id} ${card.title}, ${card.tag}, ${card.owner}, in ${NAME[at]}`}
+      className={cn("relative", top && "z-30")}
+    >
+      {/* the face: raised on the column; the hover is a faint 4% laid over the raised fill */}
+      <motion.div
+        ref={face}
+        style={{ x: held.x, y: held.y, scale: held.scale, boxShadow: lifted ? LIFTED : undefined }}
+        /* a mark drawn as an image must not start the browser's own drag */
+        onDragStart={(e) => e.preventDefault()}
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={() => end(true)}
+        onPointerCancel={() => end(false)}
+        onLostPointerCapture={() => end(false)}
+        className={cn(
+          "group relative touch-pan-y select-none rounded-[9px] p-2.5 text-left transition-[box-shadow] duration-200 hover:shadow-[inset_0_0_0_100px_color-mix(in_srgb,var(--foreground)_4%,transparent)] motion-reduce:transition-none",
+          lifted ? "cursor-grabbing" : "cursor-grab",
+          RAISED,
+        )}
+      >
+        <span className={cn("block pr-6 text-[12px] leading-[1.4]", done ? "text-foreground/45" : "text-foreground/90")}>{card.title}</span>
+        <span className="mt-2 flex items-center gap-1.5">
+          <span title={card.owner} className="inline-flex shrink-0">
+            {renderIcon ? (
+              renderIcon(card.owner, 16)
+            ) : (
+              <span aria-hidden className="grid h-4 w-4 place-items-center rounded-full bg-foreground/[0.12] text-[7px] font-semibold text-foreground/70">
+                {lettersOf(card.owner)}
+              </span>
+            )}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[10px] text-foreground/60">{card.tag}</span>
+          <span className="text-[10px] text-foreground/45">{card.id}</span>
+        </span>
+        {/* the move lives on the card: up on hover or focus, always shown on touch, away while the card is in the hand */}
+        <span
+          className={cn(
+            "absolute right-1.5 top-1.5 opacity-0 transition-opacity duration-150",
+            !lifted && "focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+          )}
+        >
+          <Tip label={MOVE[at]}>
+            <button
+              ref={arrow}
+              type="button"
+              /* a press from the keyboard has no pointer detail */
+              onClick={(e) => onPress(e.detail === 0)}
+              aria-label={`${MOVE[at]}: ${card.title}`}
+              className={cn(ICON_BUTTON, "h-6 w-6 cursor-default")}
+            >
+              {done ? <RotateCcw size={12} strokeWidth={1.75} aria-hidden /> : <ArrowRight size={12} strokeWidth={1.75} aria-hidden />}
+            </button>
+          </Tip>
+        </span>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 /**
- * A quiet three-column board. Each card's arrow sends it to the next
- * column on the layout spring; every count is the cards in that column, so the numbers add up.
+ * A quiet three-column board. Drag a card by its body to any column: it lifts under the
+ * pointer, the column it is over brightens, and letting go drops it into place. Each card's
+ * arrow still sends it one column on with a press; every count is the cards in that column,
+ * so the numbers add up.
  */
 export function KanbanBoard({ cards = DEFAULT_CARDS, onMove, renderIcon, className }: KanbanBoardProps) {
   const reduced = useReducedMotion() ?? false
   const ns = useId().replace(/:/g, "")
   const [col, setCol] = useState<Record<string, KanbanColumn>>(() => Object.fromEntries(cards.map((c) => [c.id, c.col])))
   const [hot, setHot] = useState<string | null>(null)
+  /** the card in the hand, the card drawn over the rest (in the hand or landing), the column it is over */
+  const [drag, setDrag] = useState<string | null>(null)
+  const [top, setTop] = useState<string | null>(null)
+  const [over, setOver] = useState<KanbanColumn | null>(null)
+  /** the same three for the handlers, which must not wait for a render */
+  const live = useRef<{ drag: string | null; over: KanbanColumn | null; cancel: (() => void) | null; flying: string | null }>({ drag: null, over: null, cancel: null, flying: null })
+  /** the fallback for a slot that never reports its move */
+  const late = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(late.current), [])
+  const held = useRef(new Map<string, Held>())
+  const columns = useRef(new Map<KanbanColumn, HTMLDivElement>())
+  /** the card a keyboard press just moved: its arrow takes the focus back in the new column */
+  const refocus = useRef<string | null>(null)
   /** cards rise in once on mount; a card that changes column rides the layout spring only */
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
-  }, [])
+    refocus.current = null
+  })
 
   const at = (c: KanbanCard) => col[c.id] ?? c.col
   const counts = COLUMNS.map((k) => cards.filter((c) => at(c) === k.key).length)
+  const heldOf = (id: string) => {
+    let h = held.current.get(id)
+    if (!h) {
+      h = { x: motionValue(0), y: motionValue(0), scale: motionValue(1) }
+      held.current.set(id, h)
+    }
+    return h
+  }
 
-  const press = (c: KanbanCard) => {
-    const to = NEXT[at(c)]
+  const send = (c: KanbanCard, to: KanbanColumn) => {
     setCol((prev) => ({ ...prev, [c.id]: to }))
     onMove?.(c.id, to)
   }
+  const press = (c: KanbanCard, keyboard: boolean) => {
+    if (keyboard) refocus.current = c.id
+    send(c, NEXT[at(c)])
+  }
+
+  const lift = (c: KanbanCard, cancel: () => void) => {
+    if (live.current.drag) return false
+    live.current = { ...live.current, drag: c.id, over: null, cancel }
+    setDrag(c.id)
+    setTop(c.id)
+    setHot(c.id)
+    return true
+  }
+  /** the column under the pointer, if dropping there would move the card */
+  const aim = (c: KanbanCard, x: number, y: number) => {
+    let next: KanbanColumn | null = null
+    for (const [key, el] of columns.current) {
+      const r = el.getBoundingClientRect()
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) next = key
+    }
+    if (next === at(c)) next = null
+    if (next === live.current.over) return
+    live.current.over = next
+    setOver(next)
+  }
+  const drop = (c: KanbanCard, commit: boolean) => {
+    const to = commit ? live.current.over : null
+    live.current = { ...live.current, drag: null, over: null, cancel: null }
+    setDrag(null)
+    setOver(null)
+    setHot(null)
+    if (to) send(c, to)
+    if (!to) {
+      settle(c.id)
+      return
+    }
+    /* into another column: the offset waits for the slot to start its own move there, so
+       the two run frame for frame (started a frame apart, the card swings wide of its path) */
+    live.current.flying = c.id
+    window.clearTimeout(late.current)
+    late.current = window.setTimeout(() => fly(c.id), 120)
+  }
+  /** the face closes on its slot, on the same transition the slot rides between columns (the
+      layout spring, or the short 150ms move under reduced motion), so the two read as one
+      move from where the card was let go. No velocity is carried in: the house spring never
+      overshoots a slot */
+  const settle = (id: string) => {
+    const h = heldOf(id)
+    const how = reduced ? { duration: 0.15 } : SPRING
+    animate(h.scale, 1, how)
+    Promise.all([animate(h.x, 0, how), animate(h.y, 0, how)]).then(() => setTop((t) => (t === id && live.current.drag !== id ? null : t)))
+  }
+  const fly = (id: string) => {
+    if (live.current.flying !== id) return
+    live.current.flying = null
+    window.clearTimeout(late.current)
+    settle(id)
+  }
+
+  /* a card taken off the board while it is in the hand: the drag ends with it */
+  const lost = drag !== null && !cards.some((c) => c.id === drag)
+  useEffect(() => {
+    if (!lost) return
+    live.current.cancel?.()
+    live.current = { ...live.current, drag: null, over: null, cancel: null }
+    setDrag(null)
+    setTop(null)
+    setOver(null)
+  }, [lost])
 
   return (
     <div className={cn("w-[520px] max-w-full tabular-nums", className)} role="group" aria-label={`Board, ${cards.length} cards: ${COLUMNS.map((k, i) => `${counts[i]} ${k.label.toLowerCase()}`).join(", ")}`}>
       <div className="grid grid-cols-3 gap-2" onPointerLeave={() => setHot(null)}>
         {COLUMNS.map((column, ci) => (
           /* the column is the surface: 18 = 12 (the raised cards) + 6 (the p-1.5 inset) */
-          <div key={column.key} role="group" aria-label={`${column.label}, ${counts[ci]} cards`} className={cn("flex min-h-[280px] flex-col rounded-[13.5px] p-1.5", SURFACE)}>
-            <div className="flex items-baseline justify-between px-1.5 pb-2 pt-1">
+          <div
+            key={column.key}
+            ref={(el) => {
+              if (el) columns.current.set(column.key, el)
+              else columns.current.delete(column.key)
+            }}
+            role="group"
+            aria-label={`${column.label}, ${counts[ci]} cards`}
+            className={cn("relative flex min-h-[280px] flex-col rounded-[13.5px] p-1.5", SURFACE)}
+          >
+            {/* the column a carried card is over brightens: the 4% hover fill, laid under the cards */}
+            <span
+              aria-hidden
+              className={cn("pointer-events-none absolute inset-0 rounded-[inherit] bg-foreground/[0.04] transition-opacity duration-150", over === column.key ? "opacity-100" : "opacity-0")}
+            />
+            <div className="relative flex items-baseline justify-between px-1.5 pb-2 pt-1">
               <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-foreground/60">
                 <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: STATE[column.key] }} />
                 {column.label}
               </span>
               <span className="text-[11px] font-medium text-foreground/90">{counts[ci]}</span>
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="relative flex flex-col gap-1.5">
               {cards
                 .filter((c) => at(c) === column.key)
-                .map((card) => {
-                  const done = at(card) === "done"
-                  const order = cards.indexOf(card)
-                  const dim = hot !== null && hot !== card.id
-                  /* the entrance waits its turn on mount only; a dim later answers at once */
-                  const delay = mounted.current ? 0 : order * 0.035
-                  return (
-                    <motion.div
-                      key={card.id}
-                      role="group"
-                      layout={!reduced}
-                      layoutId={`${ns}-${card.id}`}
-                      /* on mount the first 8 cards rise 6px, 35ms apart */
-                      initial={mounted.current || order >= 8 ? false : reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                      /* motion owns the opacity, entrance and hover dim alike, so a CSS transition never lags it */
-                      animate={{ opacity: dim ? 0.45 : 1, y: 0 }}
-                      transition={
-                        reduced
-                          ? { duration: 0.15, delay }
-                          : { ...SPRING, opacity: { duration: mounted.current ? 0.2 : 0.3, ease: EASE, delay }, y: { duration: 0.3, ease: EASE, delay } }
-                      }
-                      onPointerEnter={() => setHot(card.id)}
-                      onFocus={() => setHot(card.id)}
-                      onBlur={(e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHot(null)
-                      }}
-                      aria-label={`${card.id} ${card.title}, ${card.tag}, ${card.owner}, in ${NAME[at(card)]}`}
-                      /* raised on the column; the hover is a faint 4% laid over the raised fill */
-                      className={cn(
-                        "group relative rounded-[9px] p-2.5 text-left transition-[box-shadow] duration-200 hover:shadow-[inset_0_0_0_100px_color-mix(in_srgb,var(--foreground)_4%,transparent)] motion-reduce:transition-none",
-                        RAISED,
-                      )}
-                    >
-                      <span className={cn("block pr-6 text-[12px] leading-[1.4]", done ? "text-foreground/45" : "text-foreground/90")}>{card.title}</span>
-                      <span className="mt-2 flex items-center gap-1.5">
-                        <span title={card.owner} className="inline-flex shrink-0">
-                          {renderIcon ? (
-                            renderIcon(card.owner, 16)
-                          ) : (
-                            <span aria-hidden className="grid h-4 w-4 place-items-center rounded-full bg-foreground/[0.12] text-[7px] font-semibold text-foreground/70">
-                              {lettersOf(card.owner)}
-                            </span>
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-[10px] text-foreground/60">{card.tag}</span>
-                        <span className="text-[10px] text-foreground/45">{card.id}</span>
-                      </span>
-                      {/* the move lives on the card: up on hover or focus, always shown on touch */}
-                      <span className="absolute right-1.5 top-1.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-                        <Tip label={MOVE[at(card)]}>
-                          <button type="button" onClick={() => press(card)} aria-label={`${MOVE[at(card)]}: ${card.title}`} className={cn(ICON_BUTTON, "h-6 w-6")}>
-                            {done ? <RotateCcw size={12} strokeWidth={1.75} aria-hidden /> : <ArrowRight size={12} strokeWidth={1.75} aria-hidden />}
-                          </button>
-                        </Tip>
-                      </span>
-                    </motion.div>
-                  )
-                })}
+                .map((card) => (
+                  <Card
+                    key={card.id}
+                    card={card}
+                    at={column.key}
+                    order={cards.indexOf(card)}
+                    dim={hot !== null && hot !== card.id}
+                    first={!mounted.current}
+                    reduced={reduced}
+                    layoutId={`${ns}-${card.id}`}
+                    held={heldOf(card.id)}
+                    lifted={drag === card.id}
+                    top={top === card.id}
+                    refocus={refocus.current === card.id}
+                    renderIcon={renderIcon}
+                    onHot={(on) => setHot(on ? card.id : null)}
+                    onPress={(keyboard) => press(card, keyboard)}
+                    onLift={(cancel) => lift(card, cancel)}
+                    onOver={(x, y) => aim(card, x, y)}
+                    onDrop={(commit) => drop(card, commit)}
+                    onFly={() => fly(card.id)}
+                  />
+                ))}
             </div>
           </div>
         ))}

@@ -3,9 +3,10 @@
 
 import { useId, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react"
+import { ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { SEGMENT_OFF, SURFACE, THUMB, TRACK } from "@/components/ui/control-classes"
+import { ICON_BUTTON, SEGMENT_OFF, SURFACE, THUMB, TRACK } from "@/components/ui/control-classes"
 import { LiveFigure } from "@/components/ui/live-figure"
 
 /* Index Card, rebuilt through the ssych-component skill (2026-09-29).
@@ -47,9 +48,22 @@ import { LiveFigure } from "@/components/ui/live-figure"
    them (corner 24 = the track's 18 + the 6px gap). The small caps index reads "Russell 2K"
    again on its switch and in the label row. The day's line runs the box's full width, edge
    to edge, with no side padding (the plot is 340 wide now, drawn 1:1); the type keeps its
-   16px inset. */
+   16px inset.
+   2026-11-10, his note: "a card when you click on the card, it sort of expands to show you
+   all the card details". With `expandable`, a click anywhere on the box that is not the
+   line or a switch (or the chevron in the label row, which is the real button and carries
+   aria-expanded) opens the session's details in place under the read: the open, the day's
+   high and low, and the session's hours, and the read itself is no longer cut at two lines.
+   The block's height eases open over 300ms on the smooth-out with its figures fading in
+   just behind it, so the switch under it and anything under the box glide down with it;
+   it folds in 150ms, quicker than it came. A second click, the chevron or Escape closes it,
+   and Escape hands focus back to the chevron. Reduced motion: the block fades, no height.
+   Formulas in the details: open = close − change (as above); high = max of the levels,
+   low = min of the levels (the line drawn above); hours = the session's first and last
+   sample times. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
+const SMOOTH = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 
@@ -151,6 +165,8 @@ export interface IndexCardProps {
   closeMinutes?: number
   /** Fires when an index is chosen. */
   onSelect?: (index: IndexQuote, i: number) => void
+  /** a click on the box opens the session's details (open, high, low, hours) in place; off by default */
+  expandable?: boolean
   className?: string
 }
 
@@ -167,6 +183,7 @@ export function IndexCard({
   openMinutes = 570,
   closeMinutes = 960,
   onSelect,
+  expandable = false,
   className,
 }: IndexCardProps) {
   const reduced = useReducedMotion() ?? false
@@ -210,6 +227,30 @@ export function IndexCard({
   }
   const onLeave = () => setHover(null)
 
+  /* the details block: open, high, low and hours, under the read */
+  const [expanded, setExpanded] = useState(false)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const detailsId = `${uid}-details`
+  const facts: [string, string][] = [
+    ["Open", points(open)],
+    ["High", points(max)],
+    ["Low", points(min)],
+    ["Hours", `${timeAt(0, n, openMinutes, closeMinutes)} to ${timeAt(n - 1, n, openMinutes, closeMinutes)}`],
+  ]
+  /** a click on the box, but not on the line (it scrubs) or a control, opens and closes it */
+  const onBoxClick = (e: React.MouseEvent) => {
+    if (!expandable) return
+    if ((e.target as Element).closest("button, a, input, svg")) return
+    setExpanded((o) => !o)
+  }
+  const onBoxKey = (e: React.KeyboardEvent) => {
+    if (expandable && expanded && e.key === "Escape") {
+      e.preventDefault()
+      setExpanded(false)
+      toggle.current?.focus()
+    }
+  }
+
   const pointed = hover == null || !Number.isFinite(close) ? null : data[hover]
   const [whole, decimals] = (pointed == null ? idx.price : points(pointed)).split(".")
   const move = pointed == null ? change : pointed - open
@@ -219,7 +260,9 @@ export function IndexCard({
 
   return (
     <div
-      className={cn("w-[340px] max-w-full overflow-hidden rounded-[18px] p-1.5 tabular-nums", SURFACE, className)}
+      className={cn("w-[340px] max-w-full overflow-hidden rounded-[18px] p-1.5 tabular-nums", SURFACE, expandable && "cursor-pointer", className)}
+      onClick={onBoxClick}
+      onKeyDown={onBoxKey}
       role="group"
       aria-label={`${eyebrow}: ${idx.name ?? idx.label}, ${idx.price} points, ${delta} today`}
     >
@@ -227,7 +270,28 @@ export function IndexCard({
         {/* the header, three tiers (spec 14.1) */}
         <div className="mb-3 flex items-baseline justify-between text-[12px]">
           <span className="truncate text-foreground/45">{idx.name ?? idx.label}</span>
-          {idx.symbol && <span className="shrink-0 pl-3 font-medium text-foreground/90">{idx.symbol}</span>}
+          <span className="flex shrink-0 items-baseline">
+            {idx.symbol && <span className="pl-3 font-medium text-foreground/90">{idx.symbol}</span>}
+            {expandable && (
+              <button
+                ref={toggle}
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={detailsId}
+                aria-label={expanded ? "Hide session details" : "Show session details"}
+                onClick={() => setExpanded((o) => !o)}
+                className={cn(ICON_BUTTON, "-my-1.5 -mr-1 ml-1 h-6 w-6 self-center text-foreground/45")}
+              >
+                {/* turns with the block: 300ms on the way open, 150ms back */}
+                <ChevronDown
+                  size={13}
+                  strokeWidth={2}
+                  aria-hidden
+                  className={cn("transition-transform ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", expanded ? "rotate-180 duration-300" : "duration-150")}
+                />
+              </button>
+            )}
+          </span>
         </div>
         <div role="status">
           {/* the figures swap only when a scrub starts or ends or the index changes */}
@@ -320,7 +384,7 @@ export function IndexCard({
       <AnimatePresence mode="wait" initial={false}>
         <motion.p
           key={idx.label}
-          className="mx-2.5 mb-0 mt-3 line-clamp-2 text-[12px] leading-[1.5] text-foreground/70"
+          className={cn("mx-2.5 mb-0 mt-3 text-[12px] leading-[1.5] text-foreground/70", !expanded && "line-clamp-2")}
           initial={{ opacity: reduced ? 1 : 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.1 } }}
@@ -328,6 +392,35 @@ export function IndexCard({
         >
           {idx.note}
         </motion.p>
+      </AnimatePresence>
+
+      {/* the session's details, opened in place; the height eases so everything under it glides */}
+      <AnimatePresence initial={false}>
+        {expandable && expanded && (
+          <motion.div
+            id={detailsId}
+            key="details"
+            className="overflow-hidden"
+            initial={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduced ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+            exit={
+              reduced
+                ? { opacity: 0, transition: { duration: 0.1 } }
+                : { height: 0, opacity: 0, transition: { height: { duration: 0.15, ease: SMOOTH }, opacity: { duration: 0.1 } } }
+            }
+            transition={reduced ? { duration: 0.15 } : { height: { duration: 0.3, ease: SMOOTH }, opacity: { duration: 0.2, ease: SMOOTH, delay: 0.05 } }}
+          >
+            {/* two by two, each name over its figure, so the hours keep their whole line */}
+            <dl className="mx-2.5 mb-0 mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-foreground/[0.06] pt-3">
+              {facts.map(([k, v]) => (
+                <div key={k} className="min-w-0">
+                  <dt className="text-[11px] text-foreground/45">{k}</dt>
+                  <dd className="m-0 mt-1 truncate text-[12px] font-medium text-foreground/90">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* the index switch, in the control material; it sits on the box's edge so the corners

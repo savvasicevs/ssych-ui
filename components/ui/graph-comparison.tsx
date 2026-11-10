@@ -60,10 +60,25 @@ import { ChartMenu } from "@/components/ui/performance-chart-menu"
    Motion (2026-10-01): the lines sweep in from the left once the chart is a third in view
    (one clip, 900ms); a new window or a series added or taken off tweens every line and the
    axis lines to the new scale (400ms), an added series fades in and a removed one fades
-   out; reduced motion shows each state at once. */
+   out; reduced motion shows each state at once.
+   2026-11-10, `rebasable` (off unless asked for): a click on the plot, or Enter on the
+   pointed close, makes that close the new start. Every line re-indexes to 0% there, a dashed
+   guide marks it, its date sits on the date axis as a small button, and the card beside the
+   cursor reads each move from that close. A click on the guide, the date button or Escape
+   goes back to the window's first close; so does a new window.
+   · index at close i, rebased to close b = close at i ÷ close at b × 100 (b = 0 is the
+     window's first close, the formula above)
+   · move, order and the axis follow from that index as before
+   Motion: a rebase is a change of intent (spec 13.4), so the lines and the axis glide to the
+   new scale together (350ms, smooth-out) and the card's figures swap in place (4px, 2px
+   blur, 150ms); the guide and its date fade in over 150ms and out in 100ms. Reduced motion:
+   the lines swap at once, the guide and the figures only fade. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const CSS_EASE = "cubic-bezier(0.16, 1, 0.3, 1)"
+/** the smooth-out curve, for the glide of a rebase */
+const SMOOTH = [0.22, 1, 0.36, 1] as const
+const CSS_SMOOTH = "cubic-bezier(0.22, 1, 0.36, 1)"
 /** one colour per series, in the house order; teal (--chart-2) is left out because green
  *  already means up on this surface. Past the palette a series is the one "Other" ink. */
 const PALETTE = ["var(--chart-1)", "var(--chart-5)", "var(--chart-3)", "var(--chart-amber)", "var(--chart-4)"]
@@ -101,6 +116,9 @@ export interface GraphComparisonProps {
   height?: number
   /** the windows and their close counts; weekly left out, daily is 31 / 92 / 183 / 365 */
   periods?: readonly ComparisonPeriod[]
+  /** a click on the plot (or Enter on the pointed close) re-indexes every line to that close;
+   *  the guide, its date or Escape goes back to the window's first close. Off left out */
+  rebasable?: boolean
   className?: string
 }
 
@@ -172,6 +190,26 @@ function linePath(vals: number[], m: number, px: (j: number) => number, py: (v: 
   return d
 }
 
+/** a figure in the card that swaps in place when the close it is measured from changes (the
+ *  library's figure swap: 4px, 2px blur, 150ms); it is simply there when the card opens, and
+ *  walking the closes changes it in place */
+function Swap({ from, children }: { from: number; children: ReactNode }) {
+  const reduced = useReducedMotion()
+  return (
+    <AnimatePresence initial={false}>
+      <motion.span
+        key={from}
+        className="inline-block"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.15, ease: EASE }}
+      >
+        {children}
+      </motion.span>
+    </AnimatePresence>
+  )
+}
+
 /**
  * A comparison that is put together by hand: series on the plot can be taken off, waiting
  * ones added from a menu, four at most. Lines are indexed to the start of the window.
@@ -185,6 +223,7 @@ export function GraphComparison({
   renderIcon,
   height = 180,
   periods = PERIODS,
+  rebasable = false,
   className,
 }: GraphComparisonProps) {
   // laid out at the width it is given (2026-10-06), so the text keeps its size when stretched
@@ -197,7 +236,6 @@ export function GraphComparison({
   const svgRef = useRef<SVGSVGElement>(null)
   /* the sweep waits until the plot is a third in view, then plays once */
   const play = useInView(svgRef, { once: true, amount: 0.3 }) || !!reduced
-  const tween = reduced ? { duration: 0 } : { duration: 0.4, ease: EASE }
   const room = Math.max(1, max)
   const [shown, setShown] = useState<string[]>(() => selected.slice(0, room))
   /** which palette slot each series holds; a series keeps it while it is on the plot */
@@ -205,6 +243,13 @@ export function GraphComparison({
   const [period, setPeriod] = useState<PeriodKey>("1Y")
   const [hot, setHot] = useState<string | null>(null)
   const [at, setAt] = useState<number | null>(null)
+  /** the close every line is indexed to, counted inside the window; null is its first close */
+  const [base, setBase] = useState<number | null>(null)
+  /** what moved the lines last: a rebase glides (350ms, smooth-out), a new window or set tweens (400ms) */
+  const [glide, setGlide] = useState(false)
+  const tween = reduced ? { duration: 0 } : glide ? { duration: 0.35, ease: SMOOTH } : { duration: 0.4, ease: EASE }
+  /** where a press on the plot began, so a scrub that ends is not read as a click */
+  const down = useRef<{ x: number; y: number } | null>(null)
 
   const usable = series.filter((s) => s.closes.length > 1)
   const on = usable.filter((s) => shown.includes(s.symbol))
@@ -214,12 +259,15 @@ export function GraphComparison({
   const len = usable.length ? Math.min(...usable.map((s) => s.closes.length)) : 2
   const n = Math.max(2, Math.min(len, periods.find((p) => p.key === period)?.closes ?? len))
   const start = len - n
+  /* the close the lines are indexed to: the window's first, or the one picked on the plot */
+  const b = rebasable && base !== null ? Math.min(base, n - 1) : 0
   const cut = on.map((s) => {
-    const base = s.closes[start] || 1
     const prices = s.closes.slice(start, start + n)
-    return { ...s, prices, idx: prices.map((v) => (v / base) * 100) }
+    /* index = close ÷ close at b × 100 */
+    const from = prices[b] || 1
+    return { ...s, prices, idx: prices.map((v) => (v / from) * 100) }
   })
-  const order = [...cut.keys()].sort((a, b) => cut[b].idx[n - 1] - cut[a].idx[n - 1])
+  const order = [...cut.keys()].sort((a, z) => cut[z].idx[n - 1] - cut[a].idx[n - 1])
   const inkOf = (i: number) => PALETTE[slots[cut[i].symbol] ?? PALETTE.length] ?? OTHER
 
   const all = cut.flatMap((s) => s.idx)
@@ -240,27 +288,50 @@ export function GraphComparison({
   const remove = (symbol: string) => {
     setShown((list) => (list.length > 1 ? list.filter((x2) => x2 !== symbol) : list))
     setHot(null)
+    setGlide(false)
   }
   const add = (symbol: string) => {
     if (shown.length >= room || shown.includes(symbol)) return
+    setGlide(false)
     setSlots((t) => ({ ...t, [symbol]: freeSlot(t, shown) }))
     setShown([...shown, symbol])
   }
 
-  const onMove = (e: PointerEvent<SVGSVGElement>) => {
+  /** the close under a screen x, snapped to the nearest one */
+  const closeAt = (clientX: number) => {
     const r = svgRef.current?.getBoundingClientRect()
-    if (!r) return
-    const px = ((e.clientX - r.left) / r.width) * W
-    setAt(Math.max(0, Math.min(n - 1, Math.round((px / PLOT) * (n - 1)))))
+    if (!r) return null
+    const px = ((clientX - r.left) / r.width) * W
+    return Math.max(0, Math.min(n - 1, Math.round((px / PLOT) * (n - 1))))
+  }
+  const onMove = (e: PointerEvent<SVGSVGElement>) => {
+    const k = closeAt(e.clientX)
+    if (k !== null) setAt(k)
+  }
+  /** index every line to close k; the close already held (the guide) or the window's first goes back */
+  const rebase = (k: number | null) => {
+    setBase(k === null || k === b || k <= 0 ? null : k)
+    setGlide(true)
   }
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
     const d = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0
     if (d) {
       e.preventDefault()
       setAt((c) => Math.max(0, Math.min(n - 1, (c ?? n - 1) + d)))
-    } else if (e.key === "Escape") setAt(null)
+    } else if (rebasable && (e.key === "Enter" || e.key === " ")) {
+      /* Enter or Space on the pointed close does what a click there does */
+      e.preventDefault()
+      if (at !== null) rebase(i)
+    } else if (e.key === "Escape") {
+      /* a rebase goes first and the pointed close stays; with none, Escape lets go as before */
+      if (b > 0) rebase(null)
+      else setAt(null)
+    }
   }
   const dateTicks = [...new Set([0, Math.round((n - 1) / 2), n - 1])]
+  /* the base's date takes its place on the date axis; an axis date within 44px of it fades aside */
+  const aside = (k: number) => b > 0 && Math.abs(x(k) - x(b)) < 44
+  const ms = glide ? 350 : 400
   /* the lines left of the pointer stay full, the rest dims to 0.45 */
   const split = at === null ? W + 8 : x(i)
   const lineGroup = (key: string) => (
@@ -298,7 +369,7 @@ export function GraphComparison({
       {/* the title is the group's label only: the series row says what is compared.
           the close being read stays for screen readers only (2026-10-01): the axis shows the dates */}
       <span role="status" className="sr-only">
-        {label(i)}, indexed to {label(0)}
+        {label(i)}, indexed to {label(b)}
       </span>
 
       {/* one row at the top: the series on the plot and the add menu */}
@@ -368,11 +439,26 @@ export function GraphComparison({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
-          className="block w-full cursor-crosshair touch-none overflow-visible outline-none"
+          className={cn("block w-full touch-none overflow-visible outline-none", b > 0 && at === b ? "cursor-pointer" : "cursor-crosshair")}
           role="img"
           tabIndex={0}
-          aria-label={`${title} over ${period}, indexed to 100 on ${label(0)}. ${order.map((k) => `${cut[k].symbol} ${signed(cut[k].idx[n - 1] - 100)}`).join(", ")}`}
+          aria-label={`${title} over ${period}, indexed to 100 on ${label(b)}. ${order.map((k) => `${cut[k].symbol} ${signed(cut[k].idx[n - 1] - 100)}`).join(", ")}${rebasable ? ". Enter indexes every line to the pointed close, Escape goes back" : ""}`}
           onPointerMove={onMove}
+          onPointerDown={rebasable ? (e) => (down.current = { x: e.clientX, y: e.clientY }) : undefined}
+          onClick={
+            rebasable
+              ? (e) => {
+                  /* a press that travelled was a scrub, not a pick */
+                  const from = down.current
+                  down.current = null
+                  if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4) return
+                  /* the axis figures right of the plot are not a close */
+                  const r = e.currentTarget.getBoundingClientRect()
+                  if (((e.clientX - r.left) / r.width) * W > PLOT + 6) return
+                  rebase(closeAt(e.clientX))
+                }
+              : undefined
+          }
           onPointerLeave={() => setAt(null)}
           onBlur={() => setAt(null)}
           onKeyDown={onKey}
@@ -402,7 +488,7 @@ export function GraphComparison({
           <AnimatePresence initial={false}>
             {grid.map((v) => (
               <motion.g key={v} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tween}>
-                <g style={{ transform: `translateY(${y(v).toFixed(1)}px)`, transition: reduced ? "none" : `transform 400ms ${CSS_EASE}` }}>
+                <g style={{ transform: `translateY(${y(v).toFixed(1)}px)`, transition: reduced ? "none" : `transform ${ms}ms ${glide ? CSS_SMOOTH : CSS_EASE}` }}>
                   <line x1={0} y1={0} x2={PLOT} y2={0} stroke="var(--foreground)" strokeOpacity={v === 100 ? 0.12 : 0.05} strokeWidth={1} />
                   <text x={PLOT + 6} y={3} fontSize={9} fill="var(--foreground)" fillOpacity={0.45}>
                     {v === 100 ? "0%" : `${v > 100 ? "+" : "−"}${Math.abs(v - 100)}%`}
@@ -413,10 +499,43 @@ export function GraphComparison({
           </AnimatePresence>
 
           {dateTicks.map((k) => (
-            <text key={k} x={x(k)} y={H - 5} fontSize={9} fill="var(--foreground)" fillOpacity={0.45} textAnchor={k === 0 ? "start" : k === n - 1 ? "end" : "middle"}>
+            <text
+              key={k}
+              x={x(k)}
+              y={H - 5}
+              fontSize={9}
+              fill="var(--foreground)"
+              fillOpacity={0.45}
+              textAnchor={k === 0 ? "start" : k === n - 1 ? "end" : "middle"}
+              style={rebasable ? { opacity: aside(k) ? 0 : 1, transition: "opacity 150ms" } : undefined}
+            >
               {label(k)}
             </text>
           ))}
+
+          {/* the new start: a dashed guide on the close every line is indexed to. It fades in
+              where the click landed and the one before it fades out, quicker */}
+          <AnimatePresence initial={false}>
+            {b > 0 && (
+              <motion.line
+                key={b}
+                data-guide
+                x1={x(b)}
+                y1={PAD.t}
+                x2={x(b)}
+                y2={PAD.t + PLOT_H}
+                stroke="var(--foreground)"
+                strokeOpacity={0.3}
+                strokeWidth={1}
+                strokeDasharray="3 3"
+                pointerEvents="none"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.1 } }}
+                transition={{ duration: 0.15, ease: EASE }}
+              />
+            )}
+          </AnimatePresence>
 
           <g clipPath={`url(#${uid}-draw)`}>
             <g clipPath={`url(#${uid}-past)`}>{lineGroup("past")}</g>
@@ -444,15 +563,54 @@ export function GraphComparison({
           )}
         </svg>
 
-        {/* the pointed close, every series' move from the window's start, highest first */}
+        {/* the base's date, on the date axis under the guide: a button that goes back to the
+            window's first close. 20px high, so its corner is 7.5 (37.5% of the height) */}
+        <AnimatePresence initial={false}>
+          {b > 0 && (
+            <motion.button
+              key={b}
+              type="button"
+              aria-label={`Indexed to ${label(b)}. Press to go back to ${label(0)}`}
+              onClick={() => {
+                rebase(null)
+                /* the button leaves with the guide, so the keyboard goes back to the plot */
+                svgRef.current?.focus({ preventScroll: true })
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") return
+                rebase(null)
+                svgRef.current?.focus({ preventScroll: true })
+              }}
+              className="group absolute bottom-0 flex h-5 -translate-x-1/2 items-center gap-1 rounded-[7.5px] px-1.5 text-[9px] font-medium text-foreground/90 outline-none transition-[background-color,scale] duration-150 hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] active:scale-[0.97] motion-reduce:active:scale-100"
+              /* centred under the guide, held inside the plot at either end */
+              style={{ left: `clamp(28px, ${((x(b) / W) * 100).toFixed(2)}%, calc(100% - 28px))` }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.1 } }}
+              transition={{ duration: 0.15, ease: EASE }}
+            >
+              <span>{label(b)}</span>
+              <svg aria-hidden width="7" height="7" viewBox="0 0 8 8" fill="none" className="text-foreground/45 transition-colors duration-150 group-hover:text-foreground/90 group-focus-visible:text-foreground/90">
+                <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* the pointed close, every series' move from the window's start (or from the close the
+            lines were rebased to), highest first */}
         <ChartCard
           open={at !== null}
           x={`${(x(i) / W) * 100}%`}
           flip={x(i) > PLOT * 0.6}
           heading={label(i)}
           rows={[...cut.keys()]
-            .sort((a, b) => cut[b].idx[i] - cut[a].idx[i])
-            .map((k) => ({ label: cut[k].symbol, value: signed(cut[k].idx[i] - 100) }))}
+            .sort((a, z) => cut[z].idx[i] - cut[a].idx[i])
+            .map((k) => {
+              /* move = index − 100, in percent */
+              const move = signed(cut[k].idx[i] - 100)
+              return { label: cut[k].symbol, value: rebasable ? <Swap from={b}>{move}</Swap> : move }
+            })}
           width={140}
         />
       </div>
@@ -466,6 +624,9 @@ export function GraphComparison({
           onChange={(k) => {
             setPeriod(k as PeriodKey)
             setAt(null)
+            /* a new window starts from its own first close */
+            setBase(null)
+            setGlide(false)
           }}
           label="Window"
         />

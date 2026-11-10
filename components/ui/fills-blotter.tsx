@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { CopiedMark, CopiedStatus, CopyRest, useCopied } from "@/components/ui/copy-confirm"
 import { LiveToggle } from "@/components/ui/live-toggle"
 import { usePointed } from "@/components/ui/use-pointed"
 
@@ -45,6 +46,12 @@ import { usePointed } from "@/components/ui/use-pointed"
    so the symbol column has room for venue, order id and fee, and a narrow host fades the
    detail at its right edge instead of cutting it. The top edge fades only once the list is
    scrolled, so the newest row is never half faded. The toggle is the shared LiveToggle.
+   2026-11-10: the order id on the pointed row is a button. Pressing it copies the id (what
+   a desk pastes into a ticket or a reconciliation), and a green tick with Copied stands in
+   its place for 1.4 s before the id comes back (copy-confirm.tsx, the same answer Tool
+   Call Card gives). The id and the tick share one grid cell, so the width never changes;
+   the pointed row already holds the arrivals, so nothing moves under the press. By
+   keyboard: Tab to a row, Tab again to its id, Enter or Space.
    Formulas:
    · today = 18 settled before the window + the seeded rows + every arrival since */
 
@@ -110,6 +117,28 @@ const sideColor = (s: FillEvent["side"]) => (s === "buy" ? GREEN : RED)
 const tint = (c: string, pct = 10) => `color-mix(in srgb, ${c} ${pct}%, transparent)`
 const STATUS_WORD: Record<Status, string> = { working: "Working", filled: "Filled", rejected: "Rejected" }
 
+/** the pointed row's order id, as a button: a press copies it and a tick with Copied stands
+    in its place, in the same grid cell, then the id comes back. The hit area reaches the
+    row's full height; the fill is the control's own corner, 37.5% of its 16px */
+function OrderId({ id }: { id: string }) {
+  const { copied, copy } = useCopied()
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => void copy(id, e.currentTarget)}
+        aria-label={`Copy order id ${id}`}
+        title="Copy order id"
+        className="relative -mx-1 inline-grid shrink-0 rounded-[6px] px-1 text-left outline-none transition-[color,background-color,scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] before:absolute before:inset-x-0 before:-inset-y-3 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:text-foreground/90 active:scale-[0.97] motion-reduce:active:scale-100 [&>*]:[grid-area:1/1]"
+      >
+        <CopyRest copied={copied}>{id}</CopyRest>
+        <CopiedMark copied={copied} />
+      </button>
+      <CopiedStatus copied={copied} />
+    </>
+  )
+}
+
 /** the status as a word; a flip is a text swap in place, 4px out of a 2px blur over 150ms
     (the row never remounts). Filled is green, rejected red, working muted with an amber dot */
 function StatusWord({ status, frozen }: { status: Status; frozen: boolean }) {
@@ -155,7 +184,10 @@ function FillRow({ row, hovered, dim, onHover, frozen }: { row: Row; hovered: bo
       aria-label={`${ev.time} ${ev.side} ${ev.qty.toLocaleString("en-US")} ${ev.symbol} at ${ev.price.toFixed(2)}, ${STATUS_WORD[status]}, ${ev.venue}, ${ev.orderId}, fee $${ev.fee.toFixed(2)}`}
       onPointerEnter={() => onHover(row.key)}
       onFocus={() => onHover(row.key)}
-      onBlur={() => onHover(null)}
+      /* focus moving on to the row's own order id keeps the row pointed */
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) onHover(null)
+      }}
     >
       {/* the flash on a status flip: opacity keyframes over a still tint, no remount */}
       <motion.span
@@ -186,7 +218,8 @@ function FillRow({ row, hovered, dim, onHover, frozen }: { row: Row; hovered: bo
             {ev.time}
           </span>
           {/* the pointed row reads its venue, order id and fee in place, after the symbol: no
-              row moves (2026-10-02 audit); the extras swap in (4px, 2px blur, 150ms) */}
+              row moves (2026-10-02 audit); the extras swap in (4px, 2px blur, 150ms). Venue
+              and fee are already in the row's label; the order id is a button of its own */}
           <span role="cell" className="flex min-w-0 items-baseline gap-3 whitespace-nowrap">
             <span className="shrink-0 text-[12.5px] font-semibold text-foreground/90">{ev.symbol}</span>
             <AnimatePresence initial={false}>
@@ -194,17 +227,21 @@ function FillRow({ row, hovered, dim, onHover, frozen }: { row: Row; hovered: bo
                 <motion.span
                   key="detail"
                   data-detail
-                  aria-hidden
-                  className="flex min-w-0 flex-1 items-baseline gap-3 overflow-hidden text-[10.5px] text-foreground/60"
+                  /* clipped sideways only, so the id's hit area can reach the row's height */
+                  className="flex min-w-0 flex-1 items-baseline gap-3 overflow-x-clip text-[10.5px] text-foreground/60"
                   style={{ maskImage: DETAIL_FADE, WebkitMaskImage: DETAIL_FADE }}
                   initial={frozen ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(2px)" }}
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                   exit={{ opacity: 0, transition: { duration: 0.1 } }}
                   transition={{ duration: 0.15, ease: EASE }}
                 >
-                  <span className="shrink-0">{ev.venue}</span>
-                  <span className="shrink-0">fee ${ev.fee.toFixed(2)}</span>
-                  <span className="shrink-0">{ev.orderId}</span>
+                  <span aria-hidden className="shrink-0">
+                    {ev.venue}
+                  </span>
+                  <span aria-hidden className="shrink-0">
+                    fee ${ev.fee.toFixed(2)}
+                  </span>
+                  <OrderId id={ev.orderId} />
                 </motion.span>
               )}
             </AnimatePresence>
@@ -233,7 +270,8 @@ function FillRow({ row, hovered, dim, onHover, frozen }: { row: Row; hovered: bo
  * resolve in place to filled (a brief green ground) or rejected (red, a brief shake)
  * after a deterministic per-event delay. The list is a fixed height with a soft fade at
  * the bottom; pointing at a row dims the rest, reads its venue, fee and order id in place
- * and holds the arrivals so the row never moves. The feed is a fixed event array replayed
+ * and holds the arrivals so the row never moves; pressing the order id copies it and a
+ * tick with Copied answers in its place. The feed is a fixed event array replayed
  * on an interval while the table is pointed at (or pinned on from the header), and still
  * under reduced motion unless pinned on. The "today" count, in the aria-label, is derivable: settled before the
  * window, plus the seeded rows, plus every arrival since.

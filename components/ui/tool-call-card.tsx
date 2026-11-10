@@ -3,9 +3,11 @@
 
 import { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "motion/react"
+import { Copy } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
+import { BUTTON, ICON_BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
+import { CopiedMark, CopiedStatus, CopyRest, useCopied } from "@/components/ui/copy-confirm"
 
 /* Tool Call Card, new through ssych-component (2026-09-29).
    What it is for: one call an agent made to a tool, with what went in and what came back.
@@ -34,7 +36,14 @@ import { BUTTON, RAISED, SURFACE } from "@/components/ui/control-classes"
    glues to the card's top, the code blocks sit 12px in at 12px corners (24 = 12 + 12), and
    Run again is the library's 28px secondary button whose right edge lines up with the code
    blocks. The footer keeps the call id alone; the returned size moved into the Result
-   label's tooltip (returned = the formula above). */
+   label's tooltip (returned = the formula above).
+   2026-11-10: the arguments, the result and the error each carry a copy button in their top
+   right corner, since the literal JSON is what gets rerun or pasted into a bug report. It
+   comes up 4px over 150ms once the pointer has rested on the block for 80ms (so a pointer
+   passing through shows nothing), leaves in 100ms, shows at once when focus lands on it
+   and is always there on touch. Pressed, it turns into a green tick with Copied for 1.4 s
+   (copy-confirm.tsx, the same answer Fills Blotter gives) and that block's text, as
+   printed, is on the clipboard. Reduced motion keeps the fades and drops the travel. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const RED = "var(--chart-down)"
@@ -85,11 +94,44 @@ const WORD_INK: Record<ToolCallState, string> = { running: ink(60), done: GREEN,
 const SWAP = { initial: { opacity: 0, y: 4, filter: "blur(2px)" }, animate: { opacity: 1, y: 0, filter: "blur(0px)" } } as const
 
 /* raised on the card; 12 here + the 12px inset (6 card + 6 body) = the card's 24 */
-const CODE = cn("mt-1 overflow-hidden whitespace-pre-wrap break-words rounded-[9px] px-3 py-2.5 font-mono text-[11px] leading-[1.5]", RAISED)
+const CODE = cn("overflow-hidden whitespace-pre-wrap break-words rounded-[9px] px-3 py-2.5 font-mono text-[11px] leading-[1.5]", RAISED)
+/** a code block and the copy button in its corner; the block is what the pointer rests on */
+const BLOCK = "group/code relative mt-1"
+/* the copy button's reveal: 4px up and in over 150ms on the smooth-out curve, 80ms after the
+   pointer settles; out in 100ms with no wait. Focus and touch skip the wait */
+const REVEAL =
+  "translate-y-1 opacity-0 transition-[opacity,translate] duration-100 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/code:translate-y-0 group-hover/code:opacity-100 group-hover/code:delay-[80ms] group-hover/code:duration-150 group-hover/code:ease-[cubic-bezier(0.22,1,0.36,1)] group-has-[:focus-visible]/code:translate-y-0 group-has-[:focus-visible]/code:opacity-100 motion-reduce:translate-y-0 [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100"
+
+/** the copy button of one block. It sits on the block's own fill so a long first line never
+    shows through it; its corner is 37.5% of its 24px, 6px in from the block's corner, level
+    with the first line. Pressed, the glyph gives its place to a tick and Copied, which
+    reach left from the same right edge so the button itself never changes size */
+function CopyCode({ text, what }: { text: string; what: string }) {
+  const { copied, copy } = useCopied()
+  return (
+    <span className={cn("absolute right-1.5 top-1.5 rounded-[9px]", RAISED, REVEAL, copied && "translate-y-0 opacity-100")}>
+      <button
+        type="button"
+        onClick={(e) => void copy(text, e.currentTarget)}
+        aria-label={`Copy ${what}`}
+        /* a finger gets 44px to land on; a mouse keeps the 24px so the text beside it still selects */
+        className={cn(ICON_BUTTON, "relative grid h-6 w-6 place-items-center rounded-[9px] [&>*]:[grid-area:1/1] [@media(hover:none)]:before:absolute [@media(hover:none)]:before:-inset-2.5")}
+      >
+        <CopyRest copied={copied}>
+          <Copy size={12} strokeWidth={1.75} aria-hidden />
+        </CopyRest>
+        <CopiedMark copied={copied} className={cn("absolute inset-y-0 right-0 rounded-[9px] pl-2 pr-1.5", RAISED)} />
+      </button>
+      <CopiedStatus copied={copied} />
+    </span>
+  )
+}
 
 /**
  * One tool call as a record: tool, state and time on the head line, the literal arguments
- * and result under it. The head folds it away; running again replays the call.
+ * and result under it. The head folds it away; running again replays the call. Resting
+ * the pointer on a block brings up a copy button in its corner, which answers with a tick
+ * and Copied.
  */
 export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry, className }: ToolCallCardProps) {
   const reduced = useReducedMotion()
@@ -171,7 +213,10 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
             <div className="flex flex-col gap-2.5 px-1.5 pb-1.5 pt-1">
               <div>
                 <div className="text-[10.5px] text-foreground/45">Arguments</div>
-                <pre className={cn(CODE, "text-foreground/80")}>{pretty(call.args)}</pre>
+                <div className={BLOCK}>
+                  <pre className={cn(CODE, "text-foreground/80")}>{pretty(call.args)}</pre>
+                  <CopyCode text={pretty(call.args)} what="arguments" />
+                </div>
               </div>
 
               <div>
@@ -189,6 +234,7 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
                 {/* waiting shimmers; what comes back is revealed out of a 2px blur over 300ms */}
                 <motion.div
                   key={state}
+                  className={BLOCK}
                   initial={reduced ? { opacity: 0 } : { opacity: 0, filter: "blur(2px)" }}
                   animate={{ opacity: 1, filter: "blur(0px)" }}
                   transition={{ duration: 0.3, ease: EASE }}
@@ -212,11 +258,17 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
                     </motion.span>
                   </div>
                 ) : state === "failed" ? (
-                  <pre className={CODE} style={{ color: RED }}>
-                    {call.error ?? "no message"}
-                  </pre>
+                  <>
+                    <pre className={CODE} style={{ color: RED }}>
+                      {call.error ?? "no message"}
+                    </pre>
+                    <CopyCode text={call.error ?? "no message"} what="error" />
+                  </>
                 ) : (
-                  <pre className={cn(CODE, "text-foreground/80")}>{pretty(call.result)}</pre>
+                  <>
+                    <pre className={cn(CODE, "text-foreground/80")}>{pretty(call.result)}</pre>
+                    <CopyCode text={pretty(call.result)} what="result" />
+                  </>
                 )}
                 </motion.div>
               </div>

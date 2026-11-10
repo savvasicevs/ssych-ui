@@ -1,13 +1,14 @@
 // provenance: original
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { Plus } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { ICON_BUTTON } from "@/components/ui/control-classes"
 import { RowAction, rowExit, useRowExit } from "@/components/ui/row-action"
+import { ScrubLine } from "@/components/ui/scrub-line"
 import { WatchlistPicker } from "@/components/ui/watchlist-stack-picker"
 
 /* Watchlist Stack, promoted from a lab sketch through ssych-component (2026-09-29).
@@ -44,9 +45,26 @@ import { WatchlistPicker } from "@/components/ui/watchlist-stack-picker"
    narrow end column, up on hover or focus (RowAction), that holds the row 420ms then folds
    it away (useRowExit); `onRemove` hears it. The row is no longer one big button, so the
    Remove is not nested in it: the main part stays a button for `onSelect`. The company
-   name reads 11px /60, hairlines are 4%. */
+   name reads 11px /60, hairlines are 4%.
+   2026-11-10: a row's press opened nothing unless a host passed `onSelect`. Now, when no
+   host takes the press, it opens the row downward into its session at full width
+   (`expandable`, on by default): the line drawn large once (0.5s), the open dashed across
+   it, the day's high and low marked and named on the right axis with the open, the hours
+   along the bottom. The block's height eases open over 300ms on the smooth-out with the
+   line fading in just behind it, so the rows under it glide down; it folds in 150ms,
+   quicker than it came (Index Card's details, the same values; a height tween, where the
+   first plan was the 400/32 spring, so the rows under never bob). One row is open at a
+   time; a second press or Escape folds it. The large line scrubs into the same price
+   cell as the small one (the arrow keys step it), and the small line steps out while
+   the large one is up so the session is not drawn twice. The Remove keeps its column.
+   Reduced motion: the height changes at once and the line fades in over 150ms.
+   Formulas in the open row (each on the price scale, value × price ÷ last value):
+   · open   first value of the series
+   · high   highest value of the series        · low   lowest value of the series */
 
 const EASE = [0.16, 1, 0.3, 1] as const
+/** the smooth-out the session block opens on */
+const SMOOTH = [0.22, 1, 0.36, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 /** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
@@ -77,6 +95,8 @@ export interface WatchlistStackProps {
   /** what the add menu offers; the ones already listed are left out */
   candidates?: WatchStock[]
   onSelect?: (ticker: string) => void
+  /** with no `onSelect`, a press opens the row downward into its session; on by default */
+  expandable?: boolean
   /** narrower lines, so company names breathe in a tight column */
   compact?: boolean
   /** draws a token, company or wallet mark in place of the built-in disc; a row's own `tile` wins */
@@ -159,6 +179,9 @@ function Row({
   removing,
   busy,
   onRemove,
+  can,
+  open,
+  onToggle,
 }: {
   stock: WatchStock
   index: number
@@ -172,10 +195,15 @@ function Row({
   /** another row is leaving */
   busy: boolean
   onRemove: () => void
+  /** a press opens the row's session in place (no host takes the press) */
+  can: boolean
+  open: boolean
+  onToggle: () => void
 }) {
   const reduced = useReducedMotion()
   const mark = MARKS[s.ticker.toUpperCase()]
   const boxRef = useRef<HTMLSpanElement>(null)
+  const panelId = `watch-${useId().replace(/:/g, "")}`
   const [hi, setHi] = useState<number | null>(null)
 
   const data = s.series.length ? s.series : [s.price]
@@ -198,11 +226,19 @@ function Row({
     setHi(Math.max(0, Math.min(last, Math.round(((e.clientX - r.left - 2) / (r.width - 4)) * last))))
   }
 
+  /* the session on the price scale, for the open row */
+  const prices = data.map((v) => v * scale)
+  const tint = open && !removing
+
   return (
-    /* the outer row owns the dim and the hover; the main part is the button that opens the
-       share, the Remove sits beside it in its own column */
+    <>
+    {/* the outer row owns the dim and the hover; the main part is the button that opens the
+       share, the Remove sits beside it in its own column */}
     <div
-      className="group flex w-full items-center border-t border-foreground/[0.04] pr-3 transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-within:bg-foreground/[0.03]"
+      className={cn(
+        "group flex w-full items-center border-t border-foreground/[0.04] pr-3 transition-[opacity,background-color] duration-200 hover:bg-foreground/[0.03] focus-within:bg-foreground/[0.03]",
+        tint && "bg-foreground/[0.03]",
+      )}
       style={{ opacity: dim ? 0.45 : 1, background: removing ? "color-mix(in srgb, var(--foreground) 6%, transparent)" : undefined }}
       onPointerEnter={() => onHot(true)}
       onPointerLeave={() => onHot(false)}
@@ -212,7 +248,16 @@ function Row({
     <button
       type="button"
       aria-label={`${s.name}, ${usd(s.price)}, ${signedPct(move)} today`}
-      onClick={() => onSelect?.(s.ticker)}
+      aria-expanded={can ? open : undefined}
+      aria-controls={can && open ? panelId : undefined}
+      onClick={() => (onSelect ? onSelect(s.ticker) : can && onToggle())}
+      onKeyDown={(e) => {
+        if (!open || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return
+        /* the arrows step along the open session */
+        e.preventDefault()
+        setHi((h) => Math.max(0, Math.min(last, (h ?? last) + (e.key === "ArrowLeft" ? -1 : 1))))
+      }}
+      onBlur={() => open && setHi(null)}
       className="block min-w-0 flex-1 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-200 focus-visible:bg-foreground/[0.06] active:scale-[0.98] motion-reduce:active:scale-100"
     >
       <motion.span
@@ -241,7 +286,14 @@ function Row({
           <span className="block truncate text-[12px] font-semibold leading-tight text-foreground/90">{s.ticker}</span>
           <span className="mt-0.5 block truncate text-[11px] text-foreground/60">{s.name}</span>
         </span>
-        <span ref={boxRef} className="block cursor-crosshair touch-none" onPointerMove={onMove} onPointerLeave={() => setHi(null)}>
+        {/* while the session is open under the row its small line steps out (it keeps its
+            column), so the same line is not drawn twice */}
+        <span
+          ref={boxRef}
+          className={cn("block cursor-crosshair touch-none transition-opacity duration-150", open && "pointer-events-none opacity-0")}
+          onPointerMove={onMove}
+          onPointerLeave={() => setHi(null)}
+        >
           <svg aria-hidden width={width} height={H} viewBox={`0 0 ${width} ${H}`} fill="none" className="block overflow-visible">
             <motion.path
               d={line}
@@ -294,6 +346,46 @@ function Row({
         />
       </span>
     </div>
+      {/* the session, opened in place under the row; the height eases so the rows under it glide */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            id={panelId}
+            key="session"
+            className="overflow-hidden"
+            initial={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduced ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+            exit={
+              reduced
+                ? { opacity: 0, transition: { duration: 0.1 } }
+                : { height: 0, opacity: 0, transition: { height: { duration: 0.15, ease: SMOOTH }, opacity: { duration: 0.1 } } }
+            }
+            transition={reduced ? { duration: 0.15 } : { height: { duration: 0.3, ease: SMOOTH }, opacity: { duration: 0.2, ease: SMOOTH, delay: 0.05 } }}
+            onPointerEnter={() => onHot(true)}
+            onPointerLeave={() => onHot(false)}
+          >
+            <div className={cn("px-3 pb-3 pt-1 transition-opacity duration-200", tint && "bg-foreground/[0.03]")} style={{ opacity: dim ? 0.45 : 1 }}>
+              <ScrubLine
+                data={prices}
+                format={usd}
+                hi={hi}
+                onHi={setHi}
+                stroke={hue}
+                height={96}
+                levels={[
+                  { name: "High", value: max * scale },
+                  { name: "Low", value: min * scale },
+                  { name: "Open", value: prices[0], guide: true },
+                ]}
+                marks={[data.indexOf(max), data.indexOf(min)]}
+                axis={data.map((_, i) => clock(i, data.length))}
+                label={`${s.name} session, open ${usd(prices[0])}, high ${usd(max * scale)}, low ${usd(min * scale)}`}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }
 
@@ -301,6 +393,8 @@ function Row({
  * A watchlist as rows on hairlines: mark, ticker over company, the session as a line,
  * price over the day's signed move. Scrubbing a line reads any moment in the price cell;
  * the + adds a ticker from a small search menu and each row can be removed in place.
+ * Pressing a row opens the share: the host's view through `onSelect`, or the row itself,
+ * downward into its session.
  */
 export function WatchlistStack({
   title = "Watchlist",
@@ -310,6 +404,7 @@ export function WatchlistStack({
   onRemove,
   candidates = DEFAULT_CANDIDATES,
   onSelect,
+  expandable = true,
   compact = false,
   renderIcon,
   className,
@@ -324,6 +419,21 @@ export function WatchlistStack({
   const listed = new Set(list.map((s) => s.ticker))
   const offer = candidates.filter((c) => !listed.has(c.ticker))
   const closePicker = useCallback(() => setPicking(false), [])
+  const root = useRef<HTMLDivElement>(null)
+  /** a press opens the row in place only when no host takes the press; one row at a time */
+  const can = expandable && !onSelect
+  const [opened, setOpened] = useState<string | null>(null)
+  const open = can && listed.has(opened ?? "") ? opened : null
+  /* Escape folds the open row wherever focus is (a mouse press does not always move it) */
+  useEffect(() => {
+    if (!open || picking) return
+    const doc = root.current?.ownerDocument ?? document
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) setOpened(null)
+    }
+    doc.addEventListener("keydown", onKey)
+    return () => doc.removeEventListener("keydown", onKey)
+  }, [open, picking])
 
   const add = (ticker: string) => {
     const s = candidates.find((c) => c.ticker === ticker)
@@ -342,7 +452,7 @@ export function WatchlistStack({
   }
 
   return (
-    <div className={cn("w-full max-w-[400px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)} role="group" aria-label={`${title}, ${list.length} stocks, ${ups} up`}>
+    <div ref={root} className={cn("w-full max-w-[400px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)} role="group" aria-label={`${title}, ${list.length} stocks, ${ups} up`}>
       <div className="relative flex justify-end px-3 pb-2">
         {/* the round + with its tip; it opens the add menu under it */}
         <span className="group/tip relative -mr-1.5 inline-flex">
@@ -387,6 +497,9 @@ export function WatchlistStack({
                 removing={leaving === s.ticker}
                 busy={leaving !== null}
                 onRemove={() => remove(s.ticker)}
+                can={can}
+                open={open === s.ticker}
+                onToggle={() => setOpened((o) => (o === s.ticker ? null : s.ticker))}
               />
             </motion.div>
           ))}

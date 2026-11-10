@@ -1,11 +1,12 @@
 // provenance: original
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef } from "react"
 import { useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import { useWidth } from "@/components/ui/use-width"
+import { MeasureAnchor, MeasureBand, useMeasure } from "@/components/ui/chart-measure"
 import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
 
 /* Candlestick, in the trading terminal's chart language (user call, 2026-10-02: "fix the
@@ -31,11 +32,20 @@ import { AxisTag, ChartCard } from "@/components/ui/chart-overlay"
    pointed tag, the price ticks are 9px like the dates, and the card gains a Volume row so
    the volume pane is readable; a new `volumeUnit` prop says how many shares one unit of
    `v` stands for.
+   2026-11-10: a new `measure` prop (off by default) turns on drag to measure
+   (chart-measure.tsx, shared with Price Scrubber). Press on the candles and drag across
+   them: the span lights up between two rules that snap to candle centres, the candles
+   outside it rest at 0.45, and the card reads the span in place of one bar: its two
+   times, the bars in it, its high and low, and the move from its first close to its last.
+   Letting go keeps it until the next press or Escape. From the keyboard the arrows point
+   and Shift with an arrow measures.
    Formulas:
    · change on a bar    = (close − open) ÷ open × 100
    · move across the run = last close − first open, and ÷ first open × 100
    · volume bar height  = volume ÷ the run's largest volume × the pane's height
    · volume in the card = v × volumeUnit shares
+   · measured move      = the span's last close − its first close, and ÷ its first close × 100
+   · measured bars      = last bar − first bar + 1; high and low = the span's highest high and lowest low
    Motion (2026-10-01, kept): once the chart first comes into view every candle rises out of
    its own middle and every volume bar grows off the floor, left to right under one 380ms
    stagger. CSS transitions on transform. Reduced motion draws the end state. */
@@ -89,13 +99,22 @@ const shares = (v: number) =>
 const usd = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const axisUsd = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`
 const day = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
-const stamp = (t: number) =>
-  `${new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} ${new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC`
+const clock = (t: number) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })
+const date = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+const stamp = (t: number) => `${date(t)} ${clock(t)} UTC`
+/** two bar times as one range; the date is said once when both fall on one day */
+const range = (a: number, b: number) => {
+  if (a === b) return stamp(a)
+  /* each end holds together (no-break spaces), so a narrow card breaks the line after "to" */
+  const tie = (t: string) => t.replace(/ /g, "\u00a0")
+  return `${tie(`${date(a)} ${clock(a)}`)} to ${tie(`${date(a) === date(b) ? "" : `${date(b)} `}${clock(b)} UTC`)}`
+}
 
 /**
  * Candles over a volume pane that share one x. The crosshair snaps to the candle under the
  * pointer, keeps it full and dims the rest, tags its close on the axis and reads the bar in a
- * card beside the cursor. Green up, red down.
+ * card beside the cursor. Green up, red down. With `measure` on, a press dragged across the
+ * candles lights the span under it and the card reads the move across that span.
  */
 export function Candlestick({
   name = "Alphabet",
@@ -106,6 +125,7 @@ export function Candlestick({
   volumeUnit = 20_000_000,
   markers = [],
   height = 300,
+  measure = false,
   className,
 }: {
   /** the chart's height in px (2026-10-06); the volume pane keeps its share */
@@ -123,6 +143,8 @@ export function Candlestick({
   interval?: number
   /** shares one unit of a candle's `v` stands for; the card reads v × volumeUnit */
   volumeUnit?: number
+  /** press and drag across the candles to measure a swing; it stays until the next press or Escape */
+  measure?: boolean
   className?: string
 }) {
   // laid out at the width it is given (2026-10-06), so the text keeps its size
@@ -136,7 +158,6 @@ export function Candlestick({
   const svgRef = useRef<SVGSVGElement>(null)
   const seen = useInView(svgRef, { once: true, amount: 0.3 })
   const shown = seen || reduced
-  const [hi, setHi] = useState<number | null>(null)
   const n = candles.length
 
   const { pMin, pMax, vMax, ticks } = useMemo(() => {
@@ -161,13 +182,15 @@ export function Candlestick({
   const yV = (v: number) => VOL_BOT - (v / vMax) * (VOL_H - 4)
   const time = (i: number) => start + i * interval
 
-  const onMove = (e: React.PointerEvent) => {
-    const el = svgRef.current
-    if (!el || n === 0) return
-    const r = el.getBoundingClientRect()
-    const px = ((e.clientX - r.left) / r.width) * W
-    setHi(px > PLOT_W ? n - 1 : Math.max(0, Math.min(n - 1, Math.floor(px / step))))
-  }
+  /* pointing reads one bar; with `measure` on, a press dragged across the candles measures a span (chart-measure.tsx).
+     `hi` is where the crosshair stands: the pointed bar, or a measure's moving end */
+  const { span, point: hi, bind } = useMeasure({
+    ref: svgRef,
+    width: W,
+    at: (px) => (px > PLOT_W ? n - 1 : Math.floor(px / step)),
+    count: n,
+    enabled: measure,
+  })
 
   const first = candles[0] ?? { o: 0, h: 0, l: 0, c: 0, v: 0 }
   const last = candles[n - 1] ?? first
@@ -192,6 +215,21 @@ export function Candlestick({
   /* the last close, named on the axis; it and any tick under it step aside for the pointed tag */
   const lastY = yP(last.c)
   const lastHidden = active !== null && Math.abs(lastY - tagY) < 13
+  /* the measured span, read from its first close to its last */
+  const swing = (() => {
+    if (!span) return null
+    const a = candles[span.from]
+    const b = candles[span.to]
+    let top = Number.NEGATIVE_INFINITY
+    let low = Number.POSITIVE_INFINITY
+    for (let i = span.from; i <= span.to; i++) {
+      top = Math.max(top, candles[i].h)
+      low = Math.min(low, candles[i].l)
+    }
+    const move = b.c - a.c
+    return { move, pct: a.c ? (move / a.c) * 100 : 0, bars: span.to - span.from + 1, top, low }
+  })()
+  const swingHue = swing && swing.move < 0 ? DOWN : UP
 
   return (
     <div ref={boxRef} className={cn("w-[560px] max-w-full tabular-nums", className)}>
@@ -219,11 +257,10 @@ export function Candlestick({
           width={W}
           height={H}
           viewBox={`0 0 ${W} ${H}`}
-          className="block h-auto w-full cursor-crosshair touch-none"
+          className={cn("block h-auto w-full cursor-crosshair touch-none", measure && "select-none outline-none")}
           role="img"
           aria-label={`${name} (${symbol}) candlestick chart, ${n} bars. Last close ${usd(last.c)}, ${sign(runPct)}${Math.abs(runPct).toFixed(2)}% across the run`}
-          onPointerMove={onMove}
-          onPointerLeave={() => setHi(null)}
+          {...bind}
         >
           {/* price gridlines and the right-hand scale; a figure steps aside while the tag sits on it */}
           {ticks.map((t) => {
@@ -258,9 +295,13 @@ export function Candlestick({
             <tspan fillOpacity={0.45}> Last</tspan>
           </text>
 
+          {/* the measured span: a band in the move's hue, under the candles (chart-measure.tsx) */}
+          <MeasureBand span={span} x={cx} top={PRICE_TOP - 8} bottom={VOL_BOT} color={swingHue} />
+
           {candles.map((d, i) => {
             const barHue = d.c >= d.o ? UP : DOWN
-            const dim = hi !== null && hi !== i
+            /* everything but the pointed candle sits back; around a measure, everything outside the span */
+            const dim = span ? i < span.from || i > span.to : hi !== null && hi !== i
             const top = yP(Math.max(d.o, d.c))
             const bodyH = Math.max(1, Math.abs(yP(d.o) - yP(d.c)))
             return (
@@ -322,9 +363,11 @@ export function Candlestick({
             )
           })}
 
-          {/* the crosshair: a rule on the candle, a dashed rule on its close, a dot, and the close tagged on the axis */}
+          {/* the crosshair: a rule on the candle, a dashed rule on its close, a dot, and the close tagged on the axis;
+              a measure adds the rule where its press landed */}
           {active && hi !== null && (
             <g pointerEvents="none">
+              <MeasureAnchor span={span} x={cx} top={PRICE_TOP - 8} bottom={VOL_BOT} />
               <line x1={cx(hi)} y1={PRICE_TOP - 8} x2={cx(hi)} y2={VOL_BOT} stroke="var(--foreground)" strokeOpacity={0.18} strokeWidth={1} />
               <line x1={0} y1={yP(active.c)} x2={PLOT_W} y2={yP(active.c)} stroke="var(--foreground)" strokeOpacity={0.14} strokeDasharray="3 3" strokeWidth={1} />
               <circle cx={cx(hi)} cy={yP(active.c)} r={3} fill={hue} stroke="var(--background)" strokeWidth={1.5} />
@@ -335,14 +378,22 @@ export function Candlestick({
           )}
         </svg>
 
-        {/* the bar under the cursor, read out beside it (chart-overlay.tsx) */}
+        {/* the bar under the cursor, read out beside it (chart-overlay.tsx); a measure reads its span here instead */}
         <ChartCard
           open={active !== null && hi !== null}
           x={hi !== null ? `${(cx(hi) / W) * 100}%` : 0}
           flip={flip}
-          heading={hi !== null ? stamp(time(hi)) : ""}
+          heading={span ? range(time(span.from), time(span.to)) : hi !== null ? stamp(time(hi)) : ""}
           rows={
-            active
+            swing
+              ? [
+                  { label: "Bars", value: swing.bars },
+                  { label: "High", value: usd(swing.top) },
+                  { label: "Low", value: usd(swing.low) },
+                  { label: "Move", value: `${sign(swing.move)}${usd(Math.abs(swing.move))}` },
+                  { label: "Change", value: `${sign(swing.pct)}${Math.abs(swing.pct).toFixed(2)}%`, color: swingHue },
+                ]
+              : active
               ? [
                   { label: "Open", value: usd(active.o) },
                   { label: "High", value: usd(active.h) },

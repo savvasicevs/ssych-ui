@@ -7,7 +7,7 @@ import { Check, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { BUTTON, ICON_BUTTON } from "@/components/ui/control-classes"
-import { rowWash, useRowExit } from "@/components/ui/row-action"
+import { RowAction, rowWash, useRowExit } from "@/components/ui/row-action"
 import { Tip } from "@/components/ui/browser-window-tip"
 
 /* Alert Stack, rebuilt through the ssych-component skill (2026-09-29).
@@ -24,7 +24,15 @@ import { Tip } from "@/components/ui/browser-window-tip"
    were three "coming soon" lines; they are now real alerts, each with a 6px dot in the hue of
    its direction (up, warning, done). Dismiss is the shared icon button with a "Dismiss" tip,
    and it plays out: the row holds a tick and "Dismissed" on a 10% wash for 420ms, then slides
-   16px and leaves. Restore is the shared secondary button at h-7. Width 320, the card step. */
+   16px and leaves. Restore is the shared secondary button at h-7. Width 320, the card step.
+   2026-11-10, his note: "whenever you hover on a certain pill, it would give you some actions
+   like see the transaction or close it, that only appear on hover". With `onAction` given,
+   a row's end holds two real buttons (RowAction): the view the alert is about ("View order",
+   from the item's `action`) and Dismiss, which plays out as before. They come up 4px after an
+   80ms intent delay when the row is pointed at, at once when the keyboard lands in the row,
+   and leave in 100ms with no delay, quicker than they came (reduced motion: a fade, no
+   rise). Always shown on touch. They keep their room while hidden, so the label never
+   reflows under the pointer. Without `onAction` the row keeps its single dismiss. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const SMOOTH = [0.22, 1, 0.36, 1] as const
@@ -39,6 +47,8 @@ export interface AlertItem {
   label: string
   /** the dot's hue: up and down for a direction, warn for a limit near, neutral for a fact */
   tone?: AlertTone
+  /** the view the alert is about, e.g. "View order"; shown on hover when `onAction` is given */
+  action?: string
 }
 
 const TONE: Record<AlertTone, string> = {
@@ -49,10 +59,15 @@ const TONE: Record<AlertTone, string> = {
 }
 
 const DEFAULT_ALERTS: AlertItem[] = [
-  { label: "BTC crossed $65,000", tone: "up" },
-  { label: "Margin at 82%", tone: "warn" },
-  { label: "Order 84133 filled", tone: "neutral" },
+  { label: "BTC crossed $65,000", tone: "up", action: "View chart" },
+  { label: "Margin at 82%", tone: "warn", action: "View margin" },
+  { label: "Order 84133 filled", tone: "neutral", action: "View order" },
 ]
+
+/* the hover reveal on RowAction: up 150ms on the smooth-out after the 80ms intent delay,
+   at once for the keyboard (focus inside the row), down in 100ms with no delay */
+const REVEAL =
+  "duration-100 group-hover:delay-[80ms] group-hover:duration-150 group-hover:ease-[cubic-bezier(0.22,1,0.36,1)] group-focus-within:translate-y-0 group-focus-within:opacity-100 group-focus-within:duration-150 motion-reduce:translate-y-0"
 
 const asItem = (a: string | AlertItem): AlertItem => (typeof a === "string" ? { label: a } : a)
 
@@ -64,11 +79,14 @@ const asItem = (a: string | AlertItem): AlertItem => (typeof a === "string" ? { 
 export function AlertStack({
   alerts = DEFAULT_ALERTS,
   onDismiss,
+  onAction,
   className,
 }: {
   /** plain strings still work (a neutral row with no dot); an item can carry a tone */
   alerts?: (string | AlertItem)[]
   onDismiss?: (alert: string) => void
+  /** opens what an alert is about; given, each row shows its view and Dismiss on hover */
+  onAction?: (alert: AlertItem) => void
   className?: string
 }) {
   const reduced = useReducedMotion()
@@ -127,7 +145,8 @@ export function AlertStack({
           transition={reduced ? { duration: 0 } : SETTLE}
         >
           <AnimatePresence initial={false}>
-            {rows.map(({ label, tone }, i) => {
+            {rows.map((item, i) => {
+              const { label, tone } = item
               const done = leaving === label
               return (
                 <motion.div
@@ -135,7 +154,7 @@ export function AlertStack({
                   /* rounded-full: 22 = the 24px dismiss's 12 + its 10px inset (spec 13.10) */
                   /* light (his call, 2026-10-02): white cards on top of each other, a hairline
                      and a light shadow each; dark keeps the 7% ground */
-                  className="absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-[16.5px] bg-background pl-4 pr-2.5 shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_2px_6px_rgba(0,0,0,0.06)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
+                  className="group absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-[16.5px] bg-background pl-4 pr-2.5 shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_2px_6px_rgba(0,0,0,0.06)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
                   style={{ zIndex: rows.length - i }}
                   onPointerEnter={() => setHot(label)}
                   initial={false}
@@ -155,7 +174,30 @@ export function AlertStack({
                   />
                   {tone && <span aria-hidden className="relative h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: TONE[tone] }} />}
                   <span className="relative flex-1 truncate text-[12.5px] text-foreground/90">{label}</span>
-                  {done ? (
+                  {onAction ? (
+                    /* the row's own end column: its view and Dismiss, up on hover or focus */
+                    <span className="relative flex shrink-0 items-center gap-1" onFocus={() => setHot(label)}>
+                      {!done && (
+                        <RowAction
+                          done={false}
+                          disabled={leaving !== null}
+                          label={item.action ?? "View"}
+                          aria-label={`${item.action ?? "View"}: ${label}`}
+                          onClick={() => onAction(item)}
+                          className={REVEAL}
+                        />
+                      )}
+                      <RowAction
+                        done={done}
+                        disabled={leaving !== null && !done}
+                        label="Dismiss"
+                        doneLabel="Dismissed"
+                        aria-label={done ? undefined : `Dismiss "${label}"`}
+                        onClick={() => dismiss(label)}
+                        className={REVEAL}
+                      />
+                    </span>
+                  ) : done ? (
                     <motion.span
                       className="relative inline-flex h-6 items-center gap-1 pr-1.5 text-[11px] font-medium text-foreground/90"
                       role="status"

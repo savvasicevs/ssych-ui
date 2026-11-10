@@ -1,7 +1,7 @@
 // provenance: original
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { BUTTON } from "@/components/ui/control-classes"
@@ -44,12 +44,24 @@ import { cn } from "@/lib/utils"
    before the button's label is gone. Nothing shifts: switching Market and Limit used to fold the
    limit row away and shorten the ticket; the row now stays, as the editable limit with Use last,
    or as the read-only last price the market order fills at, so the ticket keeps its height.
-   The fields show focus on their own edge. */
+   The fields show focus on their own edge.
+   2026-11-10: minus and plus repeat while held, since going from 1 share to 40 was 39
+   taps. A tap is still one step, when the press lifts. Held, the size starts stepping
+   400ms in, every 120ms, then every 50ms once the hold has lasted 1.5 s, and it stops the
+   moment the press lifts, leaves the button, is cancelled or the window loses focus; the
+   lift that ends a hold is not counted as one more tap. The button stays sunk for the
+   whole hold and the size changes at once on every step, with no animation, so there is
+   nothing for reduced motion to calm. By keyboard: hold Space or Enter on the button. */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 const PLACED_MS = 1200
+/** a held stepper: the first repeat, the pace after it, and the faster pace once the hold is long */
+const HOLD_START_MS = 400
+const HOLD_STEP_MS = 120
+const HOLD_FAST_MS = 50
+const HOLD_FAST_AFTER_MS = 1500
 /** the placed check: green, pulled toward the page ground so it holds on the white button */
 const PLACED_INK = "color-mix(in srgb, var(--chart-up) 80%, var(--background))"
 const GROW = "grid transition-[grid-template-rows] duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
@@ -131,10 +143,90 @@ export function QuickTicket({
       setOpen(false)
     }, PLACED_MS)
   }
-  const step = (by: number) => setSizeStr(String(Math.max(1, size + by)))
+  /* reads the size as it is at that moment, so a run of steps from the hold never repeats a stale one */
+  const step = (by: number) => setSizeStr((s) => String(Math.max(1, (parseInt(s, 10) || 0) + by)))
+
+  /* the held stepper: `timer` is the next repeat, `view` the window watched for a lost
+     focus, `fired` whether this press has already stepped by itself (then its lift is not a tap) */
+  const hold = useRef<{ timer?: number; view?: Window | null; fired: boolean }>({ fired: false })
+  const [held, setHeld] = useState(0)
+  const letGo = useCallback(() => {
+    const h = hold.current
+    window.clearTimeout(h.timer)
+    h.timer = undefined
+    h.view?.removeEventListener("blur", letGo)
+    h.view = null
+    setHeld(0)
+  }, [])
+  const pressDown = (by: number, el: HTMLElement) => {
+    letGo()
+    const h = hold.current
+    const t0 = performance.now()
+    const tick = () => {
+      h.fired = true
+      step(by)
+      h.timer = window.setTimeout(tick, performance.now() - t0 >= HOLD_FAST_AFTER_MS ? HOLD_FAST_MS : HOLD_STEP_MS)
+    }
+    h.fired = false
+    h.timer = window.setTimeout(tick, HOLD_START_MS)
+    /* a lift that never arrives (the window lost focus mid press) must not keep stepping */
+    h.view = el.ownerDocument.defaultView
+    h.view?.addEventListener("blur", letGo)
+    setHeld(by)
+  }
+  useEffect(() => letGo, [letGo])
+  useEffect(() => {
+    if (!open) letGo()
+  }, [open, letGo])
 
   const stepper = (label: string, by: number, glyph: string) => (
-    <button type="button" onClick={() => step(by)} aria-label={label} className={cn("h-8 w-8 shrink-0 text-[14px]", BUTTON)}>
+    <button
+      type="button"
+      aria-label={label}
+      /* a tap, and a press from assistive tech, is one step; the lift after a hold is swallowed */
+      onClick={() => {
+        if (hold.current.fired) hold.current.fired = false
+        else step(by)
+      }}
+      onPointerDown={(e) => {
+        if (e.button !== 0 || !e.isPrimary) return
+        /* a finger is captured by the button it lands on; freed, sliding off it stops the hold */
+        if (e.pointerType === "touch" && e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+        pressDown(by, e.currentTarget)
+      }}
+      onPointerUp={letGo}
+      /* left while still pressed, no click follows, so there is nothing to swallow */
+      onPointerLeave={(e) => {
+        letGo()
+        if (e.buttons) hold.current.fired = false
+      }}
+      onPointerCancel={() => {
+        letGo()
+        hold.current.fired = false
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== " " && e.key !== "Enter") return
+        /* the hold sets the pace, not the keyboard's own repeat */
+        if (e.repeat) e.preventDefault()
+        else pressDown(by, e.currentTarget)
+      }}
+      onKeyUp={(e) => {
+        if (e.key !== " " && e.key !== "Enter") return
+        letGo()
+        /* Space clicks as it lifts (swallowed above if the hold stepped); Enter does not */
+        if (e.key === "Enter") hold.current.fired = false
+      }}
+      onBlur={() => {
+        letGo()
+        hold.current.fired = false
+      }}
+      onContextMenu={(e) => {
+        if (hold.current.timer !== undefined) e.preventDefault()
+      }}
+      data-held={held === by || undefined}
+      /* sunk for the whole hold, by pointer or by key (BUTTON's own press scale) */
+      className={cn("h-8 w-8 shrink-0 touch-manipulation select-none text-[14px] [-webkit-touch-callout:none] data-[held]:scale-[0.97] motion-reduce:data-[held]:scale-100", BUTTON)}
+    >
       {glyph}
     </button>
   )

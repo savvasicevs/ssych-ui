@@ -1,12 +1,13 @@
 // provenance: original
 "use client"
 
-import { useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import { BUTTON } from "@/components/ui/control-classes"
 import { ShelfModal } from "@/components/ui/market-shelf-modal"
+import { ScrubLine } from "@/components/ui/scrub-line"
 
 /* Market Shelf, promoted from a lab sketch through ssych-component (2026-09-29).
    What it is for: a named shelf of markets (trending, top movers, newly listed) as small
@@ -43,9 +44,27 @@ import { ShelfModal } from "@/components/ui/market-shelf-modal"
    the 4px gaps never show an overlap; its size in the grid never changes, so nothing around
    it moves. The others step back to 50% over the same 220ms, the fill brightens with them,
    and a press sinks the tile to 0.98 from wherever it is. Reduced motion keeps the dim and
-   the fill and drops the growth. */
+   the fill and drops the growth.
+   2026-11-10: a tile's press did nothing unless a host passed `onSelect`. Now, when no host
+   takes the press, it opens the tile in place across the whole shelf (`expandable`, on by
+   default): the tile takes the full row and the others step down a row, all on one move
+   (350ms on the house expo-out; 220ms back, quicker than it came). Open, it shows the
+   price, the 24h and the 7 day change, and the week as a large line that draws once
+   (0.5s) with the week's high and low marked and named on the right axis. Pointing along
+   the line (or the arrow keys) reads any point where the price is, with how long ago it
+   was. A second press or Escape folds it back. The grow is a tween, where the first plan
+   was the 400/32 layout spring: on a 390px change that spring runs 6px past the shelf's
+   edge. The hover growth is off while a tile is open. Reduced motion: no growth, the
+   tile changes size at once and its content fades in 150ms.
+   Formulas in the open tile:
+   · 7 day change   (last − first of the week) ÷ first × 100
+   · high, low      highest and lowest of the week
+   · how long ago   7 days × (points after it ÷ (points − 1)) */
 
 const EASE = [0.16, 1, 0.3, 1] as const
+/* the tile opens and the others reflow on one move; it folds back quicker */
+const OPEN = { duration: 0.35, ease: EASE } as const
+const CLOSE = { duration: 0.22, ease: EASE } as const
 const GREEN = "var(--chart-up)"
 const RED = "var(--chart-down)"
 /** A hue as text: its lightness is capped in the light theme so small figures stay readable. */
@@ -94,6 +113,8 @@ export interface MarketShelfProps {
   title?: string
   markets?: ShelfMarket[]
   onSelect?: (symbol: string) => void
+  /** with no `onSelect`, a press opens the tile in place across the shelf; on by default */
+  expandable?: boolean
   /** the host's own "See all"; without it the button opens the built-in list of every market */
   onSeeAll?: () => void
   /** how many markets the shelf shows as tiles; "See all" lists the rest too */
@@ -137,18 +158,46 @@ const H = 22
 const usd = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: v < 10 ? 4 : 2, maximumFractionDigits: v < 10 ? 4 : 2 })}`
 const signedPct = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`
 
+/** a reading that swaps in place when what it shows changes kind (4px, 2px blur, 150ms),
+ *  from a dimmed copy; it is simply there the first time */
+function Swap({ intent, className, children }: { intent: string; className?: string; children: ReactNode }) {
+  const reduced = useReducedMotion()
+  const [first] = useState(intent)
+  const [moved, setMoved] = useState(false)
+  if (!moved && intent !== first) setMoved(true)
+  return (
+    <motion.span
+      key={intent}
+      className={className}
+      initial={!moved ? false : reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.15, ease: EASE }}
+    >
+      {children}
+    </motion.span>
+  )
+}
+
 /**
  * A shelf of markets as tiles: price, the day's signed change and the week as a line.
- * Pointing at a tile writes its week under the shelf; pressing it opens the market.
+ * Pointing at a tile writes its week under the shelf; pressing it opens the market: the
+ * host's own view through `onSelect`, or the tile itself in place across the shelf.
  * 2026-10-02: surfaces at 7% (raised blocks white in light, 12% in dark) so cards read on white and on black.
  */
-export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onSelect, onSeeAll, tiles = 4, renderIcon, className }: MarketShelfProps) {
+export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onSelect, expandable = true, onSeeAll, tiles = 4, renderIcon, className }: MarketShelfProps) {
   const reduced = useReducedMotion()
   const [hot, setHot] = useState<string | null>(null)
   const [all, setAll] = useState(false)
   /** the tile under a press, sunk to 0.98 */
   const [pressed, setPressed] = useState<string | null>(null)
   const root = useRef<HTMLDivElement>(null)
+  /** a press opens the tile in place only when no host takes the press */
+  const can = expandable && !onSelect
+  const [opened, setOpened] = useState<string | null>(null)
+  /** the pointed point of the open tile's week */
+  const [hi, setHi] = useState<number | null>(null)
+  /** a tile has been opened once: a small line that comes back does not draw itself again */
+  const folded = useRef(false)
 
   const rows = markets.map((m) => {
     const data = m.week.length ? m.week : [0]
@@ -157,14 +206,36 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
     const max = Math.max(...data)
     const span = Math.max(1e-9, max - min)
     const line = data.map((v, i) => `${i === 0 ? "M" : "L"} ${((i / Math.max(1, last)) * W).toFixed(2)} ${(2 + (1 - (v - min) / span) * (H - 4)).toFixed(2)}`).join(" ")
-    return { ...m, price: data[last], min, max, line, weekChange: data[0] ? ((data[last] - data[0]) / data[0]) * 100 : 0 }
+    return { ...m, data, last, price: data[last], min, max, line, weekChange: data[0] ? ((data[last] - data[0]) / data[0]) * 100 : 0 }
   })
-  const shown = rows.find((r) => r.symbol === hot)
   const shelf = rows.slice(0, tiles)
+  const open = can && shelf.some((r) => r.symbol === opened) ? opened : null
+  /* the open tile already shows its week, so the line under the shelf stays empty for it */
+  const shown = rows.find((r) => r.symbol === hot && r.symbol !== open)
+  const toggle = (symbol: string) => {
+    folded.current = true
+    setHi(null)
+    setOpened((o) => (o === symbol ? null : symbol))
+  }
+  /* Escape folds the open tile wherever focus is (a mouse press does not always move it) */
+  useEffect(() => {
+    if (!open || all) return
+    const doc = root.current?.ownerDocument ?? document
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return
+      setHi(null)
+      setOpened(null)
+    }
+    doc.addEventListener("keydown", onKey)
+    return () => doc.removeEventListener("keydown", onKey)
+  }, [open, all])
+  /* everything in the shelf moves on the one transition: out as a tile opens, quicker back */
+  const glide = can && !reduced
+  const move = { layout: open ? OPEN : CLOSE, scale: { duration: 0.22, ease: EASE } }
 
   return (
     <div ref={root} className={cn("w-full max-w-[520px] tabular-nums [--ink-l:0.5] dark:[--ink-l:1]", className)} role="group" aria-label={`${title}, ${rows.length} markets`}>
-      <div className="mb-2 flex items-center justify-between px-1">
+      <motion.div layout={glide ? "position" : false} transition={move} className="mb-2 flex items-center justify-between px-1">
         <span className="text-[13px] font-medium text-foreground/90">{title}</span>
         <button
           type="button"
@@ -174,75 +245,161 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
         >
           See all
         </button>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(118px,1fr))] gap-1" onPointerLeave={() => setHot(null)}>
         {shelf.map((r, i) => {
           const on = hot === r.symbol
+          const isOpen = open === r.symbol
+          const at = isOpen && hi !== null ? Math.min(hi, r.last) : null
+          /** how long before the last point a point is, the series being 7 days */
+          const ago = (k: number) => (k >= r.last ? "now" : `${((7 * (r.last - k)) / Math.max(1, r.last)).toFixed(1)}d ago`)
           return (
-            <button
+            <motion.button
               key={r.symbol}
               type="button"
-              aria-label={`${r.name}, ${usd(r.price)}, ${signedPct(r.change)} today, ${signedPct(r.weekChange)} over 7 days`}
-              onClick={() => onSelect?.(r.symbol)}
+              aria-expanded={can ? isOpen : undefined}
+              aria-label={`${r.name}, ${usd(r.price)}, ${signedPct(r.change)} today, ${signedPct(r.weekChange)} over 7 days${isOpen ? `, the week's low ${usd(r.min)}, high ${usd(r.max)}` : ""}`}
+              onClick={() => (onSelect ? onSelect(r.symbol) : can && toggle(r.symbol))}
+              onKeyDown={(e) => {
+                if (!isOpen || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return
+                /* the arrows step along the open tile's week */
+                e.preventDefault()
+                setHi((h) => Math.max(0, Math.min(r.last, (h ?? r.last) + (e.key === "ArrowLeft" ? -1 : 1))))
+              }}
               onPointerEnter={() => setHot(r.symbol)}
               onPointerLeave={() => setPressed(null)}
               onFocus={() => setHot(r.symbol)}
-              onBlur={() => setHot(null)}
-              /* 12 (the 24px coin mark) + 12 padding = 24. The hover grows the tile on its
-                 transform only (rule 6): scale 1.03, 220ms ease-out, no layout change */
+              onBlur={() => {
+                setHot(null)
+                if (isOpen) setHi(null)
+              }}
+              /* the tile's place in the grid animates as one opens: this one out to the full
+                 row, the others down a row, on the same move */
+              layout={glide}
+              initial={false}
+              /* the hover grows the tile on its transform only (rule 6): scale 1.03, 220ms
+                 ease-out, no layout change; an open tile holds still */
+              animate={{ scale: reduced || isOpen ? 1 : pressed === r.symbol ? 0.98 : on ? 1.03 : 1 }}
+              transition={move}
+              /* corner 18; as a style too, so it stays round while the box scales */
               className={cn(
-                "relative flex min-w-0 flex-col gap-2 rounded-[18px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
+                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] rounded-[18px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
+                isOpen ? "col-span-full gap-x-3" : "gap-2",
                 on && "z-[1] bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
                 hot !== null && !on && "opacity-50",
               )}
               style={{
-                transform: `scale(${reduced ? 1 : pressed === r.symbol ? 0.98 : on ? 1.03 : 1})`,
-                transition: "transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+                borderRadius: 18,
+                /* the open tile leads the shelf, so it grows where its row is and the rest step down */
+                order: isOpen ? -1 : undefined,
+                gridTemplateAreas: isOpen ? '"head price" "head change" "chart chart"' : '"head head" "price price" "change spark"',
+                transition: "opacity 220ms cubic-bezier(0.16, 1, 0.3, 1), background-color 220ms cubic-bezier(0.16, 1, 0.3, 1)",
               }}
               onPointerDown={() => setPressed(r.symbol)}
               onPointerUp={() => setPressed(null)}
               onPointerCancel={() => setPressed(null)}
             >
-              <span className="flex items-center gap-2">
+              {/* each part is its own layout box, so it glides to its new place undistorted
+                  while the tile's box changes size */}
+              <motion.span layout={glide ? "position" : false} transition={move} className={cn("flex min-w-0 items-center gap-2", isOpen && "self-center")} style={{ gridArea: "head" }}>
                 <Mark symbol={r.symbol} size={24} renderIcon={renderIcon} />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-[11.5px] font-medium leading-tight text-foreground/90">{r.name}</span>
                   {/* the ticker only when it says something the name does not (BNB, XRP are both) */}
                   {r.symbol !== r.name && <span className="text-[10px] text-foreground/45">{r.symbol}</span>}
                 </span>
-              </span>
-              <span className="text-[13px] font-semibold text-foreground/90">{usd(r.price)}</span>
-              <span className="flex items-end justify-between gap-2">
-                <span className="text-[11px] font-medium" style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>
-                  {signedPct(r.change)}
-                </span>
-                <svg aria-hidden width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none" className="shrink-0 overflow-visible">
-                  <motion.path
-                    d={r.line}
-                    /* ink, so the tile shows one window in hue (the 24h change) */
-                    stroke="var(--foreground)"
-                    strokeOpacity={on ? 0.9 : 0.45}
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ transition: reduced ? "none" : "stroke-opacity 160ms" }}
-                    initial={{ pathLength: reduced ? 1 : 0 }}
-                    animate={{ pathLength: 1 }}
-                    transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
+              </motion.span>
+              <motion.span
+                layout={glide ? "position" : false}
+                transition={move}
+                role={isOpen ? "status" : undefined}
+                className={cn("font-semibold text-foreground/90", isOpen ? "justify-self-end text-[15px] leading-tight" : "text-[13px]")}
+                style={{ gridArea: "price" }}
+              >
+                {isOpen ? (
+                  <Swap intent={at === null ? "live" : "scrub"} className="block">
+                    {usd(at === null ? r.price : r.data[at])}
+                  </Swap>
+                ) : (
+                  usd(r.price)
+                )}
+              </motion.span>
+              <motion.span
+                layout={glide ? "position" : false}
+                transition={move}
+                className={cn("text-[11px] font-medium", isOpen ? "mt-0.5 justify-self-end whitespace-nowrap" : "self-end")}
+                style={{ gridArea: "change" }}
+              >
+                {isOpen ? (
+                  <Swap intent={at === null ? "live" : "scrub"} className="block">
+                    {at === null ? (
+                      <>
+                        <span className="font-normal text-foreground/45">24h</span> <span style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>{signedPct(r.change)}</span>
+                        <span className="ml-2.5 font-normal text-foreground/45">7d</span> <span style={{ color: ink(r.weekChange >= 0 ? GREEN : RED) }}>{signedPct(r.weekChange)}</span>
+                      </>
+                    ) : (
+                      <span className="font-normal text-foreground/45">{ago(at)}</span>
+                    )}
+                  </Swap>
+                ) : (
+                  <span style={{ color: ink(r.change >= 0 ? GREEN : RED) }}>{signedPct(r.change)}</span>
+                )}
+              </motion.span>
+              {isOpen ? (
+                /* the week, large: it fades in just behind the growing box and draws once */
+                <motion.span
+                  key="chart"
+                  layout={glide}
+                  className="mt-3 block"
+                  style={{ gridArea: "chart" }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={reduced ? { duration: 0.15 } : { opacity: { duration: 0.2, ease: EASE, delay: 0.08 }, layout: OPEN }}
+                >
+                  <ScrubLine
+                    data={r.data}
+                    format={usd}
+                    hi={at}
+                    onHi={setHi}
+                    height={96}
+                    levels={[
+                      { name: "High", value: r.max },
+                      { name: "Low", value: r.min },
+                    ]}
+                    marks={[r.data.indexOf(r.max), r.data.indexOf(r.min)]}
+                    axis={r.data.map((_, k) => (k === 0 ? "7d ago" : k === r.last ? "now" : null))}
                   />
-                </svg>
-              </span>
-            </button>
+                </motion.span>
+              ) : (
+                <motion.span key="spark" layout={glide} transition={move} className="self-end" style={{ gridArea: "spark" }}>
+                  <svg aria-hidden width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none" className="block shrink-0 overflow-visible">
+                    <motion.path
+                      d={r.line}
+                      /* ink, so the tile shows one window in hue (the 24h change) */
+                      stroke="var(--foreground)"
+                      strokeOpacity={on ? 0.9 : 0.45}
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ transition: reduced ? "none" : "stroke-opacity 160ms" }}
+                      initial={{ pathLength: reduced || folded.current ? 1 : 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: Math.min(i, 7) * 0.035 }}
+                    />
+                  </svg>
+                </motion.span>
+              )}
+            </motion.button>
           )
         })}
       </div>
 
-      <div role="status" className="mt-2 truncate px-1 text-[10.5px] text-foreground/60">
+      <motion.div layout={glide ? "position" : false} transition={move} role="status" className="mt-2 truncate px-1 text-[10.5px] text-foreground/60">
         {/* the line swaps in place as the pointer moves (text swap: 4px, 2px blur, 150ms) from a
             dimmed copy, so it never blinks out; reduced motion keeps the fade */}
         <motion.span
-          key={hot ?? "rest"}
+          key={shown?.symbol ?? "rest"}
           className="block truncate"
           initial={reduced ? { opacity: 0.4 } : { opacity: 0.4, y: 4, filter: "blur(2px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
@@ -257,7 +414,7 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
           "\u00a0"
         )}
         </motion.span>
-      </div>
+      </motion.div>
       <ShelfModal open={all} title={title} onClose={() => setAll(false)} host={root.current}>
         <div className="flex flex-col">
           {rows.map((r) => (

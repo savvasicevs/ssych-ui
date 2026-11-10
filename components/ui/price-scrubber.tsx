@@ -5,6 +5,7 @@ import { useId, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
+import { MEASURE_REST, MeasureAnchor, MeasureBand, useMeasure } from "@/components/ui/chart-measure"
 import { AxisTag } from "@/components/ui/chart-overlay"
 import { SegmentedControl } from "@/components/ui/segmented-control"
 
@@ -21,9 +22,17 @@ import { SegmentedControl } from "@/components/ui/segmented-control"
    header reads the time. Gridlines are solid at 5%, the axis prints dollars at 9px /45,
    and the timeframe pills are the shared SegmentedControl in the header, not a hand made
    row under the plot.
+   2026-11-10: a new `measure` prop (off by default) turns on drag to measure
+   (chart-measure.tsx, shared with Candlestick). Press on the chart and drag sideways: the
+   stretch between the press and the pointer lights up, the rest of the line rests at 0.45,
+   and the header reads the stretch in place: the price at its later end, the move and the
+   percent across it, and its two times. Letting go keeps it until the next press or
+   Escape. From the keyboard the arrows point and Shift with an arrow measures.
    Formulas:
    · move = the pointed price (or the last) − the window's first price
-   · percent = move ÷ the window's first price × 100 */
+   · percent = move ÷ the window's first price × 100
+   · measured move = the stretch's later price − its earlier price
+   · measured percent = measured move ÷ the stretch's earlier price × 100 */
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const GREEN = "var(--chart-up)"
@@ -111,12 +120,14 @@ const SPOT_STOPS: [number, number][] = [
  * tagged on the axis, and scrubbing updates the header, which recolours the
  * whole chart off the reference price. A soft wash rides the
  * cursor, so the line reads lighter under the pointer and settles back on the
- * far sides. Timeframe pills morph the chart in place.
+ * far sides. Timeframe pills morph the chart in place. With `measure` on, a press dragged
+ * sideways lights the stretch under it and the header reads the move across that stretch.
  */
 export function PriceScrubber({
   name = "Broadcom",
   symbol = "AVGO",
   timeframe = "1Y",
+  measure = false,
   className,
 }: {
   /** the company or market's name, on the label row's left */
@@ -124,13 +135,14 @@ export function PriceScrubber({
   symbol?: string
   /** the timeframe the chart opens on */
   timeframe?: ScrubTimeframe
+  /** press and drag sideways to measure the move across a stretch; it stays until the next press or Escape */
+  measure?: boolean
   className?: string
 }) {
   const reduced = useReducedMotion()
   const uid = useId().replace(/:/g, "")
   const svgRef = useRef<SVGSVGElement>(null)
   const [tf, setTf] = useState<ScrubTimeframe>(timeframe)
-  const [hi, setHi] = useState<number | null>(null)
 
   const data = useMemo(() => makeSeries(tf), [tf])
   const n = data.length
@@ -144,16 +156,19 @@ export function PriceScrubber({
   const x = (i: number) => PAD.l + (i / (n - 1)) * PLOT_W
   const y = (v: number) => PAD.t + (1 - (v - min) / (max - min || 1)) * PLOT_H
 
-  const onMove = (e: React.PointerEvent) => {
-    const el = svgRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    const px = ((e.clientX - r.left) / r.width) * W
-    setHi(Math.max(0, Math.min(n - 1, Math.round(((px - PAD.l) / PLOT_W) * (n - 1)))))
-  }
+  /* pointing reads one datum; with `measure` on, a press dragged sideways measures a stretch (chart-measure.tsx) */
+  const { hi, span, point, bind, reset } = useMeasure({
+    ref: svgRef,
+    width: W,
+    at: (px) => Math.round(((px - PAD.l) / PLOT_W) * (n - 1)),
+    count: n,
+    enabled: measure,
+  })
 
-  const reference = data[0]
-  const activeIdx = hi ?? n - 1
+  /* the header reads a window: the measured stretch, else the window's start to the pointed price (or the last) */
+  const fromIdx = span ? span.from : 0
+  const activeIdx = span ? span.to : (hi ?? n - 1)
+  const reference = data[fromIdx]
   const activeVal = data[activeIdx]
   const delta = activeVal - reference
   const deltaPct = (delta / reference) * 100
@@ -162,8 +177,13 @@ export function PriceScrubber({
 
   const line = data.map((v, idx) => `${idx === 0 ? "M" : "L"}${x(idx).toFixed(1)},${y(v).toFixed(1)}`).join(" ")
   const area = `${line} L${x(n - 1).toFixed(1)},${H - PAD.b} L${x(0).toFixed(1)},${H - PAD.b} Z`
-  const badgeY = y(activeVal)
-  const crossX = x(activeIdx)
+  /* the crosshair stands on the pointed datum, or on a measure's moving end */
+  const crossIdx = point ?? n - 1
+  const crossVal = data[crossIdx]
+  const badgeY = y(crossVal)
+  const crossX = x(crossIdx)
+  const fromLabel = timeLabel(tf, fromIdx / (n - 1))
+  const toLabel = timeLabel(tf, activeIdx / (n - 1))
   const tagY = Math.max(PAD.t + 8, Math.min(H - PAD.b - 8, badgeY))
   const [whole, cents] = fmtPrice(activeVal).split(".")
 
@@ -186,7 +206,9 @@ export function PriceScrubber({
               {fmtPrice(Math.abs(delta))} · {up ? "+" : "−"}
               {Math.abs(deltaPct).toFixed(2)}%
             </span>
-            <span className="font-normal text-foreground/45">{hi === null ? WINDOW[tf] : timeLabel(tf, activeIdx / (n - 1))}</span>
+            <span className="font-normal text-foreground/45">
+              {span ? (fromLabel === toLabel ? toLabel : `${fromLabel} to ${toLabel}`) : hi === null ? WINDOW[tf] : toLabel}
+            </span>
           </p>
         </div>
         <SegmentedControl
@@ -194,7 +216,7 @@ export function PriceScrubber({
           value={tf}
           onChange={(v) => {
             setTf(v as ScrubTimeframe)
-            setHi(null)
+            reset()
           }}
           label="Timeframe"
           className="shrink-0"
@@ -206,11 +228,10 @@ export function PriceScrubber({
         width={W}
         height={H}
         viewBox={`0 0 ${W} ${H}`}
-        className="block cursor-crosshair touch-none"
+        className={cn("block cursor-crosshair touch-none", measure && "select-none outline-none")}
         role="img"
         aria-label={`${name} (${symbol}) price over the ${WINDOW[tf]}, ${fmtPrice(data[n - 1])}`}
-        onPointerMove={onMove}
-        onPointerLeave={() => setHi(null)}
+        {...bind}
       >
         <defs>
           <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
@@ -226,7 +247,7 @@ export function PriceScrubber({
         {[0.25, 0.5, 0.75].map((f) => {
           const gy = PAD.t + f * PLOT_H
           /* a figure steps aside while the pointed tag sits on it */
-          const under = hi !== null && Math.abs(gy - tagY) < 12
+          const under = point !== null && Math.abs(gy - tagY) < 12
           return (
             <g key={f}>
               <line x1={PAD.l} y1={gy} x2={W - PAD.r} y2={gy} stroke="var(--foreground)" strokeOpacity={0.05} />
@@ -251,15 +272,15 @@ export function PriceScrubber({
           </text>
         ))}
 
-        {/* area and line, re-keyed on the timeframe so they redraw; they sit back while scrubbing */}
-        <g opacity={hi === null ? 1 : SPOT_DIM} style={{ transition: reduced ? "none" : "opacity 0.22s" }}>
+        {/* area and line, re-keyed on the timeframe so they redraw; they sit back while scrubbing, and rest at 0.45 around a measured stretch */}
+        <g opacity={span ? MEASURE_REST : hi === null ? 1 : SPOT_DIM} style={{ transition: reduced ? "none" : "opacity 0.22s" }}>
           <motion.path key={`a-${tf}`} d={area} fill={`url(#${uid}-fill)`} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.4, ease: EASE, delay: 0.35 }} />
           <motion.path key={`l-${tf}`} d={line} fill="none" stroke={hue} strokeWidth={1.8} strokeLinejoin="round" initial={{ pathLength: reduced ? 1 : 0 }} animate={{ pathLength: 1 }} transition={reduced ? { duration: 0 } : { duration: 0.85, ease: EASE }} />
         </g>
 
         {/* the wash: a full-strength copy revealed through a mask that rides the cursor */}
         <AnimatePresence>
-          {hi !== null && (
+          {hi !== null && !span && (
             <motion.g key="spot" pointerEvents="none" initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: reduced ? 0 : 0.16 } }} transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}>
               <defs>
                 <linearGradient id={`${uid}-ramp`} gradientUnits="userSpaceOnUse" x1={crossX - SPOT} y1="0" x2={crossX + SPOT} y2="0">
@@ -280,14 +301,21 @@ export function PriceScrubber({
           )}
         </AnimatePresence>
 
-        {/* magnet crosshair: rule, snapped dot and the pointed price tagged on the axis (chart-overlay.tsx) */}
-        {hi !== null && (
+        {/* the measured stretch: a band in the move's hue and the series at full strength inside it (chart-measure.tsx) */}
+        <MeasureBand span={span} x={x} top={PAD.t} bottom={H - PAD.b} color={hue}>
+          <path d={area} fill={`url(#${uid}-hot)`} />
+          <path d={line} fill="none" stroke={hue} strokeWidth={1.8} strokeLinejoin="round" />
+        </MeasureBand>
+
+        {/* magnet crosshair: rule, snapped dot and the pointed price tagged on the axis (chart-overlay.tsx); a measure adds the rule where its press landed */}
+        {point !== null && (
           <g pointerEvents="none">
+            <MeasureAnchor span={span} x={x} top={PAD.t} bottom={H - PAD.b} />
             <line x1={crossX} y1={PAD.t} x2={crossX} y2={H - PAD.b} stroke="var(--foreground)" strokeOpacity={0.2} strokeWidth={1} />
             <line x1={PAD.l} y1={badgeY} x2={W - PAD.r} y2={badgeY} stroke="var(--foreground)" strokeOpacity={0.14} strokeDasharray="3 3" strokeWidth={1} />
             <circle cx={crossX} cy={badgeY} r={3.5} fill={hue} stroke="var(--background)" strokeWidth={1.75} />
             <AxisTag x={W - PAD.r + 4} y={tagY} width={58} color={hue}>
-              {fmtPrice(activeVal)}
+              {fmtPrice(crossVal)}
             </AxisTag>
           </g>
         )}
