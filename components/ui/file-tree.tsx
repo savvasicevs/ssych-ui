@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 const EASE = [0.16, 1, 0.3, 1] as const
 const SPRING = { type: "spring", stiffness: 400, damping: 32 } as const
 /* the accent is the chart token, mixed: a 4.5% wash under the chosen row, a 90% spine */
-const accentMix = (pct: number) => `color-mix(in srgb, var(--chart-1, #489ffa) ${pct}%, transparent)`
+const accentMix = (pct: number) => `color-mix(in srgb, var(--chart-1, #fe821e) ${pct}%, transparent)`
 const ROW = 32
 /** ms the pointer rests on a cut-off name before its full path shows */
 const REVEAL_MS = 700

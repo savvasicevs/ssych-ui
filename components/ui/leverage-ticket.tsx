@@ -259,7 +259,6 @@ export function LeverageTicket({
         state={`${state}-${side}`}
         disabled={!enabled}
         onClick={() => onSubmit?.({ side, margin, leverage: lev, notional, contracts, liquidation })}
-        lightHue={long ? GREEN : RED}
         label={verdict}
       />
 

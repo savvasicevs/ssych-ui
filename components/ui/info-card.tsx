@@ -55,7 +55,7 @@ function Reveal({ children }: { children: ReactNode }) {
 }
 
 /** colour 150ms; a press gives to 0.97, dropped under reduced motion */
-const ACTION = "mt-3 inline-flex items-center gap-1.5 self-start text-[12px] font-semibold text-foreground/80 transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97] motion-reduce:active:scale-100"
+const ACTION = "mt-3 inline-flex items-center gap-1.5 self-start text-[12px] font-semibold text-foreground/80 transition-[color,scale] duration-150 hover:text-foreground focus-visible:text-foreground active:scale-[0.97] motion-reduce:active:scale-100"
 
 /**
  * A quiet card with a title, one line, and an action that shows itself when the card
@@ -71,7 +71,7 @@ export function InfoCard({
   className,
 }: InfoCardProps) {
   return (
-    <div role="group" aria-label={title} className={cn("group/box w-[280px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-5", CARD_RADIUS, className)}>
+    <div role="group" aria-label={title} className={cn("group/box w-[280px] bg-background shadow-[inset_0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-5", CARD_RADIUS, className)}>
       <div className="text-[13px] font-medium leading-snug text-foreground/90">{title}</div>
       <p className="mt-1 text-balance text-[12px] leading-[1.55] text-foreground/60">{line}</p>
       <Reveal>

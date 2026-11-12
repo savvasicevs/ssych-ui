@@ -29,7 +29,7 @@
       "panel": "#ffffff",
       "card-raised": "#ffffff",
       "card-shadow": "rgba(0, 0, 0, 0.22)",
-      "chart-1": "#2b7fd6",
+      "chart-1": "#e26f04",
       "chart-2": "#2f9e70",
       "chart-3": "#a85f3b",
       "chart-4": "#9a9d00",
@@ -50,7 +50,7 @@
       "panel": "#0e121b",
       "card-raised": "#10141e",
       "card-shadow": "rgba(0, 0, 0, 0.8)",
-      "chart-1": "#489ffa",
+      "chart-1": "#fe821e",
       "chart-2": "#4dbe95",
       "chart-3": "#c27c58",
       "chart-4": "#e9ec89",
@@ -66,7 +66,7 @@
   "files": [
     {
       "path": "components/ui/card-grid.tsx",
-      "content": "// provenance: original\n\"use client\"\n\nimport { motion, useReducedMotion } from \"motion/react\"\nimport { cn } from \"@/lib/utils\"\nimport { ProjectCard } from \"@/components/ui/project-card\"\nimport { useProjectDetails, type CardData } from \"@/components/ui/project-card-utils\"\n\n/** Responsive grid of project cards. Click to open the shared details modal. */\nexport function CardGrid({ cards, className }: { cards: CardData[]; className?: string }) {\n  const { open, modal } = useProjectDetails(cards)\n  const reduced = useReducedMotion()\n\n  if (!cards.length) return null\n\n  return (\n    <div className={cn(\"mx-auto w-full max-w-5xl\", className)}>\n      <div className=\"grid w-full grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3\">\n        {cards.map((card, i) => (\n          <motion.div\n            key={card.id}\n            initial={reduced ? false : { opacity: 0, scale: 0.9 }}\n            animate={{ opacity: 1, scale: 1 }}\n            transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 300, damping: 28, delay: i * 0.04 }}\n            onClick={() => open(card.id)}\n            className=\"group relative aspect-[3/2] w-full cursor-pointer overflow-hidden rounded-[21px] shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]\"\n          >\n            <ProjectCard card={card} variant=\"overlay\" emphasis=\"sm\" />\n          </motion.div>\n        ))}\n      </div>\n\n      {modal}\n    </div>\n  )\n}\n",
+      "content": "// provenance: original\n\"use client\"\n\nimport { motion, useReducedMotion } from \"motion/react\"\nimport { cn } from \"@/lib/utils\"\nimport { ProjectCard } from \"@/components/ui/project-card\"\nimport { useProjectDetails, type CardData } from \"@/components/ui/project-card-utils\"\n\n/** Responsive grid of project cards. Click to open the shared details modal. */\nexport function CardGrid({ cards, className }: { cards: CardData[]; className?: string }) {\n  const { open, modal } = useProjectDetails(cards)\n  const reduced = useReducedMotion()\n\n  if (!cards.length) return null\n\n  return (\n    <div className={cn(\"mx-auto w-full max-w-5xl\", className)}>\n      <div className=\"grid w-full grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3\">\n        {cards.map((card, i) => (\n          <motion.div\n            key={card.id}\n            initial={reduced ? false : { opacity: 0, scale: 0.9 }}\n            animate={{ opacity: 1, scale: 1 }}\n            transition={reduced ? { duration: 0 } : { type: \"spring\", stiffness: 300, damping: 28, delay: i * 0.04 }}\n            onClick={() => open(card.id)}\n            className=\"group relative aspect-[3/2] w-full cursor-pointer overflow-hidden rounded-[21px] transition-[scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:active:scale-100 shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]\"\n          >\n            <ProjectCard card={card} variant=\"overlay\" emphasis=\"sm\" />\n          </motion.div>\n        ))}\n      </div>\n\n      {modal}\n    </div>\n  )\n}\n",
       "type": "registry:ui",
       "target": "components/ui/card-grid.tsx"
     },

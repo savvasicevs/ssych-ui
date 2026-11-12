@@ -9,7 +9,7 @@ import { BUTTON_PRIMARY } from "@/components/ui/control-classes"
 
 /* 2026-10-02 audit: the button was an outlined 60px-corner pill that wiped a fill up on hover
    and glowed blue (a border colour, an accent box-shadow glow and an inset accent ring at
-   once). It is now the library's one white primary (BUTTON_PRIMARY at h-12 px-6, 14px
+   once). It is now the library's one primary, the accent (BUTTON_PRIMARY at h-12 px-6, 14px
    medium, fully round) with one elevation: the charge the particles bring only brightens a
    1px top highlight in the accent, so the ring and the glow are gone. The particles are ink
    (the foreground, read from the stage) instead of blue and white, so the accent stays a
@@ -85,7 +85,7 @@ export function MouseTrailCta({
     const applyCharge = () => {
       const t = charge
       pill.style.boxShadow =
-        t > 0.02 ? `inset 0 1px 0 0 color-mix(in srgb, var(--chart-1, #489ffa) ${Math.round(70 * t)}%, transparent)` : ""
+        t > 0.02 ? `inset 0 1px 0 0 color-mix(in srgb, var(--chart-1, #fe821e) ${Math.round(70 * t)}%, transparent)` : ""
     }
 
     const tick = (now: number) => {

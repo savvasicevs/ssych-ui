@@ -269,7 +269,7 @@ export function BalanceChart({
               aria-pressed={on}
               onClick={() => setTf(t)}
               className={cn(
-                "relative z-[1] h-7 flex-1 rounded-[10.5px] text-[11.5px] font-medium tracking-[0.01em] tabular-nums transition-[color,transform] duration-200 active:scale-[0.94] motion-reduce:active:scale-100",
+                "relative z-[1] h-7 flex-1 rounded-[10.5px] text-[11.5px] font-medium tracking-[0.01em] tabular-nums transition-[color,scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:text-foreground/90",
                 on ? "text-foreground/90" : "text-foreground/45 hover:text-foreground/90",
               )}
             >

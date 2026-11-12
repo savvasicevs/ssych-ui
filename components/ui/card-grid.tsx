@@ -23,7 +23,7 @@ export function CardGrid({ cards, className }: { cards: CardData[]; className?: 
             animate={{ opacity: 1, scale: 1 }}
             transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 28, delay: i * 0.04 }}
             onClick={() => open(card.id)}
-            className="group relative aspect-[3/2] w-full cursor-pointer overflow-hidden rounded-[21px] shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]"
+            className="group relative aspect-[3/2] w-full cursor-pointer overflow-hidden rounded-[21px] transition-[scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98] motion-reduce:active:scale-100 shadow-[0_24px_70px_-28px_rgba(0,0,0,calc(0.85*var(--shadow-k,1)))]"
           >
             <ProjectCard card={card} variant="overlay" emphasis="sm" />
           </motion.div>

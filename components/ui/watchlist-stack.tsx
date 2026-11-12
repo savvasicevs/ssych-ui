@@ -258,7 +258,7 @@ function Row({
         setHi((h) => Math.max(0, Math.min(last, (h ?? last) + (e.key === "ArrowLeft" ? -1 : 1))))
       }}
       onBlur={() => open && setHi(null)}
-      className="block min-w-0 flex-1 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-200 focus-visible:bg-foreground/[0.06] active:scale-[0.98] motion-reduce:active:scale-100"
+      className="block min-w-0 flex-1 text-left outline-none transition-[background-color,transform,translate,scale,rotate] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:bg-foreground/[0.06] active:scale-[0.98] motion-reduce:active:scale-100"
     >
       <motion.span
         className="grid items-center py-2.5 pl-3"

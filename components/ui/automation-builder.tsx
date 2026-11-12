@@ -217,7 +217,7 @@ function useDismiss(ref: React.RefObject<HTMLElement | null>, active: boolean, o
 }
 
 const PILL = "h-6 rounded-[9px] px-2.5 text-[11px] font-medium whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 motion-reduce:transition-none"
-const OPTION = "h-6 rounded-[9px] px-2.5 text-[11px] whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] motion-reduce:transition-none"
+const OPTION = "h-6 rounded-[9px] px-2.5 text-[11px] whitespace-nowrap outline-none transition-[color,background-color,transform,translate,scale,rotate] duration-150 active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100"
 /** a tip over an icon button: up on hover or keyboard focus, after a short wait */
 function Tip({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -283,7 +283,7 @@ function Chip({ chip, open, locked, onToggle, onClose, onSelect }: { chip: ChipT
           aria-expanded={false}
           disabled={locked}
           onClick={onToggle}
-          className={cn(PILL, "bg-foreground/[0.08] text-foreground/90 hover:bg-foreground/[0.13] focus-visible:bg-foreground/[0.13] active:scale-[0.97]")}
+          className={cn(PILL, "bg-foreground/[0.08] text-foreground/90 hover:bg-foreground/[0.13] focus-visible:bg-foreground/[0.13] active:scale-[0.97] motion-reduce:active:scale-100")}
         >
           {chip.value}
         </button>
@@ -432,7 +432,7 @@ function ProgramRow({
         }}
         className={cn(
           "mt-1 grid h-4 w-4 shrink-0 touch-none place-items-center rounded-[3px] text-foreground/45 outline-none transition-opacity duration-150 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 disabled:pointer-events-none motion-reduce:transition-none",
-          dragging ? "cursor-grabbing opacity-100" : "cursor-grab opacity-0 group-hover:opacity-100",
+          dragging ? "cursor-grabbing opacity-100" : "cursor-grab opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
         )}
       >
         <GripVertical className="h-3 w-3" strokeWidth={1.8} aria-hidden />

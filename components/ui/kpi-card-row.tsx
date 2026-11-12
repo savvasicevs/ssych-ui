@@ -185,7 +185,7 @@ function Kpi({
       /* the box the large view grows out of and folds back into */
       layoutId={shared ? `${shared}-box` : undefined}
       transition={{ layout: CLOSE }}
-      className={cn("w-[152px] shrink-0 overflow-hidden rounded-[13.5px] p-3", SURFACE, expandable && "relative")}
+      className={cn("w-[152px] shrink-0 overflow-hidden rounded-[13.5px] p-3", SURFACE, expandable && "group/kpi relative")}
       /* the radius as a style too, so the shared box's corner stays round while it scales */
       style={shared ? { borderRadius: 13.5 } : undefined}
     >
@@ -199,7 +199,7 @@ function Kpi({
           aria-expanded={open}
           aria-label={`${item.label}, ${format(data[last])}, ${delta}${since ? ` since ${since}` : ""}, open the large view`}
           onClick={onOpen}
-          className="absolute inset-0 z-[1] cursor-pointer rounded-[inherit] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/20"
+          className="absolute inset-0 z-[1] cursor-pointer rounded-[inherit] outline-none transition-colors duration-150 group-hover/kpi:bg-foreground/[0.03] group-active/kpi:bg-foreground/[0.05] focus-visible:bg-foreground/[0.03] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/20"
         />
       )}
       <motion.div layoutId={shared ? `${shared}-label` : undefined} transition={{ layout: CLOSE }} className={cn("text-[12px] text-foreground/45", shared && "w-fit max-w-full")}>

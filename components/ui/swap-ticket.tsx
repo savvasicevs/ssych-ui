@@ -57,7 +57,9 @@ import { cn } from "@/lib/utils"
 /* a valid swap's button (his call, 2026-10-02: "the text should be white to be more
    accessible"). Light: white on a deeper green, 5.4:1 (#0a7a49) and 4.6:1 on hover
    (#0b8650); the theme's #0e9f61 only reaches 3.4:1 under white. Dark: the bright green
-   with the near-black ink, 8.5:1, as before */
+   with the near-black ink, 8.5:1, as before.
+   2026-11-11: the white and the near-black ink come from tokens now (--background is white in
+   light, --on-accent is the same #0e0e0e in dark); the two deeper greens stay raw, no token holds them */
 const GO =
   /* the hover brightness eases with the fill rather than snapping */
   "transition-[background-color,color,filter,scale,opacity] bg-[#0a7a49] text-white hover:bg-[#0b8650] focus-visible:bg-[#0b8650] dark:bg-[var(--chart-up)] dark:text-[#0e0e0e] dark:hover:bg-[var(--chart-up)] dark:focus-visible:bg-[var(--chart-up)] dark:hover:brightness-[1.06]"
@@ -148,10 +150,11 @@ const IconSlot = createContext<RenderIcon | undefined>(undefined)
 function AssetIcon({ symbol, color, size = 32 }: { symbol: string; color: string; size?: number }) {
   const render = useContext(IconSlot)
   if (render) return <span aria-hidden className="grid shrink-0 place-items-center" style={{ width: size, height: size }}>{render(symbol, size)}</span>
+  // 2026-11-11: white in both themes from the ground and ink steps, in place of the palette white
   return (
     <span
       aria-hidden
-      className="grid shrink-0 place-items-center rounded-full font-semibold text-white"
+      className="grid shrink-0 place-items-center rounded-full font-semibold text-background dark:text-foreground"
       style={{ width: size, height: size, background: color, fontSize: Math.max(8, Math.round(size * 0.36)) }}
     >
       {GLYPHS[symbol.toUpperCase()]?.() ?? symbol.slice(0, 2)}

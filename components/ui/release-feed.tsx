@@ -159,7 +159,7 @@ export function ReleaseFeed({ releases = DEFAULT_RELEASES, title = "API changelo
                   <motion.span
                     aria-hidden
                     layoutId={`${uid}-kind`}
-                    className={cn("absolute inset-0 -z-10 rounded-full", THUMB)}
+                    className={cn("absolute inset-0 -z-10 rounded-[inherit]", THUMB)}
                     transition={reduced ? { duration: 0 } : GLIDE}
                   />
                 )}

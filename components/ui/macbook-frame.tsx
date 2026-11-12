@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
    in the lid: 18 = 8 + the 10px bezel. The default width is 640, the Device frame family's one
    width (Browser Window is the same), and it still shrinks in a narrow parent. */
 
-const LID = "bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
+const LID = "bg-background shadow-[inset_0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
 const BASE = "bg-[color-mix(in_srgb,var(--foreground)_12%,var(--background))]"
 
 /** Front-facing MacBook mockup — render anything (a screenshot, gradient, app) on the screen. */

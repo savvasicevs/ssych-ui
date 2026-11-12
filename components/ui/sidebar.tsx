@@ -93,9 +93,9 @@ function NavSection({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="group/sec flex w-full items-center gap-2.5 rounded-[13.5px] px-2 py-2 text-left transition-colors duration-150 hover:bg-foreground/[0.03]"
+        className="group/sec flex w-full items-center gap-2.5 rounded-[13.5px] px-2 py-2 text-left transition-[background-color,scale] duration-150 ease-out hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] active:scale-[0.98] motion-reduce:active:scale-100"
       >
-        <Icon className="h-[18px] w-[18px] shrink-0 text-foreground/55 transition-colors duration-150 group-hover/sec:text-foreground/80" />
+        <Icon className="h-[18px] w-[18px] shrink-0 text-foreground/55 transition-colors duration-150 group-hover/sec:text-foreground/80 group-focus-visible/sec:text-foreground/80" />
         <span className="flex-1 text-[13px] font-medium tracking-tight text-foreground/85">{section.label}</span>
         <ChevronDown
           className={cn(
@@ -137,7 +137,7 @@ function NavSection({
                         onClick={() => onSelect(it.label)}
                         className={cn(
                           "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors duration-150",
-                          on ? "text-foreground" : "text-foreground/50 hover:text-foreground/80"
+                          on ? "text-foreground" : "text-foreground/50 hover:text-foreground/80 focus-visible:text-foreground/80"
                         )}
                       >
                         {rail}
@@ -149,7 +149,7 @@ function NavSection({
                         onClick={() => onSelect(it.label)}
                         className={cn(
                           "relative block w-full py-1.5 pl-5 text-left text-[13px] transition-colors duration-150",
-                          on ? "text-foreground" : "text-foreground/50 hover:text-foreground/80"
+                          on ? "text-foreground" : "text-foreground/50 hover:text-foreground/80 focus-visible:text-foreground/80"
                         )}
                       >
                         {rail}
@@ -199,7 +199,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
           type="button"
           onClick={onClose ?? (() => setCollapsed(true))}
           aria-label={onClose ? "Close navigation" : "Collapse sidebar"}
-          className={cn("flex h-7 w-7 items-center justify-center rounded-full text-foreground/40 hover:bg-foreground/[0.05] hover:text-foreground/80", PRESS)}
+          className={cn("flex h-7 w-7 items-center justify-center rounded-full text-foreground/40 hover:bg-foreground/[0.05] hover:text-foreground/80 focus-visible:bg-foreground/[0.05] focus-visible:text-foreground/80", PRESS)}
         >
           {onClose ? <X className="h-[18px] w-[18px]" /> : <PanelLeft className="h-[18px] w-[18px]" />}
         </button>
@@ -219,7 +219,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
             target="_blank"
             rel="noreferrer"
             aria-label={label}
-            className={cn("flex h-8 w-8 items-center justify-center rounded-full text-foreground/40 hover:bg-foreground/[0.05] hover:text-foreground", PRESS)}
+            className={cn("flex h-8 w-8 items-center justify-center rounded-full text-foreground/40 hover:bg-foreground/[0.05] hover:text-foreground focus-visible:bg-foreground/[0.05] focus-visible:text-foreground", PRESS)}
           >
             <Icon className="h-[18px] w-[18px]" />
           </a>
@@ -237,7 +237,7 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
             type="button"
             onClick={() => setDrawerOpen(true)}
             aria-label="Open navigation"
-            className={cn("flex h-9 w-9 items-center justify-center rounded-full border border-foreground/[0.08] text-foreground/70 hover:bg-foreground/[0.05] hover:text-foreground", PRESS)}
+            className={cn("flex h-9 w-9 items-center justify-center rounded-full border border-foreground/[0.08] text-foreground/70 hover:bg-foreground/[0.05] hover:text-foreground focus-visible:bg-foreground/[0.05] focus-visible:text-foreground", PRESS)}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -297,12 +297,12 @@ export function Sidebar({ sections, activeLabel }: { sections: SidebarSection[];
       >
       {collapsed ? (
         <div className="flex h-full w-[68px] flex-col items-center px-3 py-5">
-          <div className="h-6 w-6 rounded-[4.5px] bg-gradient-to-br from-[#5aaaff] to-[#2e7cd4]" />
+          <div className="h-6 w-6 rounded-[4.5px] bg-gradient-to-br from-[#ff934a] to-[#d26600]" />
           <button
             type="button"
             onClick={() => setCollapsed(false)}
             aria-label="Expand sidebar"
-            className={cn("mt-5 flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/[0.05] hover:text-foreground", PRESS)}
+            className={cn("mt-5 flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 hover:bg-foreground/[0.05] hover:text-foreground focus-visible:bg-foreground/[0.05] focus-visible:text-foreground", PRESS)}
           >
             <PanelLeft className="h-[18px] w-[18px]" />
           </button>

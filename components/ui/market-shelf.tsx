@@ -284,7 +284,7 @@ export function MarketShelf({ title = "Trending", markets = DEFAULT_MARKETS, onS
               transition={move}
               /* corner 18; as a style too, so it stays round while the box scales */
               className={cn(
-                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] rounded-[18px] bg-background shadow-[0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
+                "relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] rounded-[18px] bg-background shadow-[inset_0_0_0_1px_var(--light-outline,color-mix(in_srgb,var(--foreground)_9%,transparent)),0_1px_2px_rgba(0,0,0,0.04)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none p-3 text-left outline-none focus-visible:bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
                 isOpen ? "col-span-full gap-x-3" : "gap-2",
                 on && "z-[1] bg-[color-mix(in_srgb,var(--foreground)_10%,var(--background))]",
                 hot !== null && !on && "opacity-50",

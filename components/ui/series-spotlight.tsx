@@ -438,7 +438,7 @@ export function SeriesSpotlight({
               onFocus={() => setPreview(s.sym)}
               onBlur={() => setPreview(null)}
               className={cn(
-                "flex h-7 items-center gap-1.5 rounded-[10.5px] px-2.5 text-[11.5px] font-medium outline-none transition-[color,background-color,scale] duration-200 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:text-foreground/90",
+                "flex h-7 items-center gap-1.5 rounded-[10.5px] px-2.5 text-[11.5px] font-medium outline-none transition-[color,background-color,scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:text-foreground/90",
                 held ? cn(THUMB, "text-foreground/90") : on ? "text-foreground/90" : SEGMENT_OFF,
               )}
             >

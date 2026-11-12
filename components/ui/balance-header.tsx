@@ -144,7 +144,7 @@ export function BalanceHeader({
           }}
           aria-label={hidden ? "Show balances" : "Hide balances"}
           aria-pressed={hidden}
-          className="-my-1.5 -mr-1.5 grid h-6 w-6 self-center place-items-center rounded-full text-foreground/60 opacity-0 outline-none transition-[opacity,color,background-color,transform,translate,scale,rotate] duration-200 active:scale-[0.97] hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:active:scale-100 [@media(hover:none)]:opacity-100"
+          className="-my-1.5 -mr-1.5 grid h-6 w-6 self-center place-items-center rounded-full text-foreground/60 opacity-0 outline-none transition-[opacity,color,background-color,transform,translate,scale,rotate] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:bg-foreground/[0.06] focus-visible:opacity-100 group-hover:opacity-100 motion-reduce:active:scale-100 [@media(hover:none)]:opacity-100"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span

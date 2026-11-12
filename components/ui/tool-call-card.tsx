@@ -162,7 +162,7 @@ export function ToolCallCard({ call = DEFAULT_CALL, defaultOpen = true, onRetry,
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-full items-center gap-2.5 rounded-[13.5px] px-3 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
+        className="flex h-9 w-full items-center gap-2.5 rounded-[13.5px] px-3 text-left outline-none transition-[color,background-color,scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
       >
         <span className="truncate text-[12px] font-medium text-foreground/90">{call.tool}</span>
         <span role="status" className="flex items-center gap-1.5 text-[11px]" style={{ color: WORD_INK[state] }}>

@@ -436,7 +436,7 @@ export function WalletDrawer({
                 onClick={() => setAsset(h.symbol)}
                 /* 13 (the 26px coin mark) + 8 padding = 21 */
                 className={cn(
-                  "flex items-center gap-2.5 rounded-[16px] px-2 py-2 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.05] focus-visible:bg-foreground/[0.06]",
+                  "flex items-center gap-2.5 rounded-[16px] px-2 py-2 text-left outline-none transition-[color,background-color,scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100 hover:bg-foreground/[0.05] focus-visible:bg-foreground/[0.06]",
                   on && "bg-foreground/[0.06]",
                 )}
               >
@@ -591,7 +591,7 @@ export function WalletDrawer({
   }
 
   if (view === "settings") {
-    const linkRow = "flex w-full items-center gap-2 rounded-[13px] px-2 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
+    const linkRow = "flex w-full items-center gap-2 rounded-[13px] px-2 py-2.5 text-left outline-none transition-[color,background-color,scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
     if (pane === "currency")
       return (
         <motion.div key="currency" {...slide} className={root} role="group" aria-label="Display currency">
@@ -646,13 +646,13 @@ export function WalletDrawer({
               aria-checked={prefs[s.key]}
               onClick={() => setPrefs((p) => ({ ...p, [s.key]: !p[s.key] }))}
               /* 9 (the 18px switch track) + 8 side padding = 17 */
-              className="flex items-center justify-between rounded-[13px] px-2 py-2.5 outline-none transition-colors duration-150 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
+              className="flex items-center justify-between rounded-[13px] px-2 py-2.5 outline-none transition-[color,background-color,scale] duration-150 active:scale-[0.98] motion-reduce:active:scale-100 hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06]"
             >
               <span className="text-[12.5px] font-medium text-foreground/90">{s.label}</span>
               {/* the knob travels 14px inside a 32px track: 3 + 12 + 14 + 3 */}
               <span
                 aria-hidden
-                className="relative block h-[18px] w-8 shrink-0 rounded-[7px] transition-colors duration-200"
+                className="relative block h-[18px] w-8 shrink-0 rounded-full transition-colors duration-200"
                 style={{ background: `color-mix(in srgb, var(--foreground) ${prefs[s.key] ? 90 : 14}%, transparent)` }}
               >
                 <span

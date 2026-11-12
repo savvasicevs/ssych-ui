@@ -105,7 +105,7 @@ export function MorphDisclosure({
            answers, not only its words */
         className={cn(
           "group flex h-6 w-full items-center justify-between gap-4 text-left outline-none",
-          "after:absolute after:inset-x-0 after:top-0 after:rounded-[18px] after:transition-colors after:duration-200 hover:after:bg-foreground/[0.04] focus-visible:after:bg-foreground/[0.06]",
+          "after:absolute after:inset-x-0 after:top-0 after:rounded-[18px] after:transition-colors after:duration-150 hover:after:bg-foreground/[0.04] focus-visible:after:bg-foreground/[0.06] active:after:bg-foreground/[0.08]",
           open ? "after:h-[48px] after:rounded-b-none" : "after:bottom-0",
         )}
       >

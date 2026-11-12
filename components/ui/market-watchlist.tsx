@@ -10,14 +10,14 @@ import { cn } from "@/lib/utils"
 const EASE = [0.16, 1, 0.3, 1] as const
 /* a re-sort moves every row at once on the house layout spring, with no entrance stagger */
 const REORDER = { type: "spring", stiffness: 400, damping: 32 } as const
-const ACCENT: [number, number, number] = [72, 159, 250]
-const CHART = { blue: 'var(--chart-1, #489ffa)', green: 'var(--chart-2, #4dbe95)' } as const
+const CHART = { blue: 'var(--chart-1, #fe821e)', green: 'var(--chart-2, #4dbe95)' } as const
 const HAIRLINE = 'color-mix(in srgb, var(--foreground) 5.5%, transparent)'
 const SANS = 'inherit'
 const SURFACE = 'var(--card)'
 const TEXT = 'var(--foreground)'
 const TEXT_MUTED = 'var(--muted-foreground)'
-const accentRgba = (a: number, c: [number, number, number] = ACCENT) => `rgba(${c[0]},${c[1]},${c[2]},${a})`
+/* a tint of the accent, taken from the theme's --chart-1 so it follows whatever accent the project has */
+const accentRgba = (a: number) => `color-mix(in srgb, var(--chart-1, #fe821e) ${a * 100}%, transparent)`
 
 export interface WatchAsset {
   symbol: string
@@ -121,12 +121,12 @@ export function MarketWatchlist({ title = "Market watchlist", assets = DEFAULT_A
   }
 
   return (
-    <div className={cn("w-full max-w-[540px] overflow-hidden rounded-lg border", className)} style={{ background: SURFACE, borderColor: HAIRLINE, fontFamily: SANS }} onMouseLeave={() => setHover(null)}>
+    <div className={cn("w-full max-w-[540px] overflow-hidden rounded-lg border", className)} style={{ background: SURFACE, borderColor: HAIRLINE, fontFamily: SANS }} onPointerLeave={() => setHover(null)}>
       <div className="flex items-center justify-between border-b px-5 py-3.5" style={{ borderColor: HAIRLINE }}><h3 className="text-[13px] font-semibold" style={{ color: TEXT }}>{title}</h3><span className="text-[10px]" style={{ color: TEXT_MUTED }}>{assets.length} assets</span></div>
       <div className="grid grid-cols-[minmax(0,1fr)_80px_92px] items-center border-b px-5 py-2 text-[10px] font-normal tracking-[0.07em]" style={{ borderColor: HAIRLINE, color: TEXT_MUTED }}>
-        <button type="button" onClick={() => changeSort('symbol')} className="flex items-center gap-1 text-left">Asset {sort === 'symbol' && <SortChevron up={!descending} />}</button>
+        <button type="button" onClick={() => changeSort('symbol')} className="flex items-center gap-1 text-left outline-none transition-colors duration-200 hover:text-foreground/90 focus-visible:text-foreground/90">Asset {sort === 'symbol' && <SortChevron up={!descending} />}</button>
         <span className="text-center">Trend</span>
-        <button type="button" onClick={() => changeSort('change')} className="flex items-center justify-end gap-1">Change {sort === 'change' && <SortChevron up={!descending} />}</button>
+        <button type="button" onClick={() => changeSort('change')} className="flex items-center justify-end gap-1 outline-none transition-colors duration-200 hover:text-foreground/90 focus-visible:text-foreground/90">Change {sort === 'change' && <SortChevron up={!descending} />}</button>
       </div>
       {rows.map((asset, i) => {
         const selected = active === asset.symbol
@@ -138,8 +138,8 @@ export function MarketWatchlist({ title = "Market watchlist", assets = DEFAULT_A
             type="button"
             layout={!reduced}
             onClick={() => setActive(asset.symbol)}
-            onMouseEnter={() => setHover(asset.symbol)}
-            onFocus={() => setHover(asset.symbol)}
+            onPointerEnter={(e) => { if (e.pointerType !== "touch") setHover(asset.symbol) }}
+            onFocus={(e) => { if (e.currentTarget.matches(":focus-visible")) setHover(asset.symbol) }}
             className="relative grid w-full grid-cols-[minmax(0,1fr)_80px_92px] items-center border-b px-5 py-3 text-left transition-colors last:border-b-0"
             style={{ borderColor: HAIRLINE, background: selected ? accentRgba(0.045) : undefined }}
             initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }}

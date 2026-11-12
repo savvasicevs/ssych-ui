@@ -154,7 +154,7 @@ export function AlertStack({
                   /* rounded-full: 22 = the 24px dismiss's 12 + its 10px inset (spec 13.10) */
                   /* light (his call, 2026-10-02): white cards on top of each other, a hairline
                      and a light shadow each; dark keeps the 7% ground */
-                  className="group absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-[16.5px] bg-background pl-4 pr-2.5 shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_2px_6px_rgba(0,0,0,0.06)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
+                  className="group absolute inset-x-0 top-0 flex h-11 items-center gap-2.5 rounded-[16.5px] bg-background pl-4 pr-2.5 shadow-[inset_0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_2px_6px_rgba(0,0,0,0.06)] dark:bg-[color-mix(in_srgb,var(--foreground)_7%,var(--background))] dark:shadow-none"
                   style={{ zIndex: rows.length - i }}
                   onPointerEnter={() => setHot(label)}
                   initial={false}

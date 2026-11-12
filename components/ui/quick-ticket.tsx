@@ -357,7 +357,6 @@ export function QuickTicket({
               state={`${state}-${side}`}
               disabled={state !== "ready"}
               onClick={submit}
-              lightHue={buy ? GREEN : RED}
               label={
                 <>
                   {placed ? (

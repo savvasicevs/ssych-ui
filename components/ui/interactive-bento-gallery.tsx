@@ -166,7 +166,7 @@ export const GalleryModal = ({
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full border border-foreground/10 bg-black/40 text-foreground backdrop-blur transition-colors hover:bg-black/70"
+            className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full border border-foreground/10 bg-black/40 text-foreground backdrop-blur transition-[background-color,scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-black/70 focus-visible:bg-black/70 active:scale-[0.96] motion-reduce:active:scale-100"
           >
             <X className="h-4 w-4" />
           </button>
@@ -257,7 +257,7 @@ export function InteractiveBentoGallery({ mediaItems = [], title = "", descripti
           >
             <Media item={item} className="absolute inset-0 h-full w-full" onClick={() => pick(item)} paused={!!open} />
             <motion.div
-              className="absolute inset-0 flex flex-col justify-end p-2 sm:p-3 md:p-4"
+              className="absolute inset-0 flex flex-col justify-end p-2 sm:p-3 md:p-4 [@media(hover:none)]:opacity-100!"
               initial={{ opacity: 0 }}
               whileHover={{ opacity: 1 }}
               transition={reduced ? { duration: 0 } : { duration: 0.2, ease: EASE }}

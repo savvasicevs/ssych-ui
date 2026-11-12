@@ -87,6 +87,10 @@ export interface InlineSliderProps {
   onClear?: () => void
   ariaLabel?: string
   className?: string
+  /** 30px with an 11.5px corner: the size of the inner button of a 36px switcher, for a rail where
+   *  it sits beside those switches (his call 2026-11-10: the 28px slider over a 36px switch read
+   *  as two systems, and the slider should match the switch's inner button). Default 28px */
+  tall?: boolean
   /** a range at rest (not `active`, nothing held) fills the whole track behind both handles;
    *  once picked it covers just the chosen run. Single values are unaffected. On by default */
   fillAtRest?: boolean
@@ -104,11 +108,11 @@ const snap = (v: number, min: number, max: number, step: number) => {
 }
 
 /** the thumb: a stem with a dot at each end; over text the stem fades and the dots part */
-function Thumb({ x, part, held, still }: { x: number; part: number; held: boolean; still: boolean }) {
+function Thumb({ x, part, held, still, tall }: { x: number; part: number; held: boolean; still: boolean; tall?: boolean }) {
   return (
     <motion.span
       aria-hidden
-      className="pointer-events-none absolute left-0 top-[9px] block h-[10px]"
+      className={cn("pointer-events-none absolute left-0 block h-[10px]", tall ? "top-[10px]" : "top-[9px]")}
       style={{ width: THUMB_W }}
       initial={false}
       animate={{ x, scaleY: held && !still ? 1.2 : 1 }}
@@ -141,6 +145,7 @@ export function InlineSlider({
   ariaLabel,
   className,
   fillAtRest = true,
+  tall = false,
   stops,
   formatStop,
 }: InlineSliderProps) {
@@ -323,7 +328,8 @@ export function InlineSlider({
       onPointerCancel={up}
       onLostPointerCapture={up}
       className={cn(
-        "relative h-7 w-full touch-none select-none overflow-hidden rounded-[7px] bg-foreground/[0.07] tabular-nums dark:bg-foreground/[0.06]",
+        "relative w-full touch-none select-none overflow-hidden bg-foreground/[0.07] tabular-nums dark:bg-foreground/[0.06]",
+        tall ? "h-[30px] rounded-[11.5px]" : "h-7 rounded-[7px]",
         drag ? "cursor-grabbing" : "cursor-grab",
         !stops && className,
       )}
@@ -332,9 +338,9 @@ export function InlineSlider({
           compositor instead of animating a width; at rest the clip opens to the whole track */}
       <motion.span
         aria-hidden
-        className={cn("absolute inset-0 hidden rounded-[7px] transition-colors duration-150 dark:block", active ? "bg-foreground/[0.13]" : "bg-foreground/[0.10]")}
+        className={cn("absolute inset-0 hidden transition-colors duration-150 dark:block", tall ? "rounded-[11.5px]" : "rounded-[7px]", active ? "bg-foreground/[0.13]" : "bg-foreground/[0.10]")}
         initial={false}
-        animate={{ clipPath: `inset(0px ${Math.max(0, geo.width - fillLeft - fillWidth).toFixed(1)}px 0px ${fillLeft.toFixed(1)}px round 7px)` }}
+        animate={{ clipPath: `inset(0px ${Math.max(0, geo.width - fillLeft - fillWidth).toFixed(1)}px 0px ${fillLeft.toFixed(1)}px round ${tall ? 11.5 : 7}px)` }}
         transition={still || drag ? { duration: 0 } : { duration: 0.25, ease: EASE }}
       />
       {/* light (his call, 2026-10-02: "the inline slider is not readable on light; the part
@@ -344,7 +350,7 @@ export function InlineSlider({
           sized instead; 2px in from the track's edge so the hairline shows all round */}
       <motion.span
         aria-hidden
-        className="absolute inset-y-[2px] block rounded-[5px] bg-white shadow-[0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_1px_3px_rgba(0,0,0,0.08)] dark:hidden"
+        className={cn("absolute inset-y-[2px] block bg-white shadow-[inset_0_0_0_1px_var(--light-outline,rgba(0,0,0,0.09)),0_1px_3px_rgba(0,0,0,0.08)] dark:hidden", tall ? "rounded-[9.5px]" : "rounded-[5px]")}
         initial={false}
         animate={{ left: Math.max(2, fillLeft + (fillLeft > 0 ? 0 : 2)), width: Math.max(0, Math.min(geo.width - 2, fillLeft + fillWidth) - Math.max(2, fillLeft + (fillLeft > 0 ? 0 : 2))) }}
         transition={still || drag ? { duration: 0 } : { duration: 0.25, ease: EASE }}
@@ -384,8 +390,8 @@ export function InlineSlider({
           <span key={x} aria-hidden className="absolute top-1/2 h-[2px] w-[2px] -translate-y-1/2 rounded-full bg-foreground/20" style={{ left: x }} />
         ))}
       </div>
-      {dual ? <Thumb x={loX} part={partOf(loX)} held={drag?.end === "lo"} still={still} /> : null}
-      <Thumb x={hiX} part={partOf(hiX)} held={drag?.end === "hi"} still={still} />
+      {dual ? <Thumb tall={tall} x={loX} part={partOf(loX)} held={drag?.end === "lo"} still={still} /> : null}
+      <Thumb tall={tall} x={hiX} part={partOf(hiX)} held={drag?.end === "hi"} still={still} />
       {dual ? handle("lo", loX, lo) : null}
       {handle("hi", hiX, hi)}
     </div>

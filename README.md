@@ -47,7 +47,7 @@ Swap `order-book` for any free slug below.
 
 ![A paid screen built from these components](listing-images/ssych/04-trading-terminal.png)
 
-Composed dashboards and landing pages (18 of them) are sold separately at https://ssych.com/library.
+Composed dashboards and landing pages (24 of them) are sold separately at https://ssych.com/library.
 None of their code is in this repo, and nothing in this repo is paid: every
 component listed above is MIT. One name is used twice: the free `market-watchlist` component here is MIT, and a paid screen of the same name is sold on the site; install the free one from this repo's `components/ui`.
 

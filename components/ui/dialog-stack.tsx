@@ -19,7 +19,7 @@ import { BUTTON, BUTTON_PRIMARY, RAISED, SURFACE } from "@/components/ui/control
    recedes in depth, the position marks, "N of M", and only the top card taking input.
    Changed: it sits in the flow of the page with no frame, no dotted ground and no dimmed
    backdrop; the cards are flat fills one ink step apart instead of outlined panels with a
-   drop shadow; the action is the white primary button, not blue, and the position marks
+   drop shadow; the action is the accent primary button, and the position marks
    are ink; it started two steps deep (`defaultDepth`) until the 2026-10-02 audit;
    Escape is heard while the focus is inside the stack, not window-wide.
    Formulas:

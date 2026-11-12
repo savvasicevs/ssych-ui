@@ -207,7 +207,7 @@ export function SimpleChart({
                   setHover(null)
                 }}
                 className={cn(
-                  "relative z-[1] h-7 w-9 rounded-full text-[11.5px] font-medium outline-none transition-[color,scale] duration-200 active:scale-[0.97] focus-visible:text-foreground/90 motion-reduce:active:scale-100",
+                  "relative z-[1] h-7 w-9 rounded-full text-[11.5px] font-medium outline-none transition-[color,scale] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] focus-visible:text-foreground/90 motion-reduce:active:scale-100",
                   on ? "text-foreground/90" : SEGMENT_OFF,
                 )}
               >
